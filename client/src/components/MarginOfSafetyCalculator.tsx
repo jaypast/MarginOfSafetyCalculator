@@ -1,0 +1,202 @@
+import React, { useState, useEffect } from 'react';
+import StockInformation from './StockInformation';
+import ValuationMethod from './ValuationMethod';
+import MarginOfSafetyParams from './MarginOfSafetyParams';
+import ValuationResults from './ValuationResults';
+import QualityIndicators from './QualityIndicators';
+import EducationalResources from './EducationalResources';
+import { useStockData } from '@/hooks/useStockData';
+import { 
+  StockData, 
+  ValuationParams, 
+  MarginOfSafetyParams as MoSParams, 
+  ValuationResult,
+  CalculationMethod,
+  CompanyQualityResult
+} from '@/lib/types';
+import { 
+  calculateDCF, 
+  calculatePE, 
+  calculateGraham, 
+  calculateBuyBelow, 
+  calculateDiscountPremium,
+  calculateAverageValuation
+} from '@/lib/calculators';
+import { getCompanyQuality, getRecommendedMarginOfSafety, getDefaultMarginOfSafety } from '@/lib/utils';
+
+const MarginOfSafetyCalculator: React.FC = () => {
+  // Stock data state from API
+  const { stockData, isLoading, fetchStockData } = useStockData();
+
+  // Calculation method state
+  const [activeMethod, setActiveMethod] = useState<CalculationMethod>('dcf');
+  
+  // Valuation parameters state
+  const [valuationParams, setValuationParams] = useState<ValuationParams>({
+    // DCF Parameters
+    dcfGrowthRate: 10,
+    dcfDiscountRate: 12,
+    dcfTerminalMultiple: 15,
+    dcfForecastPeriod: 5,
+    
+    // P/E Parameters
+    peType: '5year',
+    peCustomValue: 15,
+    peAdjustment: 100,
+    
+    // Graham Parameters
+    grahamGrowthRate: 11.8,
+    grahamBaseValue: 8.5
+  });
+  
+  // Margin of Safety parameters state
+  const [marginOfSafetyParams, setMarginOfSafetyParams] = useState<MoSParams>({
+    marginOfSafety: 25
+  });
+  
+  // Valuation results state
+  const [valuationResults, setValuationResults] = useState<ValuationResult[]>([]);
+  const [companyQuality, setCompanyQuality] = useState<CompanyQualityResult | null>(null);
+  
+  // Update default MoS when company quality changes
+  useEffect(() => {
+    if (stockData) {
+      const quality = getCompanyQuality(
+        stockData.roe,
+        stockData.debtToEquity,
+        stockData.currentRatio,
+        stockData.revenueGrowth,
+        stockData.earningsStability,
+        stockData.competitivePosition
+      );
+      
+      const recommendedMoS = getRecommendedMarginOfSafety(quality);
+      const defaultMoS = getDefaultMarginOfSafety(quality);
+      
+      setCompanyQuality({
+        quality,
+        recommendedMarginOfSafety: recommendedMoS
+      });
+      
+      setMarginOfSafetyParams({
+        marginOfSafety: defaultMoS
+      });
+    }
+  }, [stockData]);
+  
+  // Calculate intrinsic value and buy below price
+  const calculateIntrinsicValue = () => {
+    if (!stockData) return;
+    
+    // Calculate DCF valuation
+    const dcfValue = calculateDCF(stockData, valuationParams);
+    const dcfBuyBelow = calculateBuyBelow(dcfValue, marginOfSafetyParams.marginOfSafety);
+    const dcfDiscountPremium = calculateDiscountPremium(stockData.price, dcfBuyBelow);
+    
+    // Calculate P/E valuation
+    const peValue = calculatePE(stockData, valuationParams);
+    const peBuyBelow = calculateBuyBelow(peValue, marginOfSafetyParams.marginOfSafety);
+    const peDiscountPremium = calculateDiscountPremium(stockData.price, peBuyBelow);
+    
+    // Calculate Graham valuation
+    const grahamValue = calculateGraham(stockData, valuationParams);
+    const grahamBuyBelow = calculateBuyBelow(grahamValue, marginOfSafetyParams.marginOfSafety);
+    const grahamDiscountPremium = calculateDiscountPremium(stockData.price, grahamBuyBelow);
+    
+    // Store results
+    const results: ValuationResult[] = [
+      {
+        method: 'DCF Analysis',
+        intrinsicValue: dcfValue,
+        buyBelow: dcfBuyBelow,
+        discountPremium: dcfDiscountPremium
+      },
+      {
+        method: 'P/E Based',
+        intrinsicValue: peValue,
+        buyBelow: peBuyBelow,
+        discountPremium: peDiscountPremium
+      },
+      {
+        method: 'Graham Formula',
+        intrinsicValue: grahamValue,
+        buyBelow: grahamBuyBelow,
+        discountPremium: grahamDiscountPremium
+      }
+    ];
+    
+    // Calculate average
+    const avgResult = calculateAverageValuation(results);
+    
+    setValuationResults([...results, avgResult]);
+  };
+  
+  return (
+    <>
+      {/* Header Section */}
+      <header className="mb-8">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-[#1A2942] mb-2">Margin of Safety Calculator</h1>
+            <p className="text-neutral-600">Calculate intrinsic value and determine buy-below thresholds following Benjamin Graham's principles</p>
+          </div>
+          <div className="mt-4 md:mt-0">
+            <a href="#educational-resources" className="text-[#2A3E5C] hover:text-[#1A2942] text-sm flex items-center">
+              <i className="ri-information-line mr-1"></i>
+              Learn more about Margin of Safety
+            </a>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Left Column - Input Section */}
+        <div className="lg:col-span-1 space-y-6">
+          <StockInformation 
+            stockData={stockData} 
+            isLoading={isLoading} 
+            onFetchData={fetchStockData}
+            companyQuality={companyQuality?.quality}
+          />
+          
+          <ValuationMethod 
+            activeMethod={activeMethod}
+            setActiveMethod={setActiveMethod}
+            valuationParams={valuationParams}
+            setValuationParams={setValuationParams}
+            stockData={stockData}
+          />
+          
+          <MarginOfSafetyParams 
+            marginOfSafetyParams={marginOfSafetyParams}
+            setMarginOfSafetyParams={setMarginOfSafetyParams}
+            companyQuality={companyQuality}
+            onCalculate={calculateIntrinsicValue}
+            stockData={stockData}
+          />
+        </div>
+        
+        {/* Right Column - Results and Education */}
+        <div className="lg:col-span-2 space-y-6">
+          <ValuationResults 
+            valuationResults={valuationResults} 
+            stockData={stockData}
+            activeMethod={activeMethod}
+          />
+          
+          {stockData && (
+            <QualityIndicators 
+              stockData={stockData}
+              companyQuality={companyQuality}
+            />
+          )}
+          
+          <EducationalResources />
+        </div>
+      </main>
+    </>
+  );
+};
+
+export default MarginOfSafetyCalculator;
