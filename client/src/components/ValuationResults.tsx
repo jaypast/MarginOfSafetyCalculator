@@ -44,19 +44,36 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
   const averageResult = valuationResults.find(
     result => result.method === 'Average'
   );
-
-  // Calculate value gap percentages for visualization
-  const maxValue = Math.max(...valuationResults.map(r => r.intrinsicValue), 300); // Max for scale
-  const intrinsicPercent = (activeResult.intrinsicValue / maxValue) * 100;
-  const buyBelowPercent = (activeResult.buyBelow / maxValue) * 100;
-  const currentPercent = stockData ? (stockData.price / maxValue) * 100 : 0;
-
-  // Determine status color
+  
+  // Helper functions
+  const getMethodColor = (method: string): string => {
+    if (method.toLowerCase().includes('dcf')) return '#6366F1';  // Indigo
+    if (method.toLowerCase().includes('p/e') || method.toLowerCase().includes('pe')) return '#F59E0B';  // Amber
+    if (method.toLowerCase().includes('graham')) return '#10B981';  // Emerald
+    return '#6B7280';  // Gray
+  };
+  
   const getStatusColor = (discountPremium: number): string => {
     if (discountPremium <= -10) return 'text-green-800';
     if (discountPremium < 0) return 'text-amber-800';
     return 'text-red-800';
   };
+
+  // Calculate value gap percentages for visualization
+  const maxValue = Math.max(...valuationResults.map(r => r.intrinsicValue), stockData ? stockData.price * 1.5 : 300); // Max for scale
+  
+  // Calculate percentages for active method
+  const intrinsicPercent = (activeResult.intrinsicValue / maxValue) * 100;
+  const buyBelowPercent = (activeResult.buyBelow / maxValue) * 100;
+  const currentPercent = stockData ? (stockData.price / maxValue) * 100 : 0;
+  
+  // Calculate percentages for all methods to show vertical lines
+  const methodLines = valuationResults.filter(r => r.method !== 'Average').map(result => ({
+    method: result.method,
+    intrinsicPercent: (result.intrinsicValue / maxValue) * 100,
+    buyBelowPercent: (result.buyBelow / maxValue) * 100,
+    color: getMethodColor(result.method)
+  }));
 
   return (
     <Card className="bg-white rounded-lg shadow-sm border border-neutral-200">
@@ -108,6 +125,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
         <div className="mb-6">
           <h3 className="text-base font-medium text-[#21324F] mb-2">Value Gap</h3>
           <div className="h-10 bg-neutral-100 rounded-lg relative overflow-hidden">
+            {/* Background bars for base values */}
             <div 
               className="absolute top-0 bottom-0 left-0 bg-[#415876] flex items-center justify-end px-2"
               style={{ width: `${intrinsicPercent}%` }}
@@ -128,6 +146,29 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                 <span className="text-white text-xs font-medium whitespace-nowrap">Now: {formatCurrency(stockData.price)}</span>
               </div>
             )}
+            
+            {/* Add vertical lines for all methods */}
+            {methodLines.map((line, index) => (
+              <React.Fragment key={index}>
+                {/* Intrinsic Value Line */}
+                <div
+                  className="absolute top-0 bottom-0 border-l-2 pointer-events-none z-10"
+                  style={{ 
+                    left: `${line.intrinsicPercent}%`, 
+                    borderColor: line.color 
+                  }}
+                ></div>
+                
+                {/* Buy Below Line */}
+                <div
+                  className="absolute top-0 bottom-0 border-l-2 border-dashed pointer-events-none z-10"
+                  style={{ 
+                    left: `${line.buyBelowPercent}%`, 
+                    borderColor: line.color 
+                  }}
+                ></div>
+              </React.Fragment>
+            ))}
           </div>
           <div className="flex justify-between text-xs text-neutral-500 mt-1">
             <span>$0</span>
@@ -153,7 +194,12 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
               <TableBody>
                 {valuationResults.filter(r => r.method !== 'Average').map((result, index) => (
                   <TableRow key={index}>
-                    <TableCell className="text-neutral-800">{result.method}</TableCell>
+                    <TableCell className="text-neutral-800">
+                      <div className="flex items-center">
+                        <span className="inline-block w-3 h-3 rounded-full mr-2" style={{ backgroundColor: getMethodColor(result.method) }}></span>
+                        {result.method}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-neutral-800 text-right">{formatCurrency(result.intrinsicValue)}</TableCell>
                     <TableCell className="text-neutral-800 text-right">{formatCurrency(result.buyBelow)}</TableCell>
                     <TableCell className={`${result.discountPremium < 0 ? 'text-green-600' : 'text-red-600'} text-right`}>
