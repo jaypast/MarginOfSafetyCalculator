@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import StockInformation from './StockInformation';
+import KeyMetrics from './KeyMetrics';
 import ValuationMethod from './ValuationMethod';
 import MarginOfSafetyParams from './MarginOfSafetyParams';
 import ValuationResults from './ValuationResults';
@@ -58,7 +59,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
   const [valuationResults, setValuationResults] = useState<ValuationResult[]>([]);
   const [companyQuality, setCompanyQuality] = useState<CompanyQualityResult | null>(null);
   
-  // Update default MoS when company quality changes
+  // Update default MoS and automatically calculate when stock data changes
   useEffect(() => {
     if (stockData) {
       const quality = getCompanyQuality(
@@ -81,6 +82,9 @@ const MarginOfSafetyCalculator: React.FC = () => {
       setMarginOfSafetyParams({
         marginOfSafety: defaultMoS
       });
+      
+      // Automatically calculate intrinsic value when stock data is loaded
+      setTimeout(() => calculateIntrinsicValue(), 500);
     }
   }, [stockData]);
   
@@ -150,49 +154,72 @@ const MarginOfSafetyCalculator: React.FC = () => {
       </header>
 
       {/* Main Content */}
-      <main className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left Column - Input Section */}
-        <div className="lg:col-span-1 space-y-6">
+      <main className="grid grid-cols-1 gap-8">
+        {/* Stock Information Section */}
+        <div>
           <StockInformation 
             stockData={stockData} 
             isLoading={isLoading} 
             onFetchData={fetchStockData}
-            companyQuality={companyQuality?.quality}
-          />
-          
-          <ValuationMethod 
-            activeMethod={activeMethod}
-            setActiveMethod={setActiveMethod}
-            valuationParams={valuationParams}
-            setValuationParams={setValuationParams}
-            stockData={stockData}
-          />
-          
-          <MarginOfSafetyParams 
-            marginOfSafetyParams={marginOfSafetyParams}
-            setMarginOfSafetyParams={setMarginOfSafetyParams}
-            companyQuality={companyQuality}
-            onCalculate={calculateIntrinsicValue}
-            stockData={stockData}
           />
         </div>
         
-        {/* Right Column - Results and Education */}
-        <div className="lg:col-span-2 space-y-6">
-          <ValuationResults 
-            valuationResults={valuationResults} 
-            stockData={stockData}
-            activeMethod={activeMethod}
-          />
-          
-          {stockData && (
-            <QualityIndicators 
+        {/* Results Section - Made More Prominent */}
+        {stockData && (
+          <div className="bg-white rounded-lg shadow-md p-6 border border-neutral-200">
+            <div className="mb-4">
+              <h2 className="text-xl font-semibold text-[#1A2942] mb-2">Valuation Results</h2>
+              <p className="text-neutral-600">Intrinsic value calculation based on multiple methods with applied margin of safety</p>
+            </div>
+            <ValuationResults 
+              valuationResults={valuationResults} 
               stockData={stockData}
-              companyQuality={companyQuality}
+              activeMethod={activeMethod}
             />
-          )}
+          </div>
+        )}
+        
+        {/* Detailed Calculations Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Column - Parameters */}
+          <div className="lg:col-span-1 space-y-6">
+            <MarginOfSafetyParams 
+              marginOfSafetyParams={marginOfSafetyParams}
+              setMarginOfSafetyParams={setMarginOfSafetyParams}
+              companyQuality={companyQuality}
+              onCalculate={calculateIntrinsicValue}
+              stockData={stockData}
+            />
+            
+            <ValuationMethod 
+              activeMethod={activeMethod}
+              setActiveMethod={setActiveMethod}
+              valuationParams={valuationParams}
+              setValuationParams={setValuationParams}
+              stockData={stockData}
+            />
+            
+            {/* Key Metrics Section */}
+            {(stockData || isLoading) && (
+              <KeyMetrics
+                stockData={stockData}
+                isLoading={isLoading}
+                companyQuality={companyQuality?.quality}
+              />
+            )}
+          </div>
           
-          <EducationalResources />
+          {/* Right Column - Quality and Education */}
+          <div className="lg:col-span-2 space-y-6">
+            {stockData && companyQuality && (
+              <QualityIndicators 
+                stockData={stockData}
+                companyQuality={companyQuality}
+              />
+            )}
+            
+            <EducationalResources />
+          </div>
         </div>
       </main>
     </>
