@@ -46,16 +46,25 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
   );
 
   // Calculate value gap percentages for visualization
-  const maxValue = Math.max(...valuationResults.map(r => r.intrinsicValue), 300); // Max for scale
+  const maxValue = Math.max(...valuationResults.map(r => r.intrinsicValue), stockData ? stockData.price * 1.5 : 300); // Max for scale
+  
+  // Current method calculations
   const intrinsicPercent = (activeResult.intrinsicValue / maxValue) * 100;
   const buyBelowPercent = (activeResult.buyBelow / maxValue) * 100;
   const currentPercent = stockData ? (stockData.price / maxValue) * 100 : 0;
+  
+  // Get percentages for all methods to visualize
+  const methodPercentages = valuationResults.filter(r => r.method !== 'Average').map(result => ({
+    method: result.method,
+    intrinsicPercent: (result.intrinsicValue / maxValue) * 100,
+    buyBelowPercent: (result.buyBelow / maxValue) * 100,
+  }));
 
-  // Determine status color
+  // Determine status color (avoiding red and green)
   const getStatusColor = (discountPremium: number): string => {
-    if (discountPremium <= -10) return 'text-green-800';
-    if (discountPremium < 0) return 'text-amber-800';
-    return 'text-red-800';
+    if (discountPremium <= -10) return 'text-blue-800';
+    if (discountPremium < 0) return 'text-indigo-800';
+    return 'text-purple-800';
   };
 
   return (
@@ -84,21 +93,21 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
           </div>
           
           {/* Buy Below Price */}
-          <div className="bg-green-50 p-3 rounded-lg border border-green-100">
-            <p className="text-xs text-green-700 mb-1">Buy Below</p>
-            <p className="text-lg font-bold text-green-800">
+          <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100">
+            <p className="text-xs text-indigo-700 mb-1">Buy Below</p>
+            <p className="text-lg font-bold text-indigo-800">
               {formatCurrency(activeResult.buyBelow)}
             </p>
-            <p className="text-xs text-green-600">With MoS</p>
+            <p className="text-xs text-indigo-600">With MoS</p>
           </div>
           
           {/* Current Status */}
-          <div className={`${activeResult.discountPremium < 0 ? 'bg-amber-50 border-amber-100' : 'bg-red-50 border-red-100'} p-3 rounded-lg`}>
-            <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-amber-700' : 'text-red-700'} mb-1`}>Status</p>
+          <div className={`${activeResult.discountPremium < 0 ? 'bg-blue-50 border-blue-100' : 'bg-purple-50 border-purple-100'} p-3 rounded-lg`}>
+            <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-blue-700' : 'text-purple-700'} mb-1`}>Status</p>
             <p className={`text-lg font-bold ${getStatusColor(activeResult.discountPremium)}`}>
               {activeResult.discountPremium > 0 ? '+' : ''}{activeResult.discountPremium.toFixed(1)}%
             </p>
-            <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-amber-600' : 'text-red-600'}`}>
+            <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-blue-600' : 'text-purple-600'}`}>
               {activeResult.discountPremium < 0 ? 'Consider buying' : 'Wait'}
             </p>
           </div>
@@ -107,29 +116,83 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
         {/* Value Gap Visualization */}
         <div className="mb-6">
           <h3 className="text-base font-medium text-[#21324F] mb-2">Value Gap</h3>
-          <div className="h-10 bg-neutral-100 rounded-lg relative overflow-hidden">
-            <div 
-              className="absolute top-0 bottom-0 left-0 bg-[#415876] flex items-center justify-end px-2"
-              style={{ width: `${intrinsicPercent}%` }}
-            >
-              <span className="text-white text-xs font-medium whitespace-nowrap">IV: {formatCurrency(activeResult.intrinsicValue)}</span>
-            </div>
-            <div 
-              className="absolute top-0 bottom-0 left-0 bg-green-500 flex items-center justify-end px-2"
-              style={{ width: `${buyBelowPercent}%` }}
-            >
-              <span className="text-white text-xs font-medium whitespace-nowrap">Buy: {formatCurrency(activeResult.buyBelow)}</span>
-            </div>
+          
+          {/* Method visualization with multiple bars */}
+          <div className="space-y-3">
+            {/* Current price marker - Fixed position */}
             {stockData && (
-              <div 
-                className={`absolute top-0 bottom-0 left-0 ${activeResult.discountPremium < 0 ? 'bg-amber-500' : 'bg-red-500'} flex items-center justify-end px-2`}
-                style={{ width: `${currentPercent}%` }}
-              >
-                <span className="text-white text-xs font-medium whitespace-nowrap">Now: {formatCurrency(stockData.price)}</span>
+              <div className="relative h-0">
+                <div 
+                  className="absolute top-0 h-36 border-l-2 border-blue-500 z-50"
+                  style={{ left: `${currentPercent}%` }}
+                >
+                  <div className="bg-blue-500 text-white px-2 py-1 rounded text-xs whitespace-nowrap ml-1 -mt-1">
+                    Current: {formatCurrency(stockData.price)}
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* All valuation methods */}
+            {methodPercentages.map((method, index) => {
+              // Use different colors for each method, avoiding red and green
+              const colors = ['bg-purple-500', 'bg-blue-400', 'bg-indigo-500', 'bg-orange-400', 'bg-cyan-500'];
+              const buyColors = ['bg-purple-300', 'bg-blue-300', 'bg-indigo-300', 'bg-orange-300', 'bg-cyan-300'];
+              return (
+                <div key={index} className="relative">
+                  <div className="h-8 bg-neutral-100 rounded-lg relative overflow-hidden">
+                    {/* Intrinsic Value */}
+                    <div 
+                      className={`absolute top-0 bottom-0 left-0 ${colors[index % colors.length]} flex items-center justify-end px-2`}
+                      style={{ width: `${method.intrinsicPercent}%` }}
+                    >
+                      <span className="text-white text-xs font-medium whitespace-nowrap">
+                        {method.method}: {formatCurrency(valuationResults.find(r => r.method === method.method)?.intrinsicValue || 0)}
+                      </span>
+                    </div>
+                    
+                    {/* Buy Below */}
+                    <div 
+                      className={`absolute top-0 bottom-0 left-0 ${buyColors[index % buyColors.length]} flex items-center justify-end px-2`}
+                      style={{ width: `${method.buyBelowPercent}%` }}
+                    >
+                      <span className="text-gray-700 text-xs font-medium whitespace-nowrap">
+                        Buy Below: {formatCurrency(valuationResults.find(r => r.method === method.method)?.buyBelow || 0)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-xs text-neutral-600 mt-1 font-medium">{method.method}</div>
+                </div>
+              );
+            })}
+            
+            {/* Average values if available */}
+            {averageResult && (
+              <div className="relative">
+                <div className="h-8 bg-neutral-100 rounded-lg relative overflow-hidden">
+                  <div 
+                    className="absolute top-0 bottom-0 left-0 bg-gray-500 flex items-center justify-end px-2"
+                    style={{ width: `${(averageResult.intrinsicValue / maxValue) * 100}%` }}
+                  >
+                    <span className="text-white text-xs font-medium whitespace-nowrap">
+                      Average: {formatCurrency(averageResult.intrinsicValue)}
+                    </span>
+                  </div>
+                  <div 
+                    className="absolute top-0 bottom-0 left-0 bg-gray-300 flex items-center justify-end px-2"
+                    style={{ width: `${(averageResult.buyBelow / maxValue) * 100}%` }}
+                  >
+                    <span className="text-gray-700 text-xs font-medium whitespace-nowrap">
+                      Buy Below: {formatCurrency(averageResult.buyBelow)}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-xs text-neutral-600 mt-1 font-medium">Average of All Methods</div>
               </div>
             )}
           </div>
-          <div className="flex justify-between text-xs text-neutral-500 mt-1">
+          
+          <div className="flex justify-between text-xs text-neutral-500 mt-3">
             <span>$0</span>
             <span>${Math.round(maxValue * 0.33)}</span>
             <span>${Math.round(maxValue * 0.66)}</span>
@@ -156,7 +219,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                     <TableCell className="text-neutral-800">{result.method}</TableCell>
                     <TableCell className="text-neutral-800 text-right">{formatCurrency(result.intrinsicValue)}</TableCell>
                     <TableCell className="text-neutral-800 text-right">{formatCurrency(result.buyBelow)}</TableCell>
-                    <TableCell className={`${result.discountPremium < 0 ? 'text-green-600' : 'text-red-600'} text-right`}>
+                    <TableCell className={`${result.discountPremium < 0 ? 'text-blue-600' : 'text-purple-600'} text-right`}>
                       {result.discountPremium > 0 ? '+' : ''}{result.discountPremium.toFixed(1)}%
                     </TableCell>
                   </TableRow>
@@ -166,7 +229,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                     <TableCell className="font-medium text-[#21324F]">{averageResult.method}</TableCell>
                     <TableCell className="font-medium text-[#21324F] text-right">{formatCurrency(averageResult.intrinsicValue)}</TableCell>
                     <TableCell className="font-medium text-[#21324F] text-right">{formatCurrency(averageResult.buyBelow)}</TableCell>
-                    <TableCell className={`font-medium ${averageResult.discountPremium < 0 ? 'text-green-600' : 'text-red-600'} text-right`}>
+                    <TableCell className={`font-medium ${averageResult.discountPremium < 0 ? 'text-blue-600' : 'text-purple-600'} text-right`}>
                       {averageResult.discountPremium > 0 ? '+' : ''}{averageResult.discountPremium.toFixed(1)}%
                     </TableCell>
                   </TableRow>
