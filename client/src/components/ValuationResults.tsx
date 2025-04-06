@@ -25,9 +25,9 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
   if (!valuationResults.length) {
     return (
       <Card className="bg-white rounded-lg shadow-sm border border-neutral-200">
-        <CardContent className="p-6">
-          <h2 className="text-xl font-semibold text-[#1A2942] mb-6">Valuation Results</h2>
-          <div className="text-center py-10 text-neutral-500">
+        <CardContent className="p-4">
+          <h2 className="text-xl font-semibold text-[#1A2942] mb-2">Valuation Results</h2>
+          <div className="text-center py-8 text-neutral-500">
             <p>Enter a stock symbol and click "Calculate Intrinsic Value" to view results</p>
           </div>
         </CardContent>
@@ -60,62 +60,72 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
 
   return (
     <Card className="bg-white rounded-lg shadow-sm border border-neutral-200">
-      <CardContent className="p-6">
-        <h2 className="text-xl font-semibold text-[#1A2942] mb-6">Valuation Results</h2>
+      <CardContent className="p-4">
+        <h2 className="text-xl font-semibold text-[#1A2942] mb-2">
+          Valuation Results {stockData && <span className="text-sm font-normal">- {stockData.name}</span>}
+        </h2>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+        {/* Current Price - Added at the top for prominence */}
+        {stockData && (
+          <div className="flex items-center mb-3 bg-blue-50 p-2 rounded-md border border-blue-100 inline-block">
+            <p className="text-sm text-blue-700 mr-2">Current Price:</p>
+            <p className="text-lg font-bold text-blue-800">{formatCurrency(stockData.price)}</p>
+          </div>
+        )}
+        
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
           {/* Intrinsic Value */}
-          <div className="bg-[#E9ECF1] p-4 rounded-lg border border-[#C4CCD9]">
-            <p className="text-sm text-[#2A3E5C] mb-1">Intrinsic Value</p>
-            <p className="text-2xl font-bold text-[#1A2942]">
+          <div className="bg-[#E9ECF1] p-3 rounded-lg border border-[#C4CCD9]">
+            <p className="text-xs text-[#2A3E5C] mb-1">Intrinsic Value</p>
+            <p className="text-lg font-bold text-[#1A2942]">
               {formatCurrency(activeResult.intrinsicValue)}
             </p>
-            <p className="text-xs text-[#415876] mt-1">Based on {activeResult.method}</p>
+            <p className="text-xs text-[#415876]">{activeResult.method}</p>
           </div>
           
           {/* Buy Below Price */}
-          <div className="bg-green-50 p-4 rounded-lg border border-green-100">
-            <p className="text-sm text-green-700 mb-1">Buy Below Price</p>
-            <p className="text-2xl font-bold text-green-800">
+          <div className="bg-green-50 p-3 rounded-lg border border-green-100">
+            <p className="text-xs text-green-700 mb-1">Buy Below</p>
+            <p className="text-lg font-bold text-green-800">
               {formatCurrency(activeResult.buyBelow)}
             </p>
-            <p className="text-xs text-green-600 mt-1">With {stockData ? activeResult.discountPremium.toFixed(1) + '%' : '-'} Margin of Safety</p>
+            <p className="text-xs text-green-600">With MoS</p>
           </div>
           
           {/* Current Status */}
-          <div className={`${activeResult.discountPremium < 0 ? 'bg-amber-50 border-amber-100' : 'bg-red-50 border-red-100'} p-4 rounded-lg`}>
-            <p className={`text-sm ${activeResult.discountPremium < 0 ? 'text-amber-700' : 'text-red-700'} mb-1`}>Current Status</p>
-            <p className={`text-2xl font-bold ${getStatusColor(activeResult.discountPremium)}`}>
+          <div className={`${activeResult.discountPremium < 0 ? 'bg-amber-50 border-amber-100' : 'bg-red-50 border-red-100'} p-3 rounded-lg`}>
+            <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-amber-700' : 'text-red-700'} mb-1`}>Status</p>
+            <p className={`text-lg font-bold ${getStatusColor(activeResult.discountPremium)}`}>
               {activeResult.discountPremium > 0 ? '+' : ''}{activeResult.discountPremium.toFixed(1)}%
             </p>
-            <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-amber-600' : 'text-red-600'} mt-1`}>
-              {activeResult.discountPremium < 0 ? 'Below buy price: Consider buying' : 'Above buy price: Wait'}
+            <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-amber-600' : 'text-red-600'}`}>
+              {activeResult.discountPremium < 0 ? 'Consider buying' : 'Wait'}
             </p>
           </div>
         </div>
         
         {/* Value Gap Visualization */}
-        <div className="mb-8">
-          <h3 className="text-lg font-medium text-[#21324F] mb-3">Value Gap</h3>
-          <div className="h-14 bg-neutral-100 rounded-lg relative overflow-hidden">
+        <div className="mb-6">
+          <h3 className="text-base font-medium text-[#21324F] mb-2">Value Gap</h3>
+          <div className="h-10 bg-neutral-100 rounded-lg relative overflow-hidden">
             <div 
               className="absolute top-0 bottom-0 left-0 bg-[#415876] flex items-center justify-end px-2"
               style={{ width: `${intrinsicPercent}%` }}
             >
-              <span className="text-white text-sm font-medium">Intrinsic Value: {formatCurrency(activeResult.intrinsicValue)}</span>
+              <span className="text-white text-xs font-medium whitespace-nowrap">IV: {formatCurrency(activeResult.intrinsicValue)}</span>
             </div>
             <div 
               className="absolute top-0 bottom-0 left-0 bg-green-500 flex items-center justify-end px-2"
               style={{ width: `${buyBelowPercent}%` }}
             >
-              <span className="text-white text-sm font-medium">Buy Below: {formatCurrency(activeResult.buyBelow)}</span>
+              <span className="text-white text-xs font-medium whitespace-nowrap">Buy: {formatCurrency(activeResult.buyBelow)}</span>
             </div>
             {stockData && (
               <div 
                 className={`absolute top-0 bottom-0 left-0 ${activeResult.discountPremium < 0 ? 'bg-amber-500' : 'bg-red-500'} flex items-center justify-end px-2`}
                 style={{ width: `${currentPercent}%` }}
               >
-                <span className="text-white text-sm font-medium">Current: {formatCurrency(stockData.price)}</span>
+                <span className="text-white text-xs font-medium whitespace-nowrap">Now: {formatCurrency(stockData.price)}</span>
               </div>
             )}
           </div>
@@ -129,7 +139,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
         
         {/* Method Comparison */}
         <div>
-          <h3 className="text-lg font-medium text-[#21324F] mb-3">Valuation Method Comparison</h3>
+          <h3 className="text-base font-medium text-[#21324F] mb-2">Valuation Methods</h3>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
