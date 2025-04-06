@@ -107,48 +107,27 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
         {/* Value Gap Visualization */}
         <div className="mb-6">
           <h3 className="text-base font-medium text-[#21324F] mb-2">Value Gap</h3>
-          <div className="h-12 bg-neutral-100 rounded-lg relative overflow-hidden mb-2">
-            {/* Render bars in specific order to ensure proper layering */}
-            {/* Intrinsic Value (back) */}
+          <div className="h-10 bg-neutral-100 rounded-lg relative overflow-hidden">
             <div 
-              className="absolute top-0 bottom-0 left-0 bg-[#415876] flex items-center justify-center"
+              className="absolute top-0 bottom-0 left-0 bg-[#415876] flex items-center justify-end px-2"
               style={{ width: `${intrinsicPercent}%` }}
             >
+              <span className="text-white text-xs font-medium whitespace-nowrap">IV: {formatCurrency(activeResult.intrinsicValue)}</span>
             </div>
-            
-            {/* Buy Below (middle) */}
             <div 
-              className="absolute top-0 bottom-0 left-0 bg-green-500 flex items-center justify-center"
+              className="absolute top-0 bottom-0 left-0 bg-green-500 flex items-center justify-end px-2"
               style={{ width: `${buyBelowPercent}%` }}
             >
+              <span className="text-white text-xs font-medium whitespace-nowrap">Buy: {formatCurrency(activeResult.buyBelow)}</span>
             </div>
-            
-            {/* Current Price (front) */}
             {stockData && (
               <div 
-                className={`absolute top-0 bottom-0 left-0 ${activeResult.discountPremium < 0 ? 'bg-amber-500' : 'bg-red-500'} flex items-center justify-center`}
+                className={`absolute top-0 bottom-0 left-0 ${activeResult.discountPremium < 0 ? 'bg-amber-500' : 'bg-red-500'} flex items-center justify-end px-2`}
                 style={{ width: `${currentPercent}%` }}
               >
+                <span className="text-white text-xs font-medium whitespace-nowrap">Now: {formatCurrency(stockData.price)}</span>
               </div>
             )}
-            
-            {/* Labels positioned at appropriate locations */}
-            <div className="absolute top-0 bottom-0 flex items-center justify-between w-full px-2 z-10 pointer-events-none">
-              {/* Prices are shown outside the bars for better readability */}
-              <div className="flex justify-between w-full">
-                {stockData && (
-                  <div className="bg-white px-1 py-0.5 rounded shadow-sm border text-xs">
-                    <span className="font-semibold">Now:</span> {formatCurrency(stockData.price)}
-                  </div>
-                )}
-                <div className="bg-white px-1 py-0.5 rounded shadow-sm border text-xs ml-auto mr-1">
-                  <span className="font-semibold text-green-700">Buy:</span> {formatCurrency(activeResult.buyBelow)}
-                </div>
-                <div className="bg-white px-1 py-0.5 rounded shadow-sm border text-xs">
-                  <span className="font-semibold text-blue-700">IV:</span> {formatCurrency(activeResult.intrinsicValue)}
-                </div>
-              </div>
-            </div>
           </div>
           <div className="flex justify-between text-xs text-neutral-500 mt-1">
             <span>$0</span>
