@@ -46,25 +46,16 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
   );
 
   // Calculate value gap percentages for visualization
-  const maxValue = Math.max(...valuationResults.map(r => r.intrinsicValue), stockData ? stockData.price * 1.5 : 300); // Max for scale
-  
-  // Current method calculations
+  const maxValue = Math.max(...valuationResults.map(r => r.intrinsicValue), 300); // Max for scale
   const intrinsicPercent = (activeResult.intrinsicValue / maxValue) * 100;
   const buyBelowPercent = (activeResult.buyBelow / maxValue) * 100;
   const currentPercent = stockData ? (stockData.price / maxValue) * 100 : 0;
-  
-  // Get percentages for all methods to visualize
-  const methodPercentages = valuationResults.filter(r => r.method !== 'Average').map(result => ({
-    method: result.method,
-    intrinsicPercent: (result.intrinsicValue / maxValue) * 100,
-    buyBelowPercent: (result.buyBelow / maxValue) * 100,
-  }));
 
-  // Determine status color (avoiding red and green)
+  // Determine status color
   const getStatusColor = (discountPremium: number): string => {
-    if (discountPremium <= -10) return 'text-blue-800';
-    if (discountPremium < 0) return 'text-indigo-800';
-    return 'text-purple-800';
+    if (discountPremium <= -10) return 'text-green-800';
+    if (discountPremium < 0) return 'text-amber-800';
+    return 'text-red-800';
   };
 
   return (
@@ -93,111 +84,52 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
           </div>
           
           {/* Buy Below Price */}
-          <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100">
-            <p className="text-xs text-indigo-700 mb-1">Buy Below</p>
-            <p className="text-lg font-bold text-indigo-800">
+          <div className="bg-green-50 p-3 rounded-lg border border-green-100">
+            <p className="text-xs text-green-700 mb-1">Buy Below</p>
+            <p className="text-lg font-bold text-green-800">
               {formatCurrency(activeResult.buyBelow)}
             </p>
-            <p className="text-xs text-indigo-600">With MoS</p>
+            <p className="text-xs text-green-600">With MoS</p>
           </div>
           
           {/* Current Status */}
-          <div className={`${activeResult.discountPremium < 0 ? 'bg-blue-50 border-blue-100' : 'bg-purple-50 border-purple-100'} p-3 rounded-lg`}>
-            <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-blue-700' : 'text-purple-700'} mb-1`}>Status</p>
+          <div className={`${activeResult.discountPremium < 0 ? 'bg-amber-50 border-amber-100' : 'bg-red-50 border-red-100'} p-3 rounded-lg`}>
+            <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-amber-700' : 'text-red-700'} mb-1`}>Status</p>
             <p className={`text-lg font-bold ${getStatusColor(activeResult.discountPremium)}`}>
               {activeResult.discountPremium > 0 ? '+' : ''}{activeResult.discountPremium.toFixed(1)}%
             </p>
-            <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-blue-600' : 'text-purple-600'}`}>
+            <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-amber-600' : 'text-red-600'}`}>
               {activeResult.discountPremium < 0 ? 'Consider buying' : 'Wait'}
             </p>
           </div>
         </div>
         
-        {/* Value Gap Visualization - Simplified */}
+        {/* Value Gap Visualization */}
         <div className="mb-6">
           <h3 className="text-base font-medium text-[#21324F] mb-2">Value Gap</h3>
-          
-          {/* Single bar with all methods */}
-          <div className="relative">
-            <div className="h-12 bg-neutral-100 rounded-lg relative overflow-hidden">
-              {/* Buy Below lines for each method */}
-              {methodPercentages.map((method, index) => {
-                const colors = ['bg-purple-500', 'bg-blue-500', 'bg-indigo-500', 'bg-orange-500'];
-                const color = colors[index % colors.length];
-                return (
-                  <React.Fragment key={index}>
-                    {/* Method marker line */}
-                    <div
-                      className={`absolute top-0 bottom-0 border-l-2 ${color.replace('bg-', 'border-')} z-20`}
-                      style={{ left: `${method.intrinsicPercent}%` }}
-                    >
-                      <div className={`${color.replace('bg-', 'bg-')} w-2 h-2 rounded-full mt-1`}></div>
-                    </div>
-                    
-                    {/* Buy Below marker line */}
-                    <div
-                      className={`absolute top-0 bottom-0 border-l-2 border-dashed ${color.replace('bg-', 'border-')} z-10 opacity-50`}
-                      style={{ left: `${method.buyBelowPercent}%` }}
-                    >
-                      <div className={`${color.replace('bg-', 'bg-')} w-2 h-2 rounded-full mt-9`}></div>
-                    </div>
-                  </React.Fragment>
-                );
-              })}
-              
-              {/* Average method line if available */}
-              {averageResult && (
-                <React.Fragment>
-                  {/* Average Intrinsic Value line */}
-                  <div
-                    className="absolute top-0 bottom-0 border-l-2 border-gray-600 z-30"
-                    style={{ left: `${(averageResult.intrinsicValue / maxValue) * 100}%` }}
-                  >
-                    <div className="bg-gray-600 w-2 h-2 rounded-full mt-1"></div>
-                  </div>
-                  
-                  {/* Average Buy Below line */}
-                  <div
-                    className="absolute top-0 bottom-0 border-l-2 border-dashed border-gray-600 z-20 opacity-50"
-                    style={{ left: `${(averageResult.buyBelow / maxValue) * 100}%` }}
-                  >
-                    <div className="bg-gray-600 w-2 h-2 rounded-full mt-9"></div>
-                  </div>
-                </React.Fragment>
-              )}
-              
-              {/* Current price marker */}
-              {stockData && (
-                <div
-                  className="absolute top-0 bottom-0 border-l-2 border-blue-500 z-50"
-                  style={{ left: `${currentPercent}%` }}
-                >
-                  <div className="bg-blue-500 w-2 h-2 rounded-full mt-5"></div>
-                  <div className="bg-blue-500 text-white px-1 py-0.5 rounded text-xs absolute top-4 -translate-x-1/2">
-                    ${stockData.price}
-                  </div>
-                </div>
-              )}
+          <div className="h-10 bg-neutral-100 rounded-lg relative overflow-hidden">
+            <div 
+              className="absolute top-0 bottom-0 left-0 bg-[#415876] flex items-center justify-end px-2"
+              style={{ width: `${intrinsicPercent}%` }}
+            >
+              <span className="text-white text-xs font-medium whitespace-nowrap">IV: {formatCurrency(activeResult.intrinsicValue)}</span>
             </div>
-            
-            {/* Legend */}
-            <div className="flex justify-between items-center mt-1 text-xs">
-              <div className="flex items-center">
-                <div className="w-3 h-3 bg-blue-500 rounded-full mr-1"></div>
-                <span>Current Price</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-3 h-3 border border-gray-500 bg-transparent rounded-full mr-1"></div>
-                <span>IV</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-3 h-3 border border-dashed border-gray-500 bg-transparent rounded-full mr-1"></div>
-                <span>Buy Below</span>
-              </div>
+            <div 
+              className="absolute top-0 bottom-0 left-0 bg-green-500 flex items-center justify-end px-2"
+              style={{ width: `${buyBelowPercent}%` }}
+            >
+              <span className="text-white text-xs font-medium whitespace-nowrap">Buy: {formatCurrency(activeResult.buyBelow)}</span>
             </div>
+            {stockData && (
+              <div 
+                className={`absolute top-0 bottom-0 left-0 ${activeResult.discountPremium < 0 ? 'bg-amber-500' : 'bg-red-500'} flex items-center justify-end px-2`}
+                style={{ width: `${currentPercent}%` }}
+              >
+                <span className="text-white text-xs font-medium whitespace-nowrap">Now: {formatCurrency(stockData.price)}</span>
+              </div>
+            )}
           </div>
-          
-          <div className="flex justify-between text-xs text-neutral-500 mt-3">
+          <div className="flex justify-between text-xs text-neutral-500 mt-1">
             <span>$0</span>
             <span>${Math.round(maxValue * 0.33)}</span>
             <span>${Math.round(maxValue * 0.66)}</span>
@@ -224,7 +156,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                     <TableCell className="text-neutral-800">{result.method}</TableCell>
                     <TableCell className="text-neutral-800 text-right">{formatCurrency(result.intrinsicValue)}</TableCell>
                     <TableCell className="text-neutral-800 text-right">{formatCurrency(result.buyBelow)}</TableCell>
-                    <TableCell className={`${result.discountPremium < 0 ? 'text-blue-600' : 'text-purple-600'} text-right`}>
+                    <TableCell className={`${result.discountPremium < 0 ? 'text-green-600' : 'text-red-600'} text-right`}>
                       {result.discountPremium > 0 ? '+' : ''}{result.discountPremium.toFixed(1)}%
                     </TableCell>
                   </TableRow>
@@ -234,7 +166,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                     <TableCell className="font-medium text-[#21324F]">{averageResult.method}</TableCell>
                     <TableCell className="font-medium text-[#21324F] text-right">{formatCurrency(averageResult.intrinsicValue)}</TableCell>
                     <TableCell className="font-medium text-[#21324F] text-right">{formatCurrency(averageResult.buyBelow)}</TableCell>
-                    <TableCell className={`font-medium ${averageResult.discountPremium < 0 ? 'text-blue-600' : 'text-purple-600'} text-right`}>
+                    <TableCell className={`font-medium ${averageResult.discountPremium < 0 ? 'text-green-600' : 'text-red-600'} text-right`}>
                       {averageResult.discountPremium > 0 ? '+' : ''}{averageResult.discountPremium.toFixed(1)}%
                     </TableCell>
                   </TableRow>
