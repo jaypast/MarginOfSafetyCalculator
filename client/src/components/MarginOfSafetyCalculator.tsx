@@ -6,6 +6,8 @@ import MarginOfSafetyParams from './MarginOfSafetyParams';
 import ValuationResults from './ValuationResults';
 import QualityIndicators from './QualityIndicators';
 import EducationalResources from './EducationalResources';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useStockData } from '@/hooks/useStockData';
 import { 
   StockData, 
@@ -154,7 +156,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
       </header>
 
       {/* Main Content */}
-      <main className="grid grid-cols-1 gap-8">
+      <main className="grid grid-cols-1 gap-4">
         {/* Stock Information Section */}
         <div>
           <StockInformation 
@@ -166,10 +168,12 @@ const MarginOfSafetyCalculator: React.FC = () => {
         
         {/* Results Section - Made More Prominent */}
         {stockData && (
-          <div className="bg-white rounded-lg shadow-md p-6 border border-neutral-200">
-            <div className="mb-4">
-              <h2 className="text-xl font-semibold text-[#1A2942] mb-2">Valuation Results</h2>
-              <p className="text-neutral-600">Intrinsic value calculation based on multiple methods with applied margin of safety</p>
+          <div className="bg-white rounded-lg shadow-md p-4 border border-neutral-200">
+            <div className="mb-3">
+              <h2 className="text-xl font-semibold text-[#1A2942] mb-1">
+                Valuation Results {stockData && <span className="text-sm font-normal">- {stockData.name}</span>}
+              </h2>
+              <p className="text-sm text-neutral-600">Intrinsic value calculation based on multiple methods with applied margin of safety</p>
             </div>
             <ValuationResults 
               valuationResults={valuationResults} 
@@ -180,24 +184,62 @@ const MarginOfSafetyCalculator: React.FC = () => {
         )}
         
         {/* Detailed Calculations Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Left Column - Parameters */}
-          <div className="lg:col-span-1 space-y-6">
-            <MarginOfSafetyParams 
-              marginOfSafetyParams={marginOfSafetyParams}
-              setMarginOfSafetyParams={setMarginOfSafetyParams}
-              companyQuality={companyQuality}
-              onCalculate={calculateIntrinsicValue}
-              stockData={stockData}
-            />
+          <div className="lg:col-span-1 space-y-4">
+            {/* Margin of Safety Parameters - Collapsible */}
+            {stockData && (
+              <Collapsible className="bg-white rounded-lg shadow-sm border border-neutral-200">
+                <div className="p-3 border-b border-neutral-200">
+                  <CollapsibleTrigger className="flex items-center justify-between w-full">
+                    <h2 className="text-lg font-medium text-[#1A2942]">
+                      Margin of Safety {stockData && <span className="text-sm font-normal">- {stockData.name}</span>}
+                    </h2>
+                    <div className="rounded-full bg-neutral-100 p-1">
+                      <ChevronDown className="h-4 w-4 text-neutral-500" />
+                    </div>
+                  </CollapsibleTrigger>
+                </div>
+                <CollapsibleContent>
+                  <div className="p-3">
+                    <MarginOfSafetyParams 
+                      marginOfSafetyParams={marginOfSafetyParams}
+                      setMarginOfSafetyParams={setMarginOfSafetyParams}
+                      companyQuality={companyQuality}
+                      onCalculate={calculateIntrinsicValue}
+                      stockData={stockData}
+                    />
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
             
-            <ValuationMethod 
-              activeMethod={activeMethod}
-              setActiveMethod={setActiveMethod}
-              valuationParams={valuationParams}
-              setValuationParams={setValuationParams}
-              stockData={stockData}
-            />
+            {/* Valuation Method - Collapsible */}
+            {stockData && (
+              <Collapsible className="bg-white rounded-lg shadow-sm border border-neutral-200">
+                <div className="p-3 border-b border-neutral-200">
+                  <CollapsibleTrigger className="flex items-center justify-between w-full">
+                    <h2 className="text-lg font-medium text-[#1A2942]">
+                      Valuation Method {stockData && <span className="text-sm font-normal">- {stockData.name}</span>}
+                    </h2>
+                    <div className="rounded-full bg-neutral-100 p-1">
+                      <ChevronDown className="h-4 w-4 text-neutral-500" />
+                    </div>
+                  </CollapsibleTrigger>
+                </div>
+                <CollapsibleContent>
+                  <div className="p-3">
+                    <ValuationMethod 
+                      activeMethod={activeMethod}
+                      setActiveMethod={setActiveMethod}
+                      valuationParams={valuationParams}
+                      setValuationParams={setValuationParams}
+                      stockData={stockData}
+                    />
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
             
             {/* Key Metrics Section */}
             {(stockData || isLoading) && (
@@ -210,7 +252,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
           </div>
           
           {/* Right Column - Quality and Education */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-4">
             {stockData && companyQuality && (
               <QualityIndicators 
                 stockData={stockData}

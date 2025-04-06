@@ -4,8 +4,8 @@ import { Card, CardContent } from '@/components/ui/card';
 const EducationalResources: React.FC = () => {
   return (
     <Card id="educational-resources" className="bg-white rounded-lg shadow-sm border border-neutral-200">
-      <CardContent className="p-6">
-        <h2 className="text-xl font-semibold text-[#1A2942] mb-4">Educational Resources</h2>
+      <CardContent className="p-4">
+        <h2 className="text-xl font-semibold text-[#1A2942] mb-2">Educational Resources</h2>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="border border-neutral-200 rounded-md p-4 hover:border-[#415876] transition duration-200">
