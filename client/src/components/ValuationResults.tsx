@@ -113,83 +113,88 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
           </div>
         </div>
         
-        {/* Value Gap Visualization */}
+        {/* Value Gap Visualization - Simplified */}
         <div className="mb-6">
           <h3 className="text-base font-medium text-[#21324F] mb-2">Value Gap</h3>
           
-          {/* Method visualization with multiple bars */}
-          <div className="space-y-3">
-            {/* Current price marker - Fixed position */}
-            {stockData && (
-              <div className="relative h-0">
-                <div 
-                  className="absolute top-0 h-36 border-l-2 border-blue-500 z-50"
-                  style={{ left: `${currentPercent}%` }}
-                >
-                  <div className="bg-blue-500 text-white px-2 py-1 rounded text-xs whitespace-nowrap ml-1 -mt-1">
-                    Current: {formatCurrency(stockData.price)}
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {/* All valuation methods */}
-            {methodPercentages.map((method, index) => {
-              // Use different colors for each method, avoiding red and green
-              const colors = ['bg-purple-500', 'bg-blue-400', 'bg-indigo-500', 'bg-orange-400', 'bg-cyan-500'];
-              const buyColors = ['bg-purple-300', 'bg-blue-300', 'bg-indigo-300', 'bg-orange-300', 'bg-cyan-300'];
-              return (
-                <div key={index} className="relative">
-                  <div className="h-8 bg-neutral-100 rounded-lg relative overflow-hidden">
-                    {/* Intrinsic Value */}
-                    <div 
-                      className={`absolute top-0 bottom-0 left-0 ${colors[index % colors.length]} flex items-center justify-end px-2`}
-                      style={{ width: `${method.intrinsicPercent}%` }}
+          {/* Single bar with all methods */}
+          <div className="relative">
+            <div className="h-12 bg-neutral-100 rounded-lg relative overflow-hidden">
+              {/* Buy Below lines for each method */}
+              {methodPercentages.map((method, index) => {
+                const colors = ['bg-purple-500', 'bg-blue-500', 'bg-indigo-500', 'bg-orange-500'];
+                const color = colors[index % colors.length];
+                return (
+                  <React.Fragment key={index}>
+                    {/* Method marker line */}
+                    <div
+                      className={`absolute top-0 bottom-0 border-l-2 ${color.replace('bg-', 'border-')} z-20`}
+                      style={{ left: `${method.intrinsicPercent}%` }}
                     >
-                      <span className="text-white text-xs font-medium whitespace-nowrap">
-                        {method.method}: {formatCurrency(valuationResults.find(r => r.method === method.method)?.intrinsicValue || 0)}
-                      </span>
+                      <div className={`${color.replace('bg-', 'bg-')} w-2 h-2 rounded-full mt-1`}></div>
                     </div>
                     
-                    {/* Buy Below */}
-                    <div 
-                      className={`absolute top-0 bottom-0 left-0 ${buyColors[index % buyColors.length]} flex items-center justify-end px-2`}
-                      style={{ width: `${method.buyBelowPercent}%` }}
+                    {/* Buy Below marker line */}
+                    <div
+                      className={`absolute top-0 bottom-0 border-l-2 border-dashed ${color.replace('bg-', 'border-')} z-10 opacity-50`}
+                      style={{ left: `${method.buyBelowPercent}%` }}
                     >
-                      <span className="text-gray-700 text-xs font-medium whitespace-nowrap">
-                        Buy Below: {formatCurrency(valuationResults.find(r => r.method === method.method)?.buyBelow || 0)}
-                      </span>
+                      <div className={`${color.replace('bg-', 'bg-')} w-2 h-2 rounded-full mt-9`}></div>
                     </div>
+                  </React.Fragment>
+                );
+              })}
+              
+              {/* Average method line if available */}
+              {averageResult && (
+                <React.Fragment>
+                  {/* Average Intrinsic Value line */}
+                  <div
+                    className="absolute top-0 bottom-0 border-l-2 border-gray-600 z-30"
+                    style={{ left: `${(averageResult.intrinsicValue / maxValue) * 100}%` }}
+                  >
+                    <div className="bg-gray-600 w-2 h-2 rounded-full mt-1"></div>
                   </div>
-                  <div className="text-xs text-neutral-600 mt-1 font-medium">{method.method}</div>
+                  
+                  {/* Average Buy Below line */}
+                  <div
+                    className="absolute top-0 bottom-0 border-l-2 border-dashed border-gray-600 z-20 opacity-50"
+                    style={{ left: `${(averageResult.buyBelow / maxValue) * 100}%` }}
+                  >
+                    <div className="bg-gray-600 w-2 h-2 rounded-full mt-9"></div>
+                  </div>
+                </React.Fragment>
+              )}
+              
+              {/* Current price marker */}
+              {stockData && (
+                <div
+                  className="absolute top-0 bottom-0 border-l-2 border-blue-500 z-50"
+                  style={{ left: `${currentPercent}%` }}
+                >
+                  <div className="bg-blue-500 w-2 h-2 rounded-full mt-5"></div>
+                  <div className="bg-blue-500 text-white px-1 py-0.5 rounded text-xs absolute top-4 -translate-x-1/2">
+                    ${stockData.price}
+                  </div>
                 </div>
-              );
-            })}
+              )}
+            </div>
             
-            {/* Average values if available */}
-            {averageResult && (
-              <div className="relative">
-                <div className="h-8 bg-neutral-100 rounded-lg relative overflow-hidden">
-                  <div 
-                    className="absolute top-0 bottom-0 left-0 bg-gray-500 flex items-center justify-end px-2"
-                    style={{ width: `${(averageResult.intrinsicValue / maxValue) * 100}%` }}
-                  >
-                    <span className="text-white text-xs font-medium whitespace-nowrap">
-                      Average: {formatCurrency(averageResult.intrinsicValue)}
-                    </span>
-                  </div>
-                  <div 
-                    className="absolute top-0 bottom-0 left-0 bg-gray-300 flex items-center justify-end px-2"
-                    style={{ width: `${(averageResult.buyBelow / maxValue) * 100}%` }}
-                  >
-                    <span className="text-gray-700 text-xs font-medium whitespace-nowrap">
-                      Buy Below: {formatCurrency(averageResult.buyBelow)}
-                    </span>
-                  </div>
-                </div>
-                <div className="text-xs text-neutral-600 mt-1 font-medium">Average of All Methods</div>
+            {/* Legend */}
+            <div className="flex justify-between items-center mt-1 text-xs">
+              <div className="flex items-center">
+                <div className="w-3 h-3 bg-blue-500 rounded-full mr-1"></div>
+                <span>Current Price</span>
               </div>
-            )}
+              <div className="flex items-center">
+                <div className="w-3 h-3 border border-gray-500 bg-transparent rounded-full mr-1"></div>
+                <span>IV</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-3 h-3 border border-dashed border-gray-500 bg-transparent rounded-full mr-1"></div>
+                <span>Buy Below</span>
+              </div>
+            </div>
           </div>
           
           <div className="flex justify-between text-xs text-neutral-500 mt-3">
