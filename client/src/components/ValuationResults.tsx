@@ -49,7 +49,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
   const getMethodColor = (method: string): string => {
     if (method.toLowerCase().includes('dcf')) return '#6366F1';  // Indigo
     if (method.toLowerCase().includes('p/e') || method.toLowerCase().includes('pe')) return '#F59E0B';  // Amber
-    if (method.toLowerCase().includes('graham')) return '#10B981';  // Emerald
+    if (method.toLowerCase().includes('graham')) return '#4B5563';  // Dark Gray (instead of green)
     return '#6B7280';  // Gray
   };
   
@@ -67,13 +67,23 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
   const buyBelowPercent = (activeResult.buyBelow / maxValue) * 100;
   const currentPercent = stockData ? (stockData.price / maxValue) * 100 : 0;
   
-  // Calculate percentages for all methods to show vertical lines
-  const methodLines = valuationResults.filter(r => r.method !== 'Average').map(result => ({
-    method: result.method,
-    intrinsicPercent: (result.intrinsicValue / maxValue) * 100,
-    buyBelowPercent: (result.buyBelow / maxValue) * 100,
-    color: getMethodColor(result.method)
-  }));
+  // Calculate percentages for just DCF, P/E, and Graham methods
+  const methodLines = valuationResults
+    .filter(r => {
+      const method = r.method.toLowerCase();
+      return (
+        method.includes('dcf') || 
+        method.includes('p/e') || 
+        method.includes('pe') || 
+        method.includes('graham')
+      );
+    })
+    .map(result => ({
+      method: result.method,
+      intrinsicPercent: (result.intrinsicValue / maxValue) * 100,
+      buyBelowPercent: (result.buyBelow / maxValue) * 100,
+      color: getMethodColor(result.method)
+    }));
 
   return (
     <Card className="bg-white rounded-lg shadow-sm border border-neutral-200">
@@ -101,12 +111,12 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
           </div>
           
           {/* Buy Below Price */}
-          <div className="bg-green-50 p-3 rounded-lg border border-green-100">
-            <p className="text-xs text-green-700 mb-1">Buy Below</p>
-            <p className="text-lg font-bold text-green-800">
+          <div className="bg-gray-100 p-3 rounded-lg border border-gray-200">
+            <p className="text-xs text-gray-700 mb-1">Buy Below</p>
+            <p className="text-lg font-bold text-gray-800">
               {formatCurrency(activeResult.buyBelow)}
             </p>
-            <p className="text-xs text-green-600">With MoS</p>
+            <p className="text-xs text-gray-600">With MoS</p>
           </div>
           
           {/* Current Status */}
@@ -133,7 +143,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
               <span className="text-white text-xs font-medium whitespace-nowrap">IV: {formatCurrency(activeResult.intrinsicValue)}</span>
             </div>
             <div 
-              className="absolute top-0 bottom-0 left-0 bg-green-500 flex items-center justify-end px-2"
+              className="absolute top-0 bottom-0 left-0 bg-gray-600 flex items-center justify-end px-2"
               style={{ width: `${buyBelowPercent}%` }}
             >
               <span className="text-white text-xs font-medium whitespace-nowrap">Buy: {formatCurrency(activeResult.buyBelow)}</span>
@@ -147,9 +157,9 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
               </div>
             )}
             
-            {/* Add vertical lines for all methods */}
+            {/* Add vertical lines for the three main methods */}
             {methodLines.map((line, index) => (
-              <React.Fragment key={index}>
+              <div key={index} className="contents">
                 {/* Intrinsic Value Line */}
                 <div
                   className="absolute top-0 bottom-0 border-l-2 pointer-events-none z-10"
@@ -167,7 +177,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                     borderColor: line.color 
                   }}
                 ></div>
-              </React.Fragment>
+              </div>
             ))}
           </div>
           <div className="flex justify-between text-xs text-neutral-500 mt-1">
