@@ -4,29 +4,18 @@ import sys
 import yfinance as yf
 import re
 
-def get_stock_data(symbol_or_name):
+def get_stock_data(symbol):
     """
     Fetch stock data using the yfinance package
-    Support for ticker symbols, company names, and European stocks
+    Support for ticker symbols and European stocks
     """
     try:
-        # Check if input is a company name rather than a ticker symbol
-        if len(symbol_or_name) > 10 and ' ' in symbol_or_name:
-            # This looks like a company name, not a symbol
-            # Try to search for the company using yfinance's search functionality
-            symbol = search_company_name(symbol_or_name)
-            if not symbol:
-                raise Exception(f"Could not find a company matching '{symbol_or_name}'")
-        else:
-            # This is likely a ticker symbol
-            symbol = symbol_or_name
-            
-            # For European stocks, add the exchange suffix if not already there
-            # Common European exchanges: .L (London), .PA (Paris), .DE (Germany), etc.
-            if not re.search(r'\.[A-Z]{1,4}$', symbol) and len(symbol) <= 5:
-                # This could be a European stock without an exchange suffix
-                # Let's keep the original symbol, the ticker constructor will try to find the right one
-                pass
+        # For European stocks, add the exchange suffix if not already there
+        # Common European exchanges: .L (London), .PA (Paris), .DE (Germany), etc.
+        if not re.search(r'\.[A-Z]{1,4}$', symbol) and len(symbol) <= 5:
+            # This could be a European stock without an exchange suffix
+            # Let's keep the original symbol, the ticker constructor will try to find the right one
+            pass
         
         # Get the ticker object
         ticker = yf.Ticker(symbol)
@@ -48,7 +37,7 @@ def get_stock_data(symbol_or_name):
                     
             # If no valid ticker found after trying European exchanges, raise an exception
             if not ticker.info or ticker.info.get('regularMarketPrice') is None:
-                raise Exception(f"Could not find valid stock with symbol or name '{symbol_or_name}'.")
+                raise Exception(f"Could not find valid stock with symbol '{symbol}'.")
         
         # Get key information
         info = ticker.info
@@ -136,7 +125,7 @@ def get_stock_data(symbol_or_name):
         # Return error information
         return json.dumps({
             "error": str(e),
-            "message": f"Failed to fetch data for {symbol_or_name}"
+            "message": f"Failed to fetch data for {symbol}"
         })
 
 # Function to search for a company by name
@@ -206,9 +195,8 @@ def search_company_name(company_name):
 if __name__ == "__main__":
     # Check if a symbol was provided as a command line argument
     if len(sys.argv) > 1:
-        # Join all arguments as they might be parts of a company name
-        query = ' '.join(sys.argv[1:])
-        result = get_stock_data(query)
+        symbol = sys.argv[1]
+        result = get_stock_data(symbol)
         print(result)
     else:
-        print(json.dumps({"error": "No symbol or company name provided"}))
+        print(json.dumps({"error": "No symbol provided"}))

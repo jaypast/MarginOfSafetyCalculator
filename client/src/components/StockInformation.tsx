@@ -64,7 +64,7 @@ const StockInformation: React.FC<StockInformationProps> = ({
             )}
           </Button>
         </div>
-        <p className="mt-2 text-sm text-neutral-500">Enter a valid stock ticker symbol, company name, or European stock</p>
+        <p className="mt-2 text-sm text-neutral-500">Enter a valid stock ticker symbol</p>
         
         {/* Error Message */}
         {(error || (stockData && stockData.error)) && (
@@ -77,7 +77,6 @@ const StockInformation: React.FC<StockInformationProps> = ({
               <ul className="list-disc pl-5 mt-1">
                 <li>Try using the exact ticker symbol (e.g., 'AAPL' for Apple)</li>
                 <li>For European stocks, try adding the exchange suffix (e.g., 'BP.L' for BP on London Exchange)</li>
-                <li>You can search by company name (e.g., "Microsoft" or "Coca Cola")</li>
               </ul>
             </p>
           </div>
