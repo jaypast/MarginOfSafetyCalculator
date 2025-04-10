@@ -1,41 +1,21 @@
 import { StockResponse } from '@shared/schema';
 import { getYahooFinanceData } from './yahooFinance';
-import { stockCache } from './cache';
 
 export async function getStockData(symbol: string): Promise<StockResponse> {
   try {
-    // Normalize the symbol to uppercase
-    const normalizedSymbol = symbol.toUpperCase();
-    
-    // Check if we have a cached entry first
-    const cachedData = stockCache.get(normalizedSymbol);
-    if (cachedData) {
-      console.log(`Cache hit for ${normalizedSymbol}`);
-      return cachedData;
-    }
-    
-    console.log(`Cache miss for ${normalizedSymbol}, fetching fresh data...`);
-    
     // Use yfinance Python integration to fetch stock data
-    console.log(`Using yfinance Python integration to fetch data for ${normalizedSymbol}`);
+    console.log(`Using yfinance Python integration to fetch data for ${symbol}`);
     try {
-      const data = await getYahooFinanceData(normalizedSymbol);
-      
-      // Store successful response in cache
-      if (!data.error) {
-        stockCache.set(normalizedSymbol, data);
-      }
-      
-      return data;
+      return await getYahooFinanceData(symbol);
     } catch (yfinanceError) {
       console.log(`yfinance Python integration failed: ${yfinanceError}`);
       console.log(`Falling back to other methods...`);
     }
     
     // Return an error for invalid symbols
-    console.log(`Stock lookup failed, returning error for ${normalizedSymbol}`);
+    console.log(`Stock lookup failed, returning error for ${symbol}`);
     return {
-      symbol: normalizedSymbol,
+      symbol: symbol,
       name: 'Error',
       price: 0,
       eps: 0,
@@ -49,7 +29,7 @@ export async function getStockData(symbol: string): Promise<StockResponse> {
       earningsStability: 'Low',
       competitivePosition: 'Average',
       error: true,
-      errorMessage: `Could not find stock with symbol "${normalizedSymbol}". Please check if the symbol is correct.`
+      errorMessage: `Could not find stock with symbol "${symbol}". Please check if the symbol is correct.`
     } as StockResponse;
   } catch (error) {
     console.error('Error aggregating stock data:', error);

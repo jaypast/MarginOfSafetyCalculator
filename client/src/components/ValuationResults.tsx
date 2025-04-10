@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { 
   Table, 
   TableBody, 
@@ -35,33 +35,21 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
     );
   }
 
-  // Memoize expensive calculations to prevent unnecessary recalculations
-  const { activeResult, averageResult, maxValue, intrinsicPercent, buyBelowPercent, currentPercent } = useMemo(() => {
-    // Find active method result
-    const activeResult = valuationResults.find(
-      result => result.method.toLowerCase().includes(activeMethod)
-    ) || valuationResults[0];
-    
-    // Find average result
-    const averageResult = valuationResults.find(
-      result => result.method === 'Average'
-    );
+  // Find active method result
+  const activeResult = valuationResults.find(
+    result => result.method.toLowerCase().includes(activeMethod)
+  ) || valuationResults[0];
+  
+  // Find average result
+  const averageResult = valuationResults.find(
+    result => result.method === 'Average'
+  );
 
-    // Calculate value gap percentages for visualization
-    const maxValue = Math.max(...valuationResults.map(r => r.intrinsicValue), 300); // Max for scale
-    const intrinsicPercent = (activeResult.intrinsicValue / maxValue) * 100;
-    const buyBelowPercent = (activeResult.buyBelow / maxValue) * 100;
-    const currentPercent = stockData ? (stockData.price / maxValue) * 100 : 0;
-    
-    return {
-      activeResult,
-      averageResult,
-      maxValue,
-      intrinsicPercent,
-      buyBelowPercent,
-      currentPercent
-    };
-  }, [valuationResults, activeMethod, stockData]);
+  // Calculate value gap percentages for visualization
+  const maxValue = Math.max(...valuationResults.map(r => r.intrinsicValue), 300); // Max for scale
+  const intrinsicPercent = (activeResult.intrinsicValue / maxValue) * 100;
+  const buyBelowPercent = (activeResult.buyBelow / maxValue) * 100;
+  const currentPercent = stockData ? (stockData.price / maxValue) * 100 : 0;
 
   // Determine status color
   const getStatusColor = (discountPremium: number): string => {

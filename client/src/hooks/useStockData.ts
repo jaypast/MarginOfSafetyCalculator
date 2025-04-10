@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { StockData } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
@@ -7,47 +7,27 @@ import { useToast } from '@/hooks/use-toast';
 export const useStockData = () => {
   const [symbol, setSymbol] = useState<string>('');
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
-  // Query to fetch stock data with optimized settings
+  // Query to fetch stock data
   const stockDataQuery = useQuery({
     queryKey: [`/api/stock/${symbol}`],
     enabled: symbol.length > 0,
     retry: 1,
-    gcTime: 10 * 60 * 1000, // 10 minutes
-    staleTime: 3 * 60 * 1000, // Consider data fresh for 3 minutes
-    refetchOnWindowFocus: false, // Don't refetch when window regains focus
+    gcTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  // Mutation to fetch stock data with efficient caching
+  // Mutation to fetch stock data
   const fetchStockDataMutation = useMutation({
     mutationFn: async (newSymbol: string) => {
-      // Normalize symbol to uppercase
-      const normalizedSymbol = newSymbol.toUpperCase();
-      setSymbol(normalizedSymbol);
-      
-      // Check cache first
-      const cachedData = queryClient.getQueryData([`/api/stock/${normalizedSymbol}`]) as StockData | undefined;
-      if (cachedData) {
-        console.log(`Using cached data for ${normalizedSymbol}`);
-        return cachedData;
-      }
-      
-      // Fetch fresh data if not in cache
-      const res = await apiRequest('GET', `/api/stock/${normalizedSymbol}`, undefined);
+      setSymbol(newSymbol);
+      const res = await apiRequest('GET', `/api/stock/${newSymbol}`, undefined);
       return res.json() as Promise<StockData>;
     },
     onSuccess: (data) => {
-      // Only show toast if there's no error
-      if (!data.error) {
-        toast({
-          title: "Data retrieved successfully",
-          description: `Stock data for ${data.symbol} has been loaded.`,
-        });
-      }
-      
-      // Update query cache
-      queryClient.setQueryData([`/api/stock/${data.symbol}`], data);
+      toast({
+        title: "Data retrieved successfully",
+        description: `Stock data for ${data.symbol} has been loaded.`,
+      });
     },
     onError: (error: Error) => {
       toast({
@@ -58,8 +38,7 @@ export const useStockData = () => {
     }
   });
 
-  // Memoized fetch function to prevent unnecessary re-renders
-  const fetchStockData = useCallback((symbol: string) => {
+  const fetchStockData = (symbol: string) => {
     if (!symbol || symbol.trim() === '') {
       toast({
         title: "Symbol required",
@@ -69,8 +48,8 @@ export const useStockData = () => {
       return;
     }
     
-    fetchStockDataMutation.mutate(symbol);
-  }, [toast, fetchStockDataMutation]);
+    fetchStockDataMutation.mutate(symbol.toUpperCase());
+  };
 
   return {
     stockData: stockDataQuery.data as StockData | undefined,

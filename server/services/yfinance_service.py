@@ -10,92 +10,100 @@ def get_stock_data(symbol):
     Support for ticker symbols and European stocks
     """
     try:
-        # Normalize the symbol
-        symbol = symbol.upper().strip()
-        
-        # For European stocks handling
-        has_exchange_suffix = bool(re.search(r'\.[A-Z]{1,4}$', symbol))
-        
-        # Basic request optimization: Only request necessary modules
-        modules = "financialData,quoteType,defaultKeyStatistics,assetProfile,summaryDetail"
+        # For European stocks, add the exchange suffix if not already there
+        # Common European exchanges: .L (London), .PA (Paris), .DE (Germany), etc.
+        if not re.search(r'\.[A-Z]{1,4}$', symbol) and len(symbol) <= 5:
+            # This could be a European stock without an exchange suffix
+            # Let's keep the original symbol, the ticker constructor will try to find the right one
+            pass
         
         # Get the ticker object
         ticker = yf.Ticker(symbol)
         
-        # Efficient validation using fast properties
-        ticker_valid = False
-        try:
-            if ticker.fast_info['lastPrice']:
-                ticker_valid = True
-        except:
-            ticker_valid = False
-            
-        # Try European exchanges if needed
-        if not ticker_valid and not has_exchange_suffix and len(symbol) <= 5:
-            # Optimize by checking most common exchanges first (based on market size)
-            european_exchanges = ['.L', '.PA', '.DE', '.MI', '.MC', '.AS']
+        # Validate ticker exists by checking if we can get basic info
+        if not ticker.info or ticker.info.get('regularMarketPrice') is None:
+            # Try with common European exchange suffixes
+            european_exchanges = ['.L', '.PA', '.DE', '.MI', '.MC', '.AS', '.BR', '.CO', '.HE', '.I', '.OL', '.ST', '.SW', '.VI']
             for exchange in european_exchanges:
                 try:
-                    euro_symbol = f"{symbol}{exchange}"
-                    euro_ticker = yf.Ticker(euro_symbol)
-                    if euro_ticker.fast_info['lastPrice']:
+                    euro_ticker = yf.Ticker(f"{symbol}{exchange}")
+                    if euro_ticker.info and euro_ticker.info.get('regularMarketPrice') is not None:
                         ticker = euro_ticker
-                        symbol = euro_symbol
+                        symbol = f"{symbol}{exchange}"
                         print(f"Found European stock: {symbol}")
-                        ticker_valid = True
                         break
                 except:
                     continue
+                    
+            # If no valid ticker found after trying European exchanges, raise an exception
+            if not ticker.info or ticker.info.get('regularMarketPrice') is None:
+                raise Exception(f"Could not find valid stock with symbol '{symbol}'.")
         
-        # If still not valid after European exchange check, raise exception
-        if not ticker_valid:
-            raise Exception(f"Could not find valid stock with symbol '{symbol}'.")
-        
-        # Get all required data in a single efficient request
-        # This reduces API calls and improves performance
+        # Get key information
         info = ticker.info
         
-        # Extract key metrics with fallbacks for efficiency
-        price = info.get('currentPrice', info.get('regularMarketPrice', ticker.fast_info.get('lastPrice', 0)))
+        # Fetch financial statements to get additional data if available
+        try:
+            financials = ticker.financials
+            balance_sheet = ticker.balance_sheet
+            cash_flow = ticker.cashflow
+        except:
+            # If financial statements can't be fetched, continue with basic info
+            pass
+        
+        # Calculate or extract key metrics
+        price = info.get('currentPrice', info.get('regularMarketPrice', 0))
         eps = info.get('trailingEps', 0)
-        pe_ratio = info.get('trailingPE', info.get('forwardPE', 0)) if eps != 0 else 0
+        pe_ratio = info.get('trailingPE', info.get('forwardPE', 0))
         
-        # Only calculate financial ratios if we have the necessary data
+        # Estimate FCF per share based on available data
         shares_outstanding = info.get('sharesOutstanding', 0)
-        operating_cash_flow = info.get('operatingCashflow', 0)
-        capital_expenditures = info.get('capitalExpenditures', 0)
-        
-        # More efficient fcf calculation
-        if shares_outstanding > 0 and operating_cash_flow:
+        if shares_outstanding > 0:
+            operating_cash_flow = info.get('operatingCashflow', 0)
+            capital_expenditures = info.get('capitalExpenditures', 0)
             fcf_per_share = (operating_cash_flow - abs(capital_expenditures or 0)) / shares_outstanding
         else:
-            fcf_per_share = eps * 0.8  # Reasonable estimate based on EPS
+            fcf_per_share = eps * 0.8  # Estimate based on EPS
         
-        # Simplified growth rate calculation
-        growth_rate = info.get('earningsGrowth', info.get('revenueGrowth', 0))
-        growth_rate = growth_rate * 100 if growth_rate else info.get('fiveYearAvgDividendYield', 8)
+        # Determine growth rate from available metrics
+        growth_rate = info.get('earningsGrowth', info.get('revenueGrowth', 0)) * 100
+        if growth_rate == 0:
+            # Use 5-year or forecasted growth if available
+            growth_rate = info.get('fiveYearAvgDividendYield', 8)
         
-        # More efficient return calculation
+        # Calculate ROE
         roe = info.get('returnOnEquity', 0.1) * 100
         
-        # More efficient ratio calculations
+        # Get debt-to-equity ratio
         debt_to_equity = info.get('debtToEquity', 50) / 100 if info.get('debtToEquity') else 0.5
+        
+        # Get current ratio
         current_ratio = info.get('currentRatio', 1.5)
+        
+        # Get revenue growth
         revenue_growth = info.get('revenueGrowth', 0.05) * 100
         
-        # Simplified stability calculation
+        # Evaluate earnings stability based on beta and other factors
         beta = info.get('beta', 1)
-        earnings_stability = "High" if beta < 0.8 else ("Medium" if beta < 1.2 else "Low")
+        if beta < 0.8:
+            earnings_stability = "High"
+        elif beta < 1.2:
+            earnings_stability = "Medium"
+        else:
+            earnings_stability = "Low"
         
-        # Simplified competitive position calculation
+        # Evaluate competitive position based on margins and market share
         profit_margin = info.get('profitMargins', 0)
-        gross_margin = info.get('grossMargins', 0)
-        competitive_position = "Strong" if (profit_margin > 0.15 or gross_margin > 0.4) else \
-                              ("Good" if (profit_margin > 0.08 or gross_margin > 0.3) else "Average")
+        if profit_margin > 0.15 or info.get('grossMargins', 0) > 0.4:
+            competitive_position = "Strong"
+        elif profit_margin > 0.08 or info.get('grossMargins', 0) > 0.3:
+            competitive_position = "Good"
+        else:
+            competitive_position = "Average"
         
-        # Create clean response with efficient field extraction
+        # Create a clean response object 
         response = {
-            "symbol": symbol,
+            "symbol": symbol.upper(),
             "name": info.get('shortName', info.get('longName', symbol)),
             "price": price,
             "eps": eps,
@@ -110,10 +118,11 @@ def get_stock_data(symbol):
             "competitivePosition": competitive_position
         }
         
+        # Return as JSON string
         return json.dumps(response)
     
     except Exception as e:
-        # Return concise error information
+        # Return error information
         return json.dumps({
             "error": str(e),
             "message": f"Failed to fetch data for {symbol}"

@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { StockData } from '@/lib/types';
-import { Calculator } from 'lucide-react';
 
 interface StockInformationProps {
   stockData: StockData | undefined;
@@ -10,7 +9,6 @@ interface StockInformationProps {
   onFetchData: (symbol: string) => void;
   error?: boolean;
   errorMessage?: string;
-  onCalculateManually?: () => void;
 }
 
 const StockInformation: React.FC<StockInformationProps> = ({ 
@@ -18,8 +16,7 @@ const StockInformation: React.FC<StockInformationProps> = ({
   isLoading, 
   onFetchData,
   error,
-  errorMessage,
-  onCalculateManually
+  errorMessage
 }) => {
   const [symbolInput, setSymbolInput] = useState('');
 
@@ -87,27 +84,13 @@ const StockInformation: React.FC<StockInformationProps> = ({
         
         {/* Stock Details Info */}
         {stockData && !stockData.error && (
-          <div className="space-y-3 mt-4">
-            <div className="p-3 bg-green-50 border border-green-200 rounded-md">
-              <p className="text-sm text-green-600">
-                Successfully found stock: <strong>{stockData.name} ({stockData.symbol})</strong>
-              </p>
-              <p className="text-xs text-neutral-600 mt-1">
-                Current Price: <strong>${stockData.price.toFixed(2)}</strong>
-              </p>
-            </div>
-            
-            {/* Manual Calculate Button */}
-            {onCalculateManually && (
-              <Button 
-                onClick={onCalculateManually}
-                className="w-full bg-[#21324F] hover:bg-[#1A2942] text-white"
-              >
-                <span className="flex items-center justify-center">
-                  <Calculator className="h-4 w-4 mr-2" /> Calculate Intrinsic Value
-                </span>
-              </Button>
-            )}
+          <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+            <p className="text-sm text-green-600">
+              Successfully found stock: <strong>{stockData.name} ({stockData.symbol})</strong>
+            </p>
+            <p className="text-xs text-neutral-600 mt-1">
+              Current Price: <strong>${stockData.price.toFixed(2)}</strong>
+            </p>
           </div>
         )}
       </div>
