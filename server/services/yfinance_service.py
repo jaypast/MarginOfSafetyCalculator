@@ -59,7 +59,9 @@ def get_stock_data(symbol):
                     if exchange_ticker.info and exchange_ticker.info.get('regularMarketPrice') is not None:
                         ticker = exchange_ticker
                         symbol = f"{symbol}{exchange_suffix}"
-                        print(f"Found {exchange_name} stock: {symbol}")
+                        # Use stderr for debug messages to avoid polluting JSON output
+                        import sys
+                        print(f"Found {exchange_name} stock: {symbol}", file=sys.stderr)
                         break
                 except:
                     continue
@@ -98,14 +100,16 @@ def get_stock_data(symbol):
                 
                 if not conversion_data.empty:
                     rate = conversion_data['Close'].iloc[-1]
-                    print(f"Converting from {currency} to USD with rate: {rate}")
+                    import sys
+                    print(f"Converting from {currency} to USD with rate: {rate}", file=sys.stderr)
                     
                     # Convert price and EPS to USD
                     price = price * rate
                     eps = eps * rate
             except:
                 # If conversion fails, use a fallback method
-                print(f"Could not convert {currency} to USD, using estimates")
+                import sys
+                print(f"Could not convert {currency} to USD, using estimates", file=sys.stderr)
                 
                 # Rough conversion estimates for common currencies
                 conversion_rates = {
@@ -122,10 +126,10 @@ def get_stock_data(symbol):
                     rate = conversion_rates[currency]
                     price = price * rate
                     eps = eps * rate
-                    print(f"Using estimated {currency} to USD rate: {rate}")
+                    print(f"Using estimated {currency} to USD rate: {rate}", file=sys.stderr)
                 else:
                     # If no conversion rate available, use 1.0 as fallback
-                    print(f"No conversion rate available for {currency}, using 1.0")
+                    print(f"No conversion rate available for {currency}, using 1.0", file=sys.stderr)
         
         # Estimate FCF per share based on available data
         shares_outstanding = info.get('sharesOutstanding', 0)
