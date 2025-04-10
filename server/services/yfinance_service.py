@@ -133,8 +133,8 @@ def get_stock_data(symbol):
             operating_cash_flow = info.get('operatingCashflow', 0)
             capital_expenditures = info.get('capitalExpenditures', 0)
             
-            # Apply currency conversion to cash flow if already converted price
-            if currency != 'USD' and 'rate' in locals():
+            # Apply currency conversion to cash flow
+            if currency != 'USD':
                 operating_cash_flow = operating_cash_flow * rate
                 capital_expenditures = capital_expenditures * rate
                 
