@@ -109,8 +109,15 @@ const MarginOfSafetyCalculator: React.FC = () => {
   }, [stockData, valuationParams, marginOfSafetyParams]);
   
   // Update quality assessment and initialize values when stock data changes
+  // We're using a ref to track if we've processed this stock already to prevent infinite loops
+  const processedSymbolRef = React.useRef<string | null>(null);
+  
   useEffect(() => {
-    if (stockData && !stockData.error) {
+    // Only process if we have stock data and it's a different symbol than what we've processed before
+    if (stockData && !stockData.error && processedSymbolRef.current !== stockData.symbol) {
+      // Save the current symbol to avoid reprocessing
+      processedSymbolRef.current = stockData.symbol;
+      
       // Calculate company quality
       const quality = getCompanyQuality(
         stockData.roe,
@@ -169,6 +176,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
             onFetchData={fetchStockData}
             error={isError}
             errorMessage={error instanceof Error ? error.message : "Could not retrieve stock data. Please try again."}
+            onCalculateManually={calculateIntrinsicValue}
           />
         </div>
         
