@@ -130,3 +130,48 @@ export const calculateDiscountPremium = (
 ): number => {
   return ((currentPrice - comparePrice) / comparePrice) * 100;
 };
+
+/**
+ * Detects if a stock appears to be an ETF or index fund based on its name and symbol patterns
+ */
+export const isETF = (stockData: any): boolean => {
+  if (!stockData) return false;
+  
+  // Common ETF patterns in name
+  const etfNamePatterns = [
+    'ETF', 'INDEX', 'FUND', 'TRUST', 'S&P', 'DOW', 'RUSSELL', 
+    'NASDAQ', 'VANGUARD', 'ISHARES', 'SPDR', 'MARKET VECTORS'
+  ];
+  
+  // Common ETF tickers
+  const commonETFs = [
+    'SPY', 'VOO', 'QQQ', 'IWM', 'DIA', 'VTI', 'GLD', 'SLV', 
+    'EEM', 'VWO', 'XLF', 'XLE', 'XLK', 'XLV', 'XLU', 'XLI', 
+    'XLP', 'XLY', 'XLB', 'XLC', 'VGK', 'VPL', 'VEA'
+  ];
+  
+  // Check if symbol is in the common ETF list
+  if (commonETFs.includes(stockData.symbol)) {
+    return true;
+  }
+  
+  // Check if the name contains ETF patterns
+  const name = stockData.name.toUpperCase();
+  for (const pattern of etfNamePatterns) {
+    if (name.includes(pattern)) {
+      return true;
+    }
+  }
+  
+  // Additional checks for other common patterns in ETF names
+  if (/\bETF\b/.test(name) || 
+      /\bFUND\b/.test(name) || 
+      name.includes('ISHARES') || 
+      name.includes('VANGUARD') ||
+      name.includes('SPDR')) {
+    return true;
+  }
+  
+  // Not detected as an ETF
+  return false;
+};
