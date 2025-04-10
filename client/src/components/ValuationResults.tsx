@@ -154,10 +154,15 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                 {valuationResults.filter(r => r.method !== 'Average').map((result, index) => (
                   <TableRow key={index}>
                     <TableCell className="text-neutral-800">{result.method}</TableCell>
-                    <TableCell className="text-neutral-800 text-right">{formatCurrency(result.intrinsicValue)}</TableCell>
-                    <TableCell className="text-neutral-800 text-right">{formatCurrency(result.buyBelow)}</TableCell>
+                    <TableCell className="text-neutral-800 text-right">
+                      {result.intrinsicValue <= 0 ? 'N/A' : formatCurrency(result.intrinsicValue)}
+                    </TableCell>
+                    <TableCell className="text-neutral-800 text-right">
+                      {result.buyBelow <= 0 ? 'N/A' : formatCurrency(result.buyBelow)}
+                    </TableCell>
                     <TableCell className={`${result.discountPremium < 0 ? 'text-green-600' : 'text-red-600'} text-right`}>
-                      {result.discountPremium > 0 ? '+' : ''}{result.discountPremium.toFixed(1)}%
+                      {result.intrinsicValue <= 0 ? 'N/A' : 
+                        `${result.discountPremium > 0 ? '+' : ''}${result.discountPremium.toFixed(1)}%`}
                     </TableCell>
                   </TableRow>
                 ))}

@@ -95,7 +95,7 @@ const KeyMetrics: React.FC<KeyMetricsProps> = ({
             <Skeleton className="h-6 w-24" />
           ) : (
             <p className="text-[#1A2942] font-semibold text-lg">
-              {stockData ? `${stockData.growthRate}%` : '-'}
+              {stockData ? `${stockData.growthRate.toFixed(2)}%` : '-'}
             </p>
           )}
         </div>

@@ -39,6 +39,11 @@ export const calculatePE = (
   const { eps, peRatio } = stockData;
   const { peType, peCustomValue, peAdjustment } = params;
   
+  // If EPS is negative, P/E valuation isn't meaningful
+  if (eps <= 0) {
+    return -1; // Return negative value to indicate the valuation is not applicable
+  }
+  
   // Determine which P/E ratio to use
   let selectedPE: number;
   
@@ -79,6 +84,11 @@ export const calculateGraham = (
   const { eps } = stockData;
   const { grahamGrowthRate, grahamBaseValue } = params;
   
+  // If EPS is negative, Graham valuation isn't applicable
+  if (eps <= 0) {
+    return -1; // Return negative value to indicate the valuation is not applicable
+  }
+  
   // Cap growth rate at 20% as per Graham's suggestion
   const cappedGrowthRate = Math.min(grahamGrowthRate, 20);
   
@@ -93,6 +103,13 @@ export const calculateBuyBelow = (
   intrinsicValue: number,
   marginOfSafety: number
 ): number => {
+  // For negative intrinsic values, we don't apply a margin of safety
+  // Instead, we use a fixed percentage of the current price as a conservative approach
+  if (intrinsicValue <= 0) {
+    // Return a small positive value to avoid confusion in UI
+    return 0.01;
+  }
+  
   const buyBelow = intrinsicValue * (1 - marginOfSafety / 100);
   return parseFloat(buyBelow.toFixed(2));
 };
@@ -102,6 +119,12 @@ export const calculateDiscountPremium = (
   currentPrice: number,
   comparePrice: number
 ): number => {
+  // Handle cases where comparePrice is negative or zero
+  if (comparePrice <= 0) {
+    // When company has negative earnings/intrinsic value, it's always considered overvalued (premium)
+    return 100; // Return a high premium to indicate overvaluation
+  }
+  
   const discountPremium = ((currentPrice - comparePrice) / comparePrice) * 100;
   return parseFloat(discountPremium.toFixed(1));
 };
