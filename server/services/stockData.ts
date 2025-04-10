@@ -5,12 +5,23 @@ import {
   getBalanceSheet,
   getCashFlow
 } from './alphavantage';
+import { getYahooFinanceData } from './yahooFinance';
 import { StockResponse } from '@shared/schema';
 
 export async function getStockData(symbol: string): Promise<StockResponse> {
   try {
+    // Use Yahoo Finance API if available
+    if (process.env.RAPIDAPI_KEY) {
+      console.log(`Using Yahoo Finance API to fetch data for ${symbol}`);
+      return await getYahooFinanceData(symbol);
+    }
+    
+    // Fallback to Alpha Vantage
+    console.log(`Using Alpha Vantage API to fetch data for ${symbol}`);
+    
     // When using demo API key, we'll use sample data for demonstration
-    if (process.env.ALPHA_VANTAGE_API_KEY === 'demo') {
+    if (!process.env.ALPHA_VANTAGE_API_KEY || process.env.ALPHA_VANTAGE_API_KEY === 'demo') {
+      console.log(`Using sample data for ${symbol}`);
       return getSampleStockData(symbol);
     }
     
@@ -82,6 +93,7 @@ export async function getStockData(symbol: string): Promise<StockResponse> {
     // For demo and development, return sample data if real API fails
     // In production, this should throw an error instead
     if (process.env.NODE_ENV !== 'production') {
+      console.log(`API error, using sample data for ${symbol}`);
       return getSampleStockData(symbol);
     }
     

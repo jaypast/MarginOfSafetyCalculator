@@ -1,0 +1,105 @@
+Yahoo Finance (YFinance) is actually one of the easiest APIs to get started with because it doesn't require an API key. It's an unofficial Python wrapper for Yahoo Finance data that you can use right away without registration or authentication.
+
+Here's how to get started with YFinance:
+
+## Setting Up Yahoo Finance API (YFinance)
+
+### 1. Installation
+
+If you're using Python for your backend:
+
+```bash
+pip install yfinance
+```
+
+### 2. Basic Usage
+
+```python
+import yfinance as yf
+
+# Get data for a single stock
+aapl = yf.Ticker("AAPL")
+
+# Get basic info
+info = aapl.info
+print(f"Current Price: ${info['currentPrice']}")
+print(f"P/E Ratio: {info['trailingPE']}")
+print(f"EPS: ${info['trailingEps']}")
+
+# Get financial statements
+balance_sheet = aapl.balance_sheet
+income_stmt = aapl.income_stmt
+cash_flow = aapl.cash_flow
+
+# Get historical market data
+hist = aapl.history(period="1y")
+```
+
+### 3. For JavaScript/Web Applications
+
+If you're building a web application with JavaScript, you can either:
+
+1. Create a simple backend proxy using Node.js, Python, or any server-side language that uses yfinance and exposes the data as a REST API.
+
+2. Use a CORS proxy with the unofficial Yahoo Finance API endpoints.
+
+Here's a simple Node.js example of creating a backend proxy:
+
+```javascript
+// server.js
+const express = require('express');
+const { exec } = require('child_process');
+const app = express();
+const port = 3000;
+
+app.get('/api/stock/:symbol', (req, res) => {
+  const symbol = req.params.symbol;
+  
+  // Execute Python script with yfinance
+  exec(`python -c "import yfinance as yf; import json; ticker = yf.Ticker('${symbol}'); print(json.dumps(ticker.info))"`, 
+    (error, stdout, stderr) => {
+      if (error) {
+        res.status(500).send(error.message);
+        return;
+      }
+      res.send(JSON.parse(stdout));
+    });
+});
+
+app.listen(port, () => {
+  console.log(`Stock API listening at http://localhost:${port}`);
+});
+```
+
+### 4. Important Notes About YFinance
+
+- It's an unofficial API (not provided directly by Yahoo)
+- There are no official rate limits, but excessive requests may be blocked
+- Data may occasionally have gaps or inaccuracies
+- The structure of the data might change without notice if Yahoo updates their website
+
+### 5. Alternative Approach: Rapid API
+
+If you prefer having a more officially supported API with similar data, you can use the Yahoo Finance API available through Rapid API:
+
+1. Go to [Rapid API](https://rapidapi.com/apidojo/api/yahoo-finance1)
+2. Sign up for an account
+3. Subscribe to the Yahoo Finance API (they have a free tier)
+4. Get your API key
+5. Make requests using their documentation examples
+
+```javascript
+// Example using fetch and the RapidAPI Yahoo Finance endpoint
+fetch("https://apidojo-yahoo-finance-v1.p.rapidapi.com/stock/v2/get-summary?symbol=AAPL&region=US", {
+  "method": "GET",
+  "headers": {
+    "x-rapidapi-key": "YOUR_RAPID_API_KEY",
+    "x-rapidapi-host": "apidojo-yahoo-finance-v1.p.rapidapi.com"
+  }
+})
+.then(response => response.json())
+.then(data => console.log(data))
+.catch(err => console.error(err));
+```
+
+For your Margin of Safety calculator, the Python yfinance package is likely the simplest starting point, especially during development. It provides all the necessary financial data without any registration or cost. If your application grows, you can consider moving to one of the other APIs we discussed earlier.​​​​​​​​​​​​​​​​
