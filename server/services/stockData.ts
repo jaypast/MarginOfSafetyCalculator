@@ -10,14 +10,21 @@ import { StockResponse } from '@shared/schema';
 
 export async function getStockData(symbol: string): Promise<StockResponse> {
   try {
-    // Use Yahoo Finance API if available
-    if (process.env.RAPIDAPI_KEY) {
-      console.log(`Using Yahoo Finance API to fetch data for ${symbol}`);
+    // Use yfinance Python integration to fetch stock data
+    console.log(`Using yfinance Python integration to fetch data for ${symbol}`);
+    try {
       return await getYahooFinanceData(symbol);
+    } catch (yfinanceError) {
+      console.log(`yfinance Python integration failed: ${yfinanceError}`);
+      console.log(`Falling back to other methods...`);
     }
     
-    // Fallback to Alpha Vantage
-    console.log(`Using Alpha Vantage API to fetch data for ${symbol}`);
+    // We don't need a separate fallback since we've modified the Yahoo Finance service
+    // to use yfinance Python library directly
+    console.log(`No need for additional fallback as we're already using yfinance Python`);
+    
+    // Fallback to Alpha Vantage as last resort
+    console.log(`Using Alpha Vantage API as final fallback for ${symbol}`);
     
     // When using demo API key, we'll use sample data for demonstration
     if (!process.env.ALPHA_VANTAGE_API_KEY || process.env.ALPHA_VANTAGE_API_KEY === 'demo') {
