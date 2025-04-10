@@ -12,6 +12,8 @@ export interface StockData {
   revenueGrowth: number;
   earningsStability: string;
   competitivePosition: string;
+  error?: boolean;
+  errorMessage?: string;
 }
 
 export interface ValuationParams {

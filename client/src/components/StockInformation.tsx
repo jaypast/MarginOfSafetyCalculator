@@ -7,11 +7,16 @@ interface StockInformationProps {
   stockData: StockData | undefined;
   isLoading: boolean;
   onFetchData: (symbol: string) => void;
+  error?: boolean;
+  errorMessage?: string;
 }
 
 const StockInformation: React.FC<StockInformationProps> = ({ 
+  stockData,
   isLoading, 
-  onFetchData
+  onFetchData,
+  error,
+  errorMessage
 }) => {
   const [symbolInput, setSymbolInput] = useState('');
 
@@ -59,7 +64,36 @@ const StockInformation: React.FC<StockInformationProps> = ({
             )}
           </Button>
         </div>
-        <p className="mt-2 text-sm text-neutral-500">Enter a valid stock ticker symbol</p>
+        <p className="mt-2 text-sm text-neutral-500">Enter a valid stock ticker symbol, company name, or European stock</p>
+        
+        {/* Error Message */}
+        {(error || (stockData && stockData.error)) && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
+            <p className="text-sm text-red-600">
+              {errorMessage || (stockData && stockData.errorMessage) || "Could not find the stock. Please check your input and try again."}
+            </p>
+            <p className="text-xs text-neutral-600 mt-1">
+              <strong>Tips:</strong> 
+              <ul className="list-disc pl-5 mt-1">
+                <li>Try using the exact ticker symbol (e.g., 'AAPL' for Apple)</li>
+                <li>For European stocks, try adding the exchange suffix (e.g., 'BP.L' for BP on London Exchange)</li>
+                <li>You can search by company name (e.g., "Microsoft" or "Coca Cola")</li>
+              </ul>
+            </p>
+          </div>
+        )}
+        
+        {/* Stock Details Info */}
+        {stockData && !stockData.error && (
+          <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+            <p className="text-sm text-green-600">
+              Successfully found stock: <strong>{stockData.name} ({stockData.symbol})</strong>
+            </p>
+            <p className="text-xs text-neutral-600 mt-1">
+              Current Price: <strong>${stockData.price.toFixed(2)}</strong>
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
