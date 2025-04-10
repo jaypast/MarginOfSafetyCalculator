@@ -2,14 +2,53 @@
 import json
 import sys
 import yfinance as yf
+import re
 
-def get_stock_data(symbol):
+def get_stock_data(symbol_or_name):
     """
     Fetch stock data using the yfinance package
+    Support for ticker symbols, company names, and European stocks
     """
     try:
+        # Check if input is a company name rather than a ticker symbol
+        if len(symbol_or_name) > 10 and ' ' in symbol_or_name:
+            # This looks like a company name, not a symbol
+            # Try to search for the company using yfinance's search functionality
+            symbol = search_company_name(symbol_or_name)
+            if not symbol:
+                raise Exception(f"Could not find a company matching '{symbol_or_name}'")
+        else:
+            # This is likely a ticker symbol
+            symbol = symbol_or_name
+            
+            # For European stocks, add the exchange suffix if not already there
+            # Common European exchanges: .L (London), .PA (Paris), .DE (Germany), etc.
+            if not re.search(r'\.[A-Z]{1,4}$', symbol) and len(symbol) <= 5:
+                # This could be a European stock without an exchange suffix
+                # Let's keep the original symbol, the ticker constructor will try to find the right one
+                pass
+        
         # Get the ticker object
         ticker = yf.Ticker(symbol)
+        
+        # Validate ticker exists by checking if we can get basic info
+        if not ticker.info or ticker.info.get('regularMarketPrice') is None:
+            # Try with common European exchange suffixes
+            european_exchanges = ['.L', '.PA', '.DE', '.MI', '.MC', '.AS', '.BR', '.CO', '.HE', '.I', '.OL', '.ST', '.SW', '.VI']
+            for exchange in european_exchanges:
+                try:
+                    euro_ticker = yf.Ticker(f"{symbol}{exchange}")
+                    if euro_ticker.info and euro_ticker.info.get('regularMarketPrice') is not None:
+                        ticker = euro_ticker
+                        symbol = f"{symbol}{exchange}"
+                        print(f"Found European stock: {symbol}")
+                        break
+                except:
+                    continue
+                    
+            # If no valid ticker found after trying European exchanges, raise an exception
+            if not ticker.info or ticker.info.get('regularMarketPrice') is None:
+                raise Exception(f"Could not find valid stock with symbol or name '{symbol_or_name}'.")
         
         # Get key information
         info = ticker.info
@@ -97,15 +136,79 @@ def get_stock_data(symbol):
         # Return error information
         return json.dumps({
             "error": str(e),
-            "message": f"Failed to fetch data for {symbol}"
+            "message": f"Failed to fetch data for {symbol_or_name}"
         })
+
+# Function to search for a company by name
+def search_company_name(company_name):
+    """
+    Search for a company ticker by name using known large companies
+    and a simple search through yfinance
+    """
+    # First, try a simple dictionary of common companies
+    common_companies = {
+        'apple': 'AAPL',
+        'microsoft': 'MSFT',
+        'amazon': 'AMZN',
+        'google': 'GOOGL',
+        'alphabet': 'GOOGL',
+        'meta': 'META',
+        'facebook': 'META',
+        'tesla': 'TSLA',
+        'nvidia': 'NVDA',
+        'berkshire': 'BRK-B',
+        'jpmorgan': 'JPM',
+        'visa': 'V',
+        'johnson': 'JNJ',
+        'walmart': 'WMT',
+        'procter': 'PG',
+        'disney': 'DIS',
+        'coca': 'KO',
+        'bank of america': 'BAC',
+        'home depot': 'HD',
+        'netflix': 'NFLX',
+        'adobe': 'ADBE',
+        'paypal': 'PYPL',
+        'salesforce': 'CRM',
+        'siemens': 'SIEGY',
+        'volkswagen': 'VWAGY',
+        'bmw': 'BMWYY',
+        'adidas': 'ADDYY',
+        'deutsche bank': 'DB',
+        'vodafone': 'VOD',
+        'bp': 'BP',
+        'shell': 'SHEL',
+        'unilever': 'UL',
+        'barclays': 'BCS',
+        'hsbc': 'HSBC'
+    }
+    
+    # Try to find a match in our dictionary
+    company_lower = company_name.lower()
+    for key, symbol in common_companies.items():
+        if key in company_lower:
+            return symbol
+    
+    # If no match in our dictionary, let's use the original input as the symbol
+    # The ticker validation in the main function will check if it's valid
+    # Remove common company suffixes and spaces for better matching
+    clean_name = company_name.lower()
+    for suffix in [' inc', ' corporation', ' corp', ' company', ' co', ' ltd', ' limited', ' plc', ' group']:
+        clean_name = clean_name.replace(suffix, '')
+    
+    # Convert spaces to hyphens or dots to try as ticker (ex: "Coca Cola" -> "COCA-COLA" or "COCA.COLA")
+    possible_ticker = clean_name.replace(' ', '-').upper()
+    
+    # Return the best guess, the validation in the main function will check if it exists
+    return possible_ticker
 
 # If the script is run directly
 if __name__ == "__main__":
     # Check if a symbol was provided as a command line argument
     if len(sys.argv) > 1:
-        symbol = sys.argv[1]
-        result = get_stock_data(symbol)
+        # Join all arguments as they might be parts of a company name
+        query = ' '.join(sys.argv[1:])
+        result = get_stock_data(query)
         print(result)
     else:
-        print(json.dumps({"error": "No symbol provided"}))
+        print(json.dumps({"error": "No symbol or company name provided"}))

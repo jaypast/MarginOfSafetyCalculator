@@ -57,6 +57,8 @@ export const stockResponseSchema = z.object({
   revenueGrowth: z.number(),
   earningsStability: z.string(),
   competitivePosition: z.string(),
+  error: z.boolean().optional(),
+  errorMessage: z.string().optional(),
 });
 
 export type StockResponse = z.infer<typeof stockResponseSchema>;

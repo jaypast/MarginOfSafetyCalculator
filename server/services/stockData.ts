@@ -97,14 +97,27 @@ export async function getStockData(symbol: string): Promise<StockResponse> {
   } catch (error) {
     console.error('Error aggregating stock data:', error);
     
-    // For demo and development, return sample data if real API fails
-    // In production, this should throw an error instead
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`API error, using sample data for ${symbol}`);
-      return getSampleStockData(symbol);
-    }
+    // Instead of returning sample data, return an error response that the frontend can handle
+    console.log(`API error, returning error for ${symbol}`);
     
-    throw error;
+    // Create an error response with a clear message
+    return {
+      symbol: symbol,
+      name: 'Error',
+      price: 0,
+      eps: 0,
+      peRatio: 0,
+      fcfPerShare: 0,
+      growthRate: 0,
+      roe: 0,
+      debtToEquity: 0,
+      currentRatio: 0,
+      revenueGrowth: 0,
+      earningsStability: 'Low',
+      competitivePosition: 'Average',
+      error: true,
+      errorMessage: `Could not find stock with symbol "${symbol}". Please check if the symbol is correct.`
+    } as StockResponse;
   }
 }
 
