@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import StockInformation from './StockInformation';
 import KeyMetrics from './KeyMetrics';
 import ValuationMethod from './ValuationMethod';
@@ -61,37 +61,8 @@ const MarginOfSafetyCalculator: React.FC = () => {
   const [valuationResults, setValuationResults] = useState<ValuationResult[]>([]);
   const [companyQuality, setCompanyQuality] = useState<CompanyQualityResult | null>(null);
   
-  // Update default MoS and automatically calculate when stock data changes
-  useEffect(() => {
-    if (stockData && !stockData.error) {
-      const quality = getCompanyQuality(
-        stockData.roe,
-        stockData.debtToEquity,
-        stockData.currentRatio,
-        stockData.revenueGrowth,
-        stockData.earningsStability,
-        stockData.competitivePosition
-      );
-      
-      const recommendedMoS = getRecommendedMarginOfSafety(quality);
-      const defaultMoS = getDefaultMarginOfSafety(quality);
-      
-      setCompanyQuality({
-        quality,
-        recommendedMarginOfSafety: recommendedMoS
-      });
-      
-      setMarginOfSafetyParams({
-        marginOfSafety: defaultMoS
-      });
-      
-      // Automatically calculate intrinsic value when stock data is loaded
-      setTimeout(() => calculateIntrinsicValue(), 500);
-    }
-  }, [stockData]);
-  
-  // Calculate intrinsic value and buy below price
-  const calculateIntrinsicValue = () => {
+  // Calculate intrinsic value and buy below price - memoized to prevent unnecessary recalculations
+  const calculateIntrinsicValue = useCallback(() => {
     if (!stockData || stockData.error) return;
     
     // Calculate DCF valuation
@@ -135,7 +106,40 @@ const MarginOfSafetyCalculator: React.FC = () => {
     const avgResult = calculateAverageValuation(results);
     
     setValuationResults([...results, avgResult]);
-  };
+  }, [stockData, valuationParams, marginOfSafetyParams]);
+  
+  // Update quality assessment and initialize values when stock data changes
+  useEffect(() => {
+    if (stockData && !stockData.error) {
+      // Calculate company quality
+      const quality = getCompanyQuality(
+        stockData.roe,
+        stockData.debtToEquity,
+        stockData.currentRatio,
+        stockData.revenueGrowth,
+        stockData.earningsStability,
+        stockData.competitivePosition
+      );
+      
+      const recommendedMoS = getRecommendedMarginOfSafety(quality);
+      const defaultMoS = getDefaultMarginOfSafety(quality);
+      
+      // Update quality state
+      setCompanyQuality({
+        quality,
+        recommendedMarginOfSafety: recommendedMoS
+      });
+      
+      // Update MoS parameters
+      setMarginOfSafetyParams({
+        marginOfSafety: defaultMoS
+      });
+      
+      // Automatically calculate values with a small delay to ensure state updates
+      const timer = setTimeout(() => calculateIntrinsicValue(), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [stockData, calculateIntrinsicValue]);
   
   return (
     <>
