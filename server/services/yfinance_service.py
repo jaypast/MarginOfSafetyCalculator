@@ -85,11 +85,59 @@ def get_stock_data(symbol):
         eps = info.get('trailingEps', 0)
         pe_ratio = info.get('trailingPE', info.get('forwardPE', 0))
         
+        # Handle currency conversions for non-USD stocks
+        currency = info.get('currency', 'USD')
+        rate = 1.0  # Default rate (1:1 for USD)
+        
+        if currency != 'USD':
+            try:
+                # Get conversion rate if available (for major currencies)
+                currency_pair = f"{currency}USD=X"
+                conversion_ticker = yf.Ticker(currency_pair)
+                conversion_data = conversion_ticker.history(period="1d")
+                
+                if not conversion_data.empty:
+                    rate = conversion_data['Close'].iloc[-1]
+                    print(f"Converting from {currency} to USD with rate: {rate}")
+                    
+                    # Convert price and EPS to USD
+                    price = price * rate
+                    eps = eps * rate
+            except:
+                # If conversion fails, use a fallback method
+                print(f"Could not convert {currency} to USD, using estimates")
+                
+                # Rough conversion estimates for common currencies
+                conversion_rates = {
+                    'HKD': 0.13,  # Hong Kong Dollar to USD
+                    'JPY': 0.0067,  # Japanese Yen to USD
+                    'EUR': 1.08,  # Euro to USD
+                    'GBP': 1.25,  # British Pound to USD
+                    'CNY': 0.14,  # Chinese Yuan to USD
+                    'CAD': 0.73,  # Canadian Dollar to USD
+                    'AUD': 0.66,  # Australian Dollar to USD
+                }
+                
+                if currency in conversion_rates:
+                    rate = conversion_rates[currency]
+                    price = price * rate
+                    eps = eps * rate
+                    print(f"Using estimated {currency} to USD rate: {rate}")
+                else:
+                    # If no conversion rate available, use 1.0 as fallback
+                    print(f"No conversion rate available for {currency}, using 1.0")
+        
         # Estimate FCF per share based on available data
         shares_outstanding = info.get('sharesOutstanding', 0)
         if shares_outstanding > 0:
             operating_cash_flow = info.get('operatingCashflow', 0)
             capital_expenditures = info.get('capitalExpenditures', 0)
+            
+            # Apply currency conversion to cash flow if already converted price
+            if currency != 'USD' and 'rate' in locals():
+                operating_cash_flow = operating_cash_flow * rate
+                capital_expenditures = capital_expenditures * rate
+                
             fcf_per_share = (operating_cash_flow - abs(capital_expenditures or 0)) / shares_outstanding
         else:
             fcf_per_share = eps * 0.8  # Estimate based on EPS
@@ -130,10 +178,27 @@ def get_stock_data(symbol):
         else:
             competitive_position = "Average"
         
-        # Create a clean response object 
+        # Create a clean response object
+        name = info.get('shortName', info.get('longName', symbol))
+        
+        # Fix company names for dual-listed stocks
+        # Map of stock symbol patterns to cleaner names
+        name_corrections = {
+            '9988.HK': 'Alibaba Group Holding Limited',
+            'BABA': 'Alibaba Group Holding Limited',
+            '0700.HK': 'Tencent Holdings Limited',
+            'TCEHY': 'Tencent Holdings Limited',
+            '3690.HK': 'Meituan',
+            'MPNGF': 'Meituan'
+        }
+        
+        # Check if we have a name correction for this symbol
+        if symbol.upper() in name_corrections:
+            name = name_corrections[symbol.upper()]
+            
         response = {
             "symbol": symbol.upper(),
-            "name": info.get('shortName', info.get('longName', symbol)),
+            "name": name,
             "price": price,
             "eps": eps,
             "peRatio": pe_ratio,

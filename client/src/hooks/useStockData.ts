@@ -13,7 +13,8 @@ export const useStockData = () => {
     queryKey: [`/api/stock/${symbol}`],
     enabled: symbol.length > 0,
     retry: 1,
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 1 * 60 * 1000, // 1 minute
+    staleTime: 30 * 1000, // 30 seconds - data considered fresh for shorter time
   });
 
   // Mutation to fetch stock data
@@ -48,7 +49,14 @@ export const useStockData = () => {
       return;
     }
     
-    fetchStockDataMutation.mutate(symbol.toUpperCase());
+    // Always force a fresh fetch, no caching between different stocks
+    const uppercaseSymbol = symbol.toUpperCase();
+    
+    // Invalidate any existing query before fetching new data
+    stockDataQuery.refetch();
+    
+    // Fetch the new stock data
+    fetchStockDataMutation.mutate(uppercaseSymbol);
   };
 
   return {
