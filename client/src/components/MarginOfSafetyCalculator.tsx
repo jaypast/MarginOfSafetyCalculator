@@ -29,7 +29,7 @@ import { getCompanyQuality, getRecommendedMarginOfSafety, getDefaultMarginOfSafe
 
 const MarginOfSafetyCalculator: React.FC = () => {
   // Stock data state from API
-  const { stockData, isLoading, fetchStockData } = useStockData();
+  const { stockData, isLoading, isError, error, fetchStockData } = useStockData();
 
   // Calculation method state
   const [activeMethod, setActiveMethod] = useState<CalculationMethod>('dcf');
@@ -63,7 +63,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
   
   // Update default MoS and automatically calculate when stock data changes
   useEffect(() => {
-    if (stockData) {
+    if (stockData && !stockData.error) {
       const quality = getCompanyQuality(
         stockData.roe,
         stockData.debtToEquity,
@@ -92,7 +92,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
   
   // Calculate intrinsic value and buy below price
   const calculateIntrinsicValue = () => {
-    if (!stockData) return;
+    if (!stockData || stockData.error) return;
     
     // Calculate DCF valuation
     const dcfValue = calculateDCF(stockData, valuationParams);
@@ -163,11 +163,13 @@ const MarginOfSafetyCalculator: React.FC = () => {
             stockData={stockData} 
             isLoading={isLoading} 
             onFetchData={fetchStockData}
+            error={isError}
+            errorMessage={error instanceof Error ? error.message : "Could not retrieve stock data. Please try again."}
           />
         </div>
         
         {/* Results Section - Made More Prominent */}
-        {stockData && (
+        {stockData && !stockData.error && (
           <div className="bg-white rounded-lg shadow-md p-4 border border-neutral-200">
             <div className="mb-3">
               <h2 className="text-xl font-semibold text-[#1A2942] mb-1">
@@ -188,7 +190,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
           {/* Left Column - Parameters */}
           <div className="lg:col-span-1 space-y-4">
             {/* Margin of Safety Parameters - Collapsible */}
-            {stockData && (
+            {stockData && !stockData.error && (
               <Collapsible className="bg-white rounded-lg shadow-sm border border-neutral-200">
                 <div className="p-3 border-b border-neutral-200">
                   <CollapsibleTrigger className="flex items-center justify-between w-full">
@@ -215,7 +217,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
             )}
             
             {/* Valuation Method - Collapsible */}
-            {stockData && (
+            {stockData && !stockData.error && (
               <Collapsible className="bg-white rounded-lg shadow-sm border border-neutral-200">
                 <div className="p-3 border-b border-neutral-200">
                   <CollapsibleTrigger className="flex items-center justify-between w-full">
@@ -242,7 +244,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
             )}
             
             {/* Key Metrics Section */}
-            {(stockData || isLoading) && (
+            {((stockData && !stockData.error) || isLoading) && (
               <KeyMetrics
                 stockData={stockData}
                 isLoading={isLoading}
@@ -253,7 +255,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
           
           {/* Right Column - Quality and Education */}
           <div className="lg:col-span-2 space-y-4">
-            {stockData && companyQuality && (
+            {stockData && !stockData.error && companyQuality && (
               <QualityIndicators 
                 stockData={stockData}
                 companyQuality={companyQuality}
