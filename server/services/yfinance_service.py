@@ -7,7 +7,12 @@ import re
 def get_stock_data(symbol):
     """
     Fetch stock data using the yfinance package
-    Support for ticker symbols and European stocks
+    Support for ticker symbols in multiple markets:
+    - US markets (e.g., AAPL, MSFT)
+    - European markets (e.g., BP.L, AIR.PA)
+    - Japanese markets (e.g., 7203.T, 9984.T)
+    - Hong Kong markets (e.g., 0700.HK, 9988.HK)
+    - Other Asian markets (.SS, .SZ, .KS, .TW)
     """
     try:
         # For European stocks, add the exchange suffix if not already there
@@ -22,20 +27,44 @@ def get_stock_data(symbol):
         
         # Validate ticker exists by checking if we can get basic info
         if not ticker.info or ticker.info.get('regularMarketPrice') is None:
-            # Try with common European exchange suffixes
-            european_exchanges = ['.L', '.PA', '.DE', '.MI', '.MC', '.AS', '.BR', '.CO', '.HE', '.I', '.OL', '.ST', '.SW', '.VI']
-            for exchange in european_exchanges:
+            # Try with common exchange suffixes (European, Asian, etc.)
+            exchanges = {
+                # European exchanges
+                '.L': 'London',
+                '.PA': 'Paris',
+                '.DE': 'Germany',
+                '.MI': 'Milan',
+                '.MC': 'Madrid',
+                '.AS': 'Amsterdam',
+                '.BR': 'Brussels',
+                '.CO': 'Copenhagen',
+                '.HE': 'Helsinki',
+                '.I': 'Ireland',
+                '.OL': 'Oslo',
+                '.ST': 'Stockholm',
+                '.SW': 'Switzerland',
+                '.VI': 'Vienna',
+                # Asian exchanges
+                '.T': 'Tokyo',
+                '.HK': 'Hong Kong',
+                '.SS': 'Shanghai',
+                '.SZ': 'Shenzhen',
+                '.KS': 'Seoul',
+                '.TW': 'Taiwan'
+            }
+            
+            for exchange_suffix, exchange_name in exchanges.items():
                 try:
-                    euro_ticker = yf.Ticker(f"{symbol}{exchange}")
-                    if euro_ticker.info and euro_ticker.info.get('regularMarketPrice') is not None:
-                        ticker = euro_ticker
-                        symbol = f"{symbol}{exchange}"
-                        print(f"Found European stock: {symbol}")
+                    exchange_ticker = yf.Ticker(f"{symbol}{exchange_suffix}")
+                    if exchange_ticker.info and exchange_ticker.info.get('regularMarketPrice') is not None:
+                        ticker = exchange_ticker
+                        symbol = f"{symbol}{exchange_suffix}"
+                        print(f"Found {exchange_name} stock: {symbol}")
                         break
                 except:
                     continue
                     
-            # If no valid ticker found after trying European exchanges, raise an exception
+            # If no valid ticker found after trying all exchanges, raise an exception
             if not ticker.info or ticker.info.get('regularMarketPrice') is None:
                 raise Exception(f"Could not find valid stock with symbol '{symbol}'.")
         
@@ -136,6 +165,7 @@ def search_company_name(company_name):
     """
     # First, try a simple dictionary of common companies
     common_companies = {
+        # US companies
         'apple': 'AAPL',
         'microsoft': 'MSFT',
         'amazon': 'AMZN',
@@ -159,6 +189,8 @@ def search_company_name(company_name):
         'adobe': 'ADBE',
         'paypal': 'PYPL',
         'salesforce': 'CRM',
+        
+        # European companies
         'siemens': 'SIEGY',
         'volkswagen': 'VWAGY',
         'bmw': 'BMWYY',
@@ -169,7 +201,28 @@ def search_company_name(company_name):
         'shell': 'SHEL',
         'unilever': 'UL',
         'barclays': 'BCS',
-        'hsbc': 'HSBC'
+        'hsbc': 'HSBC',
+        
+        # Japanese companies
+        'toyota': '7203.T',
+        'softbank': '9984.T',
+        'sony': '6758.T',
+        'honda': '7267.T',
+        'mitsubishi': '8058.T',
+        'nintendo': '7974.T',
+        'panasonic': '6752.T',
+        'mizuho': '8411.T',
+        'nomura': '8604.T',
+        
+        # Hong Kong companies
+        'tencent': '0700.HK',
+        'alibaba': '9988.HK',
+        'xiaomi': '1810.HK',
+        'meituan': '3690.HK',
+        'jd': '9618.HK',
+        'ping an': '2318.HK',
+        'china mobile': '0941.HK',
+        'bank of china': '3988.HK'
     }
     
     # Try to find a match in our dictionary

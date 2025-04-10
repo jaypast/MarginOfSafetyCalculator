@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { StockData } from '@/lib/types';
+import { formatCurrency } from '@/lib/utils';
 
 interface StockInformationProps {
   stockData: StockData | undefined;
@@ -64,7 +65,7 @@ const StockInformation: React.FC<StockInformationProps> = ({
             )}
           </Button>
         </div>
-        <p className="mt-2 text-sm text-neutral-500">Enter a valid stock ticker symbol</p>
+        <p className="mt-2 text-sm text-neutral-500">Enter a valid stock ticker symbol (US, European, Japanese, Hong Kong markets supported)</p>
         
         {/* Error Message */}
         {(error || (stockData && stockData.error)) && (
@@ -76,7 +77,9 @@ const StockInformation: React.FC<StockInformationProps> = ({
               <strong>Tips:</strong> 
               <ul className="list-disc pl-5 mt-1">
                 <li>Try using the exact ticker symbol (e.g., 'AAPL' for Apple)</li>
-                <li>For European stocks, try adding the exchange suffix (e.g., 'BP.L' for BP on London Exchange)</li>
+                <li>For European stocks, add the exchange suffix (e.g., 'BP.L' for BP on London Exchange)</li>
+                <li>For Japanese stocks, add '.T' suffix (e.g., '7203.T' for Toyota, '9984.T' for SoftBank)</li>
+                <li>For Hong Kong stocks, add '.HK' suffix (e.g., '0700.HK' for Tencent, '9988.HK' for Alibaba)</li>
               </ul>
             </p>
           </div>
@@ -89,7 +92,7 @@ const StockInformation: React.FC<StockInformationProps> = ({
               Successfully found stock: <strong>{stockData.name} ({stockData.symbol})</strong>
             </p>
             <p className="text-xs text-neutral-600 mt-1">
-              Current Price: <strong>${stockData.price.toFixed(2)}</strong>
+              Current Price: <strong>{formatCurrency(stockData.price)}</strong>
             </p>
           </div>
         )}
