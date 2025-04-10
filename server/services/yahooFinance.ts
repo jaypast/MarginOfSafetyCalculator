@@ -2,19 +2,20 @@ import axios from 'axios';
 import { StockResponse } from '../../shared/schema';
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
-// Switch to a different Yahoo Finance API on RapidAPI
-const RAPIDAPI_HOST = 'apidojo-yahoo-finance-v1.p.rapidapi.com';
+// Use the correct YFinance API host from the screenshot
+const RAPIDAPI_HOST = 'yahoo-finance166.p.rapidapi.com';
 
 // Function to get stock data from Yahoo Finance API
 export async function getYahooFinanceData(symbol: string): Promise<StockResponse> {
   try {
     console.log(`Fetching Yahoo Finance data for ${symbol}`);
     
-    // Get stock summary data (overview)
-    const summaryResponse = await axios.get(`https://${RAPIDAPI_HOST}/stock/v2/get-summary`, {
+    // Get stock data using the list-by-symbol endpoint as shown in the screenshot
+    const response = await axios.get(`https://${RAPIDAPI_HOST}/api/news/list-by-symbol`, {
       params: {
         symbol: symbol,
-        region: 'US'
+        region: 'US',
+        snippetCount: '10'
       },
       headers: {
         'X-RapidAPI-Key': RAPIDAPI_KEY,
@@ -22,39 +23,40 @@ export async function getYahooFinanceData(symbol: string): Promise<StockResponse
       }
     });
 
-    // Get quote data
-    const quoteResponse = await axios.get(`https://${RAPIDAPI_HOST}/market/v2/get-quotes`, {
-      params: {
-        symbols: symbol,
-        region: 'US'
-      },
-      headers: {
-        'X-RapidAPI-Key': RAPIDAPI_KEY,
-        'X-RapidAPI-Host': RAPIDAPI_HOST
-      }
-    });
-
-    // Log responses for debugging
-    console.log(`Received data for ${symbol}`);
+    console.log(`Received basic data for ${symbol}`);
     
-    const summaryData = summaryResponse.data;
-    const quoteData = quoteResponse.data.quoteResponse.result[0];
+    // Get detailed stock data
+    const quoteResponse = await axios.get(`https://${RAPIDAPI_HOST}/api/v1/finance/quote`, {
+      params: {
+        symbols: symbol
+      },
+      headers: {
+        'X-RapidAPI-Key': RAPIDAPI_KEY,
+        'X-RapidAPI-Host': RAPIDAPI_HOST
+      }
+    });
 
-    // Process and transform data based on the structure of the API responses
+    console.log(`Received quote data for ${symbol}`);
+    
+    // Extract data from API responses
+    const newsData = response.data;
+    const quoteData = quoteResponse.data?.quoteResponse?.result?.[0] || {};
+
+    // Process and transform data based on the structure of the new API
     const stockData: StockResponse = {
       symbol: symbol.toUpperCase(),
       name: quoteData.shortName || quoteData.longName || symbol,
       price: quoteData.regularMarketPrice || 0,
-      eps: summaryData.defaultKeyStatistics?.trailingEps?.raw || 0,
-      peRatio: summaryData.summaryDetail?.trailingPE?.raw || 0,
-      fcfPerShare: calculateFCFPerShare(summaryData),
-      growthRate: calculateGrowthRate(summaryData),
-      roe: summaryData.financialData?.returnOnEquity?.raw ? summaryData.financialData.returnOnEquity.raw * 100 : 10,
-      debtToEquity: summaryData.financialData?.debtToEquity?.raw || 0.5,
-      currentRatio: summaryData.financialData?.currentRatio?.raw || 1.5,
-      revenueGrowth: summaryData.financialData?.revenueGrowth?.raw ? summaryData.financialData.revenueGrowth.raw * 100 : 5,
-      earningsStability: evaluateEarningsStability(summaryData),
-      competitivePosition: evaluateCompetitivePosition(summaryData)
+      eps: quoteData.epsTrailingTwelveMonths || quoteData.epsForward || 0,
+      peRatio: quoteData.trailingPE || quoteData.forwardPE || 0,
+      fcfPerShare: calculateFCFPerShare(quoteData),
+      growthRate: calculateGrowthRate(quoteData),
+      roe: quoteData.returnOnEquity ? quoteData.returnOnEquity * 100 : 10,
+      debtToEquity: quoteData.debtToEquity || 0.5,
+      currentRatio: quoteData.currentRatio || 1.5,
+      revenueGrowth: quoteData.revenueGrowth ? quoteData.revenueGrowth * 100 : 5,
+      earningsStability: evaluateEarningsStability(quoteData),
+      competitivePosition: evaluateCompetitivePosition(quoteData)
     };
 
     return stockData;
@@ -65,77 +67,76 @@ export async function getYahooFinanceData(symbol: string): Promise<StockResponse
 }
 
 // Helper functions to calculate derived metrics adjusted for the new API
-function calculateFCFPerShare(summaryData: any): number {
+function calculateFCFPerShare(quoteData: any): number {
   // Try to calculate FCF per share using available data
-  const freeCashflow = summaryData.financialData?.freeCashflow?.raw;
-  const operatingCashflow = summaryData.financialData?.operatingCashflow?.raw;
-  const capitalExpenditures = summaryData.financialData?.capitalExpenditures?.raw;
-  const sharesOutstanding = summaryData.defaultKeyStatistics?.sharesOutstanding?.raw;
+  // In this API, we might not have direct FCF data, so we'll estimate
+  const eps = quoteData.epsTrailingTwelveMonths || quoteData.epsForward || 0;
   
-  // If we have all the data to calculate directly
-  if (freeCashflow && sharesOutstanding) {
-    return freeCashflow / sharesOutstanding;
-  }
-  
-  // Alternative calculation
-  if (operatingCashflow && capitalExpenditures && sharesOutstanding) {
-    return (operatingCashflow - Math.abs(capitalExpenditures)) / sharesOutstanding;
-  }
-  
-  // Default to a reasonable estimate based on EPS
-  const eps = summaryData.defaultKeyStatistics?.trailingEps?.raw || 0;
-  return eps * 0.8; // FCF is typically 0.5x to 1.5x of EPS
+  // FCF per share is often similar to EPS
+  // For a conservative estimate, use 80% of EPS
+  return eps * 0.8;
 }
 
-function calculateGrowthRate(summaryData: any): number {
-  // Try different sources for growth rate in order of preference
-  const earningsGrowth = summaryData.financialData?.earningsGrowth?.raw;
-  const revenueGrowth = summaryData.financialData?.revenueGrowth?.raw;
-  const pegRatio = summaryData.defaultKeyStatistics?.pegRatio?.raw;
-  
-  if (earningsGrowth) {
-    return earningsGrowth * 100;
+function calculateGrowthRate(quoteData: any): number {
+  // Try to find growth indicators
+  if (quoteData.earningsGrowth) {
+    return quoteData.earningsGrowth * 100;
   }
   
-  if (revenueGrowth) {
-    return revenueGrowth * 100;
+  if (quoteData.revenueGrowth) {
+    return quoteData.revenueGrowth * 100;
   }
   
-  // Use PEG ratio as a hint for growth if available
-  if (pegRatio && summaryData.summaryDetail?.trailingPE?.raw) {
-    return summaryData.summaryDetail.trailingPE.raw / pegRatio;
+  // Use PEG ratio as a hint
+  if (quoteData.pegRatio && quoteData.trailingPE) {
+    return quoteData.trailingPE / quoteData.pegRatio;
   }
   
-  // Conservative default
+  // Use forward vs trailing PE as a growth indicator
+  if (quoteData.forwardPE && quoteData.trailingPE && quoteData.forwardPE < quoteData.trailingPE) {
+    // Rough estimate based on PE ratio difference
+    const difference = (quoteData.trailingPE - quoteData.forwardPE) / quoteData.trailingPE;
+    return difference * 100;
+  }
+  
+  // Default growth rate based on market average
   return 8;
 }
 
-function evaluateEarningsStability(summaryData: any): 'High' | 'Medium' | 'Low' {
-  // Check earnings variability or consistency metrics
-  const earningsQuarterlyGrowth = summaryData.defaultKeyStatistics?.earningsQuarterlyGrowth?.raw;
-  const beta = summaryData.defaultKeyStatistics?.beta?.raw || 1;
+function evaluateEarningsStability(quoteData: any): 'High' | 'Medium' | 'Low' {
+  // Use beta as a proxy for stability
+  const beta = quoteData.beta || 1;
   
-  // Use beta as a proxy for stability if no direct measure available
+  // Lower beta typically indicates more stable earnings
   if (beta < 0.8) return 'High';
   if (beta < 1.2) return 'Medium';
   
-  // Default for most stocks
-  return 'Medium';
+  // Check other indicators of stability
+  const marketCap = quoteData.marketCap || 0;
+  const isLargeCap = marketCap > 10000000000; // $10B or more
+  
+  if (isLargeCap) return 'Medium'; // Large caps tend to be more stable
+  
+  return 'Low';
 }
 
-function evaluateCompetitivePosition(summaryData: any): 'Strong' | 'Good' | 'Average' {
-  // Get profitability metrics
-  const profitMargin = summaryData.financialData?.profitMargins?.raw || 0;
-  const grossMargin = summaryData.financialData?.grossMargins?.raw || 0;
-  const operatingMargin = summaryData.financialData?.operatingMargins?.raw || 0;
+function evaluateCompetitivePosition(quoteData: any): 'Strong' | 'Good' | 'Average' {
+  // Use profit margins as primary indicator
+  const profitMargin = quoteData.profitMargins || 0;
   
-  // Check for moat indicators
-  if (profitMargin > 0.2 || grossMargin > 0.4 || operatingMargin > 0.3) {
-    return 'Strong';
+  // Check for leadership position indicators
+  if (profitMargin > 0.15) {
+    return 'Strong'; // High profit margins suggest strong competitive position
   }
   
-  if (profitMargin > 0.1 || grossMargin > 0.3 || operatingMargin > 0.15) {
+  if (profitMargin > 0.08) {
     return 'Good';
+  }
+  
+  // Consider market cap as secondary indicator
+  const marketCap = quoteData.marketCap || 0;
+  if (marketCap > 100000000000) { // $100B+
+    return 'Good'; // Very large companies often have some competitive advantages
   }
   
   return 'Average';
