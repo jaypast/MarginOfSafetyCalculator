@@ -12,6 +12,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronUp, Calendar } from "lucide-react";
 import { formatCurrency } from '@/lib/utils';
+import { 
+  calculateDCF, 
+  calculatePE, 
+  calculateGraham, 
+  calculateBuyBelow 
+} from '@/lib/calculators';
+import { StockData } from '@/lib/types';
 
 // Define the stock recommendation type
 interface ResearchStock {
@@ -173,7 +180,7 @@ const TopResearch = () => {
         return null;
       }
       
-      const data = await response.json();
+      const data = await response.json() as StockData;
       
       // Skip if there's an error in the data
       if (data.error) {
@@ -181,28 +188,65 @@ const TopResearch = () => {
         return null;
       }
       
-      // Calculate intrinsic value (using DCF method for simplicity)
-      const intrinsicValue = data.fcfPerShare * 15; // Simple multiple of FCF
+      // Standard valuation parameters based on company quality
+      const valuationParams = {
+        // DCF Parameters
+        dcfGrowthRate: Math.min(data.growthRate, 20), // Cap at 20%
+        dcfDiscountRate: 10, // Standard 10% discount rate
+        dcfTerminalMultiple: 12, // Conservative terminal multiple
+        dcfForecastPeriod: 5, // 5-year forecast
+        
+        // P/E Parameters
+        peType: 'current' as 'current' | '5year' | '10year' | 'industry' | 'custom',
+        peCustomValue: 15, // Default PE multiple
+        peAdjustment: 100, // No adjustment
+        
+        // Graham Parameters
+        grahamGrowthRate: Math.min(data.growthRate, 20), // Cap at 20%
+        grahamBaseValue: 8.5, // Benjamin Graham's base value
+      };
+      
+      // Calculate intrinsic value using DCF (our primary method)
+      const dcfValue = calculateDCF(data, valuationParams);
+      
+      // Also calculate using Graham formula as a secondary method
+      const grahamValue = calculateGraham(data, valuationParams);
+      
+      // Apply sanity check to ensure reasonable values (use the one that makes more sense)
+      let intrinsicValue: number;
+
+      if (dcfValue <= 0 || dcfValue > data.price * 3) {
+        // If DCF yields unreasonable values, use Graham formula
+        intrinsicValue = grahamValue > 0 ? grahamValue : data.price * 1.2;
+      } else {
+        intrinsicValue = dcfValue;
+      }
       
       // For exceptional companies (high ROE, low debt, etc.), use smaller margin of safety
       let quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative' = 'Average';
-      let marginOfSafety = 0.25; // Default 25%
+      let marginOfSafety = 25; // Default 25%
       
       if (data.roe > 20 && data.debtToEquity < 0.5 && data.currentRatio > 1.5) {
         quality = 'Exceptional';
-        marginOfSafety = 0.15; // 15% for exceptional companies
+        marginOfSafety = 15; // 15% for exceptional companies
       } else if (data.roe > 15 && data.debtToEquity < 1 && data.currentRatio > 1.2) {
         quality = 'Good';
-        marginOfSafety = 0.20; // 20% for good companies
+        marginOfSafety = 20; // 20% for good companies
       } else if (data.roe < 10 || data.debtToEquity > 2 || data.currentRatio < 1) {
         quality = 'Speculative';
-        marginOfSafety = 0.40; // 40% for speculative companies
+        marginOfSafety = 40; // 40% for speculative companies
       }
       
-      // Calculate buy below price and discount
-      const buyBelowPrice = intrinsicValue * (1 - marginOfSafety);
-      const qualityBuyPrice = intrinsicValue * (1 - (marginOfSafety + 0.10)); // Additional 10% discount for strong buy
-      const discount = data.price < intrinsicValue ? ((intrinsicValue - data.price) / intrinsicValue) * 100 : 0;
+      // Calculate buy below price using our actual calculator
+      const buyBelowPrice = calculateBuyBelow(intrinsicValue, marginOfSafety);
+      
+      // Calculate strong buy price with an additional 10% discount
+      const qualityBuyPrice = calculateBuyBelow(intrinsicValue, marginOfSafety + 10);
+      
+      // Calculate discount percentage
+      const discount = data.price < intrinsicValue 
+        ? ((intrinsicValue - data.price) / intrinsicValue) * 100 
+        : 0;
       
       return {
         symbol: data.symbol,
