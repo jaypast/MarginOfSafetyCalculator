@@ -5,11 +5,13 @@ import * as schema from "@shared/schema";
 
 neonConfig.webSocketConstructor = ws;
 
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
+// Try to get DATABASE_URL from environment or use a fallback for development
+const databaseUrl = process.env.DATABASE_URL || (process.env.NODE_ENV === 'production' ? null : 'postgresql://postgres:postgres@0.0.0.0:5432/postgres');
+
+if (!databaseUrl) {
+  console.error("DATABASE_URL is not set. Please add it as a production secret in your deployment configuration.");
+  process.exit(1);
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const pool = new Pool({ connectionString: databaseUrl });
 export const db = drizzle({ client: pool, schema });
