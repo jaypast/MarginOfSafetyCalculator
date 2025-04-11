@@ -63,7 +63,7 @@ export default function FeedbackList() {
 
   const [isExporting, setIsExporting] = useState(false);
 
-  // Function to export feedback data in a simpler way
+  // Function to export feedback data in the simplest possible way
   const exportToCSV = () => {
     if (!data || !data.feedback || data.feedback.length === 0) return;
     
@@ -87,31 +87,75 @@ export default function FeedbackList() {
         textContent += `Date: ${format(new Date(item.submittedAt), 'MMM d, yyyy')}\n\n`;
       });
       
-      // Open in a new tab for easy copying
-      const newTab = window.open();
-      if (newTab) {
-        newTab.document.write(`
-          <html>
-            <head>
-              <title>Feedback Export</title>
-              <style>
-                body { font-family: monospace; white-space: pre-wrap; padding: 20px; }
-                button { padding: 8px 16px; margin-bottom: 20px; cursor: pointer; }
-              </style>
-            </head>
-            <body>
-              <button onclick="navigator.clipboard.writeText(document.getElementById('content').innerText)">
-                Copy All Text
-              </button>
-              <div id="content">${textContent}</div>
-            </body>
-          </html>
-        `);
-        newTab.document.close();
-      } else {
-        console.error("Unable to open new tab. Please check your browser settings.");
-        alert("Unable to open export in new tab. Please check your browser settings.");
-      }
+      // Create a modal dialog with the content
+      const modal = document.createElement('div');
+      modal.style.position = 'fixed';
+      modal.style.top = '0';
+      modal.style.left = '0';
+      modal.style.width = '100%';
+      modal.style.height = '100%';
+      modal.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+      modal.style.zIndex = '1000';
+      modal.style.display = 'flex';
+      modal.style.justifyContent = 'center';
+      modal.style.alignItems = 'center';
+      
+      const content = document.createElement('div');
+      content.style.backgroundColor = 'white';
+      content.style.padding = '20px';
+      content.style.borderRadius = '5px';
+      content.style.width = '80%';
+      content.style.height = '80%';
+      content.style.overflowY = 'auto';
+      content.style.display = 'flex';
+      content.style.flexDirection = 'column';
+      
+      const header = document.createElement('div');
+      header.style.display = 'flex';
+      header.style.justifyContent = 'space-between';
+      header.style.marginBottom = '15px';
+      
+      const title = document.createElement('h2');
+      title.textContent = 'Feedback Export';
+      
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = 'Close';
+      closeBtn.style.padding = '5px 10px';
+      closeBtn.style.cursor = 'pointer';
+      closeBtn.onclick = () => document.body.removeChild(modal);
+      
+      const copyBtn = document.createElement('button');
+      copyBtn.textContent = 'Copy All Text';
+      copyBtn.style.padding = '5px 10px';
+      copyBtn.style.marginRight = '10px';
+      copyBtn.style.cursor = 'pointer';
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(textContent);
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy All Text'; }, 2000);
+      };
+      
+      const actions = document.createElement('div');
+      actions.appendChild(copyBtn);
+      actions.appendChild(closeBtn);
+      
+      header.appendChild(title);
+      header.appendChild(actions);
+      
+      const textArea = document.createElement('pre');
+      textArea.textContent = textContent;
+      textArea.style.fontFamily = 'monospace';
+      textArea.style.whiteSpace = 'pre-wrap';
+      textArea.style.flex = '1';
+      textArea.style.borderTop = '1px solid #ddd';
+      textArea.style.paddingTop = '15px';
+      textArea.style.marginTop = '5px';
+      
+      content.appendChild(header);
+      content.appendChild(textArea);
+      modal.appendChild(content);
+      
+      document.body.appendChild(modal);
     } catch (error) {
       console.error('Error exporting data:', error);
       alert('Error exporting data. Please try again.');
