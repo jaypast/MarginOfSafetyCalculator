@@ -90,6 +90,7 @@ export const popularStocks = [
   { symbol: "TSMC", name: "Taiwan Semiconductor Manufacturing Company" },
   { symbol: "BP.L", name: "BP p.l.c." },
   { symbol: "VOD.L", name: "Vodafone Group Plc" },
+  { symbol: "TM", name: "Toyota Motor Corporation" },
   { symbol: "7203.T", name: "Toyota Motor Corporation" },
   { symbol: "9984.T", name: "SoftBank Group Corp." },
   { symbol: "0700.HK", name: "Tencent Holdings Limited" },
