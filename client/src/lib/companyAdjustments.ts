@@ -100,6 +100,13 @@ export const specialCases: Record<string, Partial<AdjustmentFactors>> = {
     terminalMultipleCap: 12,
     priceToCap: 2.0  // Stricter cap for Japanese listing
   },
+  // Ford special handling - FCF appears unusually high compared to earnings
+  'F': {
+    fcfToEpsRatio: 0.85, // Lower FCF to EPS ratio to prevent overvaluation
+    terminalMultipleCap: 8, // Lower terminal multiple for Ford
+    fcfMultipleCap: 15, // Lower FCF multiple cap
+    priceToCap: 1.8 // Stricter price cap for Ford
+  },
   // Other special cases can be added here
 };
 
