@@ -121,9 +121,7 @@ const StockInformation: React.FC<StockInformationProps> = ({
           </Button>
         </div>
         <p className="mt-2 text-sm text-neutral-500">
-          Enter a stock ticker symbol (e.g., AAPL, MSFT). Supports international markets:
-          US (AAPL), European (BP.L), Japanese (7203.T), Hong Kong (0700.HK).
-          Press Tab or → to complete suggestions.
+          Enter US ticker (AAPL) or international: BP.L, 7203.T, 0700.HK. Tab to complete.
         </p>
         
         {/* Error Message */}
