@@ -8,19 +8,26 @@ import {
   TableRow
 } from "@/components/ui/table";
 import { Card, CardContent } from '@/components/ui/card';
-import { StockData, ValuationResult, CalculationMethod } from '@/lib/types';
+import { Button } from '@/components/ui/button';
+import { FileText } from 'lucide-react';
+import { StockData, ValuationResult, CalculationMethod, ValuationParams, MarginOfSafetyParams } from '@/lib/types';
 import { formatCurrency, isETF } from '@/lib/utils';
+import { generateCalculationsPDF } from '@/utils/pdfGenerator';
 
 interface ValuationResultsProps {
   valuationResults: ValuationResult[];
   stockData: StockData | undefined;
   activeMethod: CalculationMethod;
+  valuationParams?: ValuationParams;
+  marginOfSafetyParams?: MarginOfSafetyParams;
 }
 
 const ValuationResults: React.FC<ValuationResultsProps> = ({
   valuationResults,
   stockData,
-  activeMethod
+  activeMethod,
+  valuationParams,
+  marginOfSafetyParams
 }) => {
   // Check if the stock is an ETF
   const etfDetected = stockData && isETF(stockData);
@@ -251,6 +258,27 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
             </Table>
           </div>
         </div>
+        
+        {/* Show Work Button - PDF Export */}
+        {stockData && valuationParams && marginOfSafetyParams && !etfDetected && !isSpecialCase && (
+          <div className="mt-6 flex justify-center">
+            <Button 
+              variant="outline" 
+              className="flex items-center gap-2 border-[#1A2942] text-[#1A2942] hover:bg-[#E9ECF1]"
+              onClick={() => {
+                generateCalculationsPDF(
+                  stockData,
+                  valuationParams,
+                  marginOfSafetyParams,
+                  valuationResults
+                );
+              }}
+            >
+              <FileText size={18} />
+              Show Work
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
