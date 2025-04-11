@@ -2,20 +2,11 @@
 // This can be further enhanced with more styling and formatting
 
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import { StockData, ValuationParams, ValuationResult, MarginOfSafetyParams as MoSParams } from '@/lib/types';
 import { formatCurrency, formatPercent } from '@/lib/utils';
 
-// This extends the jsPDF type to include autotable functionality 
-declare module 'jspdf' {
-  interface jsPDF {
-    autoTable: (options: any) => jsPDF & {
-      lastAutoTable: {
-        finalY: number;
-      };
-    };
-  }
-}
+// We don't need to extend jsPDF anymore since we're using the imported autoTable function
 
 export const generateCalculationsPDF = (
   stockData: StockData,
@@ -263,7 +254,7 @@ export const generateCalculationsPDF = (
     `${result.discountPremium > 0 ? '+' : ''}${result.discountPremium.toFixed(1)}%`
   ]);
   
-  doc.autoTable({
+  autoTable(doc, {
     startY: 30,
     head: tableHeaders,
     body: tableData,
@@ -277,7 +268,7 @@ export const generateCalculationsPDF = (
   const avgResult = valuationResults.find(r => r.method === 'Average');
   if (avgResult) {
     // Get the last Y position after the table
-    const lastY = (doc as any).lastAutoTable?.finalY || 160;
+    const lastY = (doc as any).lastAutoTable?.finalY || (autoTable as any).previous?.finalY || 160;
     
     doc.setFontSize(14);
     doc.setTextColor(26, 32, 44);
