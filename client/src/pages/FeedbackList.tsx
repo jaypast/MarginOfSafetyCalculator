@@ -14,8 +14,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Loader2, Download, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
 
 interface FeedbackItem {
   id: number;
@@ -56,6 +56,9 @@ export default function FeedbackList() {
   const { data, isLoading, isError, error, refetch } = useQuery<FeedbackResponse>({
     queryKey: ['/api/feedback'],
     refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    retry: 1,
+    gcTime: 1000 * 60 * 5, // 5 minutes
   });
 
   const [isExporting, setIsExporting] = useState(false);
@@ -95,7 +98,7 @@ export default function FeedbackList() {
       ]);
       
       // Generate table
-      autoTable(doc, {
+      (doc as any).autoTable({
         startY: 55,
         head: [['Name', 'PMF Response', 'Improvement Ideas', 'Date']],
         body: tableData,
@@ -133,7 +136,7 @@ export default function FeedbackList() {
   
   // Calculate PMF score
   const veryDisappointed = feedbackItems.filter(item => item.pmfScore === '1').length;
-  const totalResponses = feedbackItems.filter(item => item.pmfScore).length;
+  const totalResponses = feedbackItems.filter(item => item.pmfScore && item.pmfScore !== '').length;
   const pmfPercentage = totalResponses > 0 
     ? Math.round((veryDisappointed / totalResponses) * 100) 
     : 0;
@@ -194,6 +197,16 @@ export default function FeedbackList() {
             <p className="text-sm text-muted-foreground">
               {veryDisappointed} out of {totalResponses} responses
             </p>
+            <div className="mt-3 text-xs text-muted-foreground border-t pt-2 border-neutral-100">
+              <p className="font-medium mb-1">What is PMF Score?</p>
+              <p>
+                The Product-Market Fit (PMF) score measures how essential your product is to users.
+                It's calculated as the percentage of users who would be "very disappointed" if they could no longer use your product.
+              </p>
+              <p className="mt-1">
+                <span className="font-medium">40%+</span>: Strong PMF. <span className="font-medium">25-40%</span>: Good PMF. <span className="font-medium">&lt;25%</span>: Needs improvement.
+              </p>
+            </div>
           </CardContent>
         </Card>
         
