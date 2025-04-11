@@ -93,13 +93,13 @@ const StockInformation: React.FC<StockInformationProps> = ({
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               className="pr-4 w-full"
-              placeholder="TYPE A STOCK SYMBOL..."
+              placeholder="e.g. AAPL"
             />
             {suggestion && suggestion !== inputValue && (
               <div className="absolute inset-0 flex items-center pointer-events-none">
-                <span className="pl-3 text-gray-400">
-                  {inputValue}
-                  <span className="text-gray-300">
+                <span className="pl-3">
+                  <span className="text-black">{inputValue}</span>
+                  <span className="text-gray-400">
                     {suggestion.slice(inputValue.length)}
                   </span>
                 </span>
@@ -121,8 +121,7 @@ const StockInformation: React.FC<StockInformationProps> = ({
           </Button>
         </div>
         <p className="mt-2 text-sm text-neutral-500">
-          Enter a valid stock ticker symbol (US, European, Japanese, Hong Kong markets supported).
-          Press Tab or → to complete the suggestion.
+          Enter a valid stock ticker symbol. Press Tab or → to complete suggestions.
         </p>
         
         {/* Error Message */}
