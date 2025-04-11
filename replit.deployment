@@ -1,0 +1,3 @@
+run = "NODE_ENV=production node dist/index.js"
+build = ["npm run build"]
+deploymentTarget = "cloudrun"
