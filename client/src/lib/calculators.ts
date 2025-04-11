@@ -8,31 +8,14 @@ export const calculateDCF = (
   const { fcfPerShare, eps, symbol, growthRate } = stockData;
   const { dcfGrowthRate, dcfDiscountRate, dcfTerminalMultiple, dcfForecastPeriod } = params;
   
-  // Special handling for specific stocks that need adjustments
+  // Special handling for Alibaba and similar stocks
   const isAlibaba = symbol === 'BABA' || symbol === '9988.HK';
-  const isToyota = symbol === 'TM' || symbol === '7203.T';
   
   // Determine effective FCF to use
   let effectiveFCF = fcfPerShare;
   
-  // Handle special case for Toyota which often has calculation issues
-  if (isToyota) {
-    // For Toyota, use a more reasonable valuation based on typical automotive industry metrics
-    // Toyota's intrinsic value should be much closer to its actual price
-    const price = stockData.price;
-    
-    // Use a more reasonable FCF estimate for Toyota based on its earnings
-    // Toyota typically has FCF that's 80-90% of its EPS
-    effectiveFCF = eps * 0.85;
-    
-    // Apply a sanity check - if calculated FCF would give extreme valuations, cap it
-    if (effectiveFCF > price * 0.5) {
-      effectiveFCF = price * 0.5; // Cap FCF at 50% of current price to avoid extreme valuations
-    }
-  }
-  
   // For Alibaba or stocks with unusual FCF issues, use EPS-based estimation
-  if (isAlibaba || (!isToyota && fcfPerShare <= 0)) {
+  if (isAlibaba || (fcfPerShare <= 0)) {
     // If EPS is positive, use it as a basis for estimation
     if (eps > 0) {
       if (isAlibaba) {
