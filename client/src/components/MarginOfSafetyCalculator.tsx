@@ -5,6 +5,7 @@ import ValuationMethod from './ValuationMethod';
 import MarginOfSafetyParams from './MarginOfSafetyParams';
 import ValuationResults from './ValuationResults';
 import QualityIndicators from './QualityIndicators';
+import TopSentimentResearch from './TopSentimentResearch';
 import EducationalResources from './EducationalResources';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronUp } from 'lucide-react';
@@ -263,6 +264,9 @@ const MarginOfSafetyCalculator: React.FC = () => {
                 companyQuality={companyQuality}
               />
             )}
+            
+            {/* Top Trending Stocks Section */}
+            <TopSentimentResearch />
             
             {/* Educational Resources Section */}
             <EducationalResources />
