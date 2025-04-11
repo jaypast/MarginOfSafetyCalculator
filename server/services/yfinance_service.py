@@ -215,18 +215,28 @@ def get_stock_data(symbol):
                     # Get TM's fundamentals data which is more accurate for calculations
                     tm_eps = tm_info.get('trailingEps', 0)
                     tm_pe = tm_info.get('trailingPE', 0)
+                    tm_price = tm_info.get('currentPrice', 0)
                     
-                    if tm_eps > 0 and price > 0:
-                        # Use TM's EPS and PE ratio but keep original price
-                        # We already imported sys at the top of the file, so we can use it directly
+                    if tm_eps > 0 and price > 0 and tm_price > 0:
+                        # We'll keep the original price but scale the metrics appropriately
                         print(f"Adjusting 7203.T calculations using TM (Toyota US) data", file=sys.stderr)
-                        eps = tm_eps
-                        pe_ratio = tm_pe
-                        fcf_per_share = tm_info.get('operatingCashflow', 0) / tm_info.get('sharesOutstanding', 1)
                         
-                        # If we got good data from TM, use a more reasonable intrinsic value calculation
-                        if fcf_per_share <= 0:
-                            fcf_per_share = tm_eps * 0.9  # Estimate FCF as 90% of EPS
+                        # Create a proper scale factor based on the price ratio
+                        # This helps ensure the metrics are proportionate
+                        price_ratio = price / tm_price if tm_price > 0 else 1
+                        
+                        # Scale the metrics
+                        eps = tm_eps * price_ratio
+                        pe_ratio = tm_pe  # PE ratio should remain the same
+                        
+                        # Calculate FCF per share from TM data
+                        tm_fcf = tm_info.get('operatingCashflow', 0) / tm_info.get('sharesOutstanding', 1)
+                        if tm_fcf > 0:
+                            fcf_per_share = tm_fcf * price_ratio
+                        else: 
+                            fcf_per_share = tm_eps * 0.9 * price_ratio  # Estimate FCF as 90% of scaled EPS
+                            
+                        print(f"Toyota 7203.T adjusted metrics - Price: {price}, EPS: {eps}, PE: {pe_ratio}, FCF: {fcf_per_share}", file=sys.stderr)
                 except Exception as e:
                     print(f"Failed to adjust Toyota calculations: {str(e)}", file=sys.stderr)
             

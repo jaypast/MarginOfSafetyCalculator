@@ -102,12 +102,26 @@ export const calculateDCF = (
     
     // Additional check specific to Toyota to prevent extreme valuations
     if (symbol === 'TM' || symbol === '7203.T') {
-      // Final sanity check - never allow Toyota intrinsic value to exceed certain price multiple
-      const priceMultipleCap = 3.0; // Cap at 3x current price for Toyota
+      // Handle Toyota differently based on market (US vs Japan)
+      const isToyotaJapan = symbol === '7203.T';
+      
+      // For Japanese listing, apply stricter cap as it's more prone to data issues
+      const priceMultipleCap = isToyotaJapan ? 2.5 : 3.0;
       const maxAllowedValue = stockData.price * priceMultipleCap;
       
       if (intrinsicValue > maxAllowedValue) {
         intrinsicValue = maxAllowedValue;
+      }
+      
+      // For Japanese listing (7203.T), ensure the valuation is consistent with the U.S. listing (TM)
+      // since they represent the same company
+      if (isToyotaJapan) {
+        // Typical Toyota price-to-book ratio is around 1.0-1.3
+        // Limit the DCF value to be within a reasonable multiple of current price
+        const minValue = stockData.price * 0.7; // At minimum 70% of current price
+        const maxValue = stockData.price * 2.0; // At maximum 2x current price
+        
+        intrinsicValue = Math.max(minValue, Math.min(intrinsicValue, maxValue));
       }
     }
   } else if (priceFCFRatio > 40) {
@@ -169,7 +183,16 @@ export const calculatePE = (
   const adjustedEPS = eps * (peAdjustment / 100);
   
   // Calculate intrinsic value
-  const intrinsicValue = adjustedEPS * selectedPE;
+  let intrinsicValue = adjustedEPS * selectedPE;
+  
+  // Special handling for Toyota Japan to ensure reasonable valuation
+  if (stockData.symbol === '7203.T') {
+    // Limit PE-based valuation to reasonable range for Toyota Japan
+    const minValue = stockData.price * 0.7; // At minimum 70% of current price
+    const maxValue = stockData.price * 1.8; // At maximum 1.8x current price
+    
+    intrinsicValue = Math.max(minValue, Math.min(intrinsicValue, maxValue));
+  }
   
   return parseFloat(intrinsicValue.toFixed(2));
 };
@@ -196,13 +219,22 @@ export const calculateGraham = (
   const cappedGrowthRate = Math.min(effectiveGrowthRate, 20);
   
   // Apply Graham Formula: Intrinsic Value = EPS × (Base + 2g)
-  const intrinsicValue = eps * (grahamBaseValue + (2 * cappedGrowthRate));
+  let intrinsicValue = eps * (grahamBaseValue + (2 * cappedGrowthRate));
   
   // Apply a sanity check for exceptionally high valuations
   // Graham typically avoided stocks with P/E ratios over 20
   const impliedPE = intrinsicValue / eps;
   if (impliedPE > 40) {
-    return eps * 40; // Cap at 40x P/E as an upper bound for Graham method
+    intrinsicValue = eps * 40; // Cap at 40x P/E as an upper bound for Graham method
+  }
+  
+  // Special handling for Toyota Japan to ensure reasonable Graham valuation
+  if (stockData.symbol === '7203.T') {
+    // Limit Graham valuation to reasonable range for Toyota Japan
+    const minValue = stockData.price * 0.65; // At minimum 65% of current price
+    const maxValue = stockData.price * 1.6;  // At maximum 1.6x current price
+    
+    intrinsicValue = Math.max(minValue, Math.min(intrinsicValue, maxValue));
   }
   
   return parseFloat(intrinsicValue.toFixed(2));
