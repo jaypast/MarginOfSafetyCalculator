@@ -3,6 +3,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { StockData } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
+import { Combobox } from '@/components/ui/combobox';
+import topStocks from '@/lib/stockSymbols';
 
 interface StockInformationProps {
   stockData: StockData | undefined;
@@ -21,17 +23,27 @@ const StockInformation: React.FC<StockInformationProps> = ({
 }) => {
   const [symbolInput, setSymbolInput] = useState('');
 
+  // Handle symbol selection from combobox
+  const handleSymbolSelect = (value: string) => {
+    setSymbolInput(value);
+    // Automatically fetch data when a stock is selected from dropdown
+    onFetchData(value);
+  };
+
+  // Also support manual entry
   const handleSymbolChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     // Convert input to uppercase automatically
     setSymbolInput(e.target.value.toUpperCase());
   };
 
   const handleFetchData = () => {
-    onFetchData(symbolInput);
+    if (symbolInput.trim()) {
+      onFetchData(symbolInput);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && symbolInput.trim()) {
       handleFetchData();
     }
   };
@@ -43,6 +55,15 @@ const StockInformation: React.FC<StockInformationProps> = ({
       {/* Stock Symbol Input */}
       <div>
         <label htmlFor="stockSymbol" className="block text-sm font-medium text-neutral-700 mb-2">Stock Symbol</label>
+        <div className="mb-2">
+          <Combobox
+            options={topStocks}
+            value={symbolInput}
+            onChange={handleSymbolSelect}
+            placeholder="Search or select a stock..."
+            emptyMessage="No stock found. Try typing a different symbol."
+          />
+        </div>
         <div className="flex">
           <Input
             id="stockSymbol"
@@ -50,7 +71,7 @@ const StockInformation: React.FC<StockInformationProps> = ({
             onChange={handleSymbolChange}
             onKeyDown={handleKeyDown}
             className="custom-input rounded-r-none focus:z-10"
-            placeholder="E.G. AAPL"
+            placeholder="OR TYPE SYMBOL MANUALLY"
           />
           <Button
             onClick={handleFetchData}
@@ -66,7 +87,7 @@ const StockInformation: React.FC<StockInformationProps> = ({
             )}
           </Button>
         </div>
-        <p className="mt-2 text-sm text-neutral-500">Enter a valid stock ticker symbol (US, European, Japanese, Hong Kong markets supported)</p>
+        <p className="mt-2 text-sm text-neutral-500">Select from dropdown or enter a stock symbol manually (US, European, Japanese, Hong Kong markets supported)</p>
         
         {/* Error Message */}
         {(error || (stockData && stockData.error)) && (
