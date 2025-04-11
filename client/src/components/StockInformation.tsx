@@ -1,12 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StockData } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
-import { popularStocks, searchStocks } from '@/lib/stockSymbols';
-import { Check, ChevronsUpDown } from "lucide-react";
+import { popularStocks } from '@/lib/stockSymbols';
 
 interface StockInformationProps {
   stockData: StockData | undefined;
@@ -23,34 +20,60 @@ const StockInformation: React.FC<StockInformationProps> = ({
   error,
   errorMessage
 }) => {
-  const [symbolInput, setSymbolInput] = useState('');
-  const [open, setOpen] = useState(false);
-  const [filteredStocks, setFilteredStocks] = useState(popularStocks.slice(0, 10));
+  const [inputValue, setInputValue] = useState('');
+  const [suggestion, setSuggestion] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Update filtered stocks when symbolInput changes
+  // Find suggestion as user types
   useEffect(() => {
-    if (symbolInput) {
-      setFilteredStocks(searchStocks(symbolInput));
+    if (inputValue) {
+      const upperValue = inputValue.toUpperCase();
+      // Find first matching stock that starts with the current input
+      const matchingStock = popularStocks.find(stock => 
+        stock.symbol.startsWith(upperValue)
+      );
+      
+      // Set suggestion to the complete symbol if found
+      if (matchingStock) {
+        setSuggestion(matchingStock.symbol);
+      } else {
+        setSuggestion('');
+      }
     } else {
-      setFilteredStocks(popularStocks.slice(0, 10));
+      setSuggestion('');
     }
-  }, [symbolInput]);
+  }, [inputValue]);
 
-  const handleSymbolChange = (value: string) => {
-    // Convert input to uppercase automatically
-    setSymbolInput(value.toUpperCase());
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.toUpperCase();
+    setInputValue(value);
   };
 
-  const handleStockSelect = (stock: { symbol: string; name: string }) => {
-    setSymbolInput(stock.symbol);
-    setOpen(false);
-    onFetchData(stock.symbol);
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      if (inputValue) {
+        onFetchData(inputValue);
+      }
+    } else if (e.key === 'Tab' && suggestion && suggestion !== inputValue) {
+      e.preventDefault();
+      setInputValue(suggestion);
+      // Position cursor at the end
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.selectionStart = suggestion.length;
+          inputRef.current.selectionEnd = suggestion.length;
+        }
+      }, 0);
+    } else if (e.key === 'ArrowRight' && suggestion && suggestion !== inputValue) {
+      // Complete suggestion with arrow right
+      setInputValue(suggestion);
+      e.preventDefault();
+    }
   };
 
   const handleFetchData = () => {
-    if (symbolInput) {
-      onFetchData(symbolInput);
-      setOpen(false);
+    if (inputValue) {
+      onFetchData(inputValue);
     }
   };
 
@@ -61,75 +84,46 @@ const StockInformation: React.FC<StockInformationProps> = ({
       {/* Stock Symbol Input */}
       <div>
         <label htmlFor="stockSymbol" className="block text-sm font-medium text-neutral-700 mb-2">Stock Symbol</label>
-        <div className="w-full">
-          <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-              <div className="flex">
-                <Input
-                  id="stockSymbol"
-                  value={symbolInput}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleSymbolChange(e.target.value)}
-                  onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                    if (e.key === 'Enter') {
-                      handleFetchData();
-                    }
-                  }}
-                  className="rounded-r-none focus:z-10 w-full"
-                  placeholder="TYPE A STOCK SYMBOL..."
-                  onClick={() => setOpen(true)}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={isLoading}
-                  className="px-2 rounded-l-none border-l-0"
-                  onClick={() => setOpen(!open)}
-                >
-                  <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-                <Button
-                  onClick={handleFetchData}
-                  disabled={isLoading}
-                  className="ml-1 bg-[#21324F] hover:bg-[#1A2942] text-white font-medium"
-                >
-                  {isLoading ? (
-                    <span className="flex items-center">Loading...</span>
-                  ) : (
-                    <span className="flex items-center">
-                      <i className="ri-search-line mr-1"></i> Find
-                    </span>
-                  )}
-                </Button>
+        <div className="relative flex">
+          <div className="relative flex-grow">
+            <Input
+              ref={inputRef}
+              id="stockSymbol"
+              value={inputValue}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              className="pr-4 w-full"
+              placeholder="TYPE A STOCK SYMBOL..."
+            />
+            {suggestion && suggestion !== inputValue && (
+              <div className="absolute inset-0 flex items-center pointer-events-none">
+                <span className="pl-3 text-gray-400">
+                  {inputValue}
+                  <span className="text-gray-300">
+                    {suggestion.slice(inputValue.length)}
+                  </span>
+                </span>
               </div>
-            </PopoverTrigger>
-            <PopoverContent className="p-0 w-full" align="start">
-              <Command>
-                <CommandInput placeholder="Search stock..." />
-                <CommandEmpty>No stock found.</CommandEmpty>
-                <CommandGroup>
-                  {filteredStocks.map((stock) => (
-                    <CommandItem
-                      key={stock.symbol}
-                      onSelect={() => handleStockSelect(stock)}
-                      className="flex items-start"
-                    >
-                      <div className="flex flex-col">
-                        <div className="flex items-center">
-                          <span className="font-bold mr-2">{stock.symbol}</span>
-                          {stock.symbol === symbolInput && (
-                            <Check className="h-4 w-4" />
-                          )}
-                        </div>
-                        <span className="text-xs text-gray-500">{stock.name}</span>
-                      </div>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </Command>
-            </PopoverContent>
-          </Popover>
+            )}
+          </div>
+          <Button
+            onClick={handleFetchData}
+            disabled={isLoading}
+            className="ml-2 bg-[#21324F] hover:bg-[#1A2942] text-white font-medium"
+          >
+            {isLoading ? (
+              <span className="flex items-center">Loading...</span>
+            ) : (
+              <span className="flex items-center">
+                <i className="ri-search-line mr-1"></i> Find
+              </span>
+            )}
+          </Button>
         </div>
-        <p className="mt-2 text-sm text-neutral-500">Enter a valid stock ticker symbol (US, European, Japanese, Hong Kong markets supported)</p>
+        <p className="mt-2 text-sm text-neutral-500">
+          Enter a valid stock ticker symbol (US, European, Japanese, Hong Kong markets supported).
+          Press Tab or → to complete the suggestion.
+        </p>
         
         {/* Error Message */}
         {(error || (stockData && stockData.error)) && (
