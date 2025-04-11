@@ -52,16 +52,23 @@ const TopResearch = () => {
     setError(null);
     
     try {
-      // Check if we have cached data
-      const cachedData = localStorage.getItem('topStockRecommendations');
-      const lastUpdatedStr = localStorage.getItem('topStockRecommendationsUpdated');
+      let cachedData = null;
+      let lastUpdatedStr = null;
       const currentDate = new Date();
+      
+      // Safely try to access localStorage
+      try {
+        cachedData = localStorage.getItem('topStockRecommendations');
+        lastUpdatedStr = localStorage.getItem('topStockRecommendationsUpdated');
+      } catch (storageError) {
+        console.warn("LocalStorage is not available:", storageError);
+      }
       
       // Parse the last updated date
       const lastUpdatedDate = lastUpdatedStr ? new Date(lastUpdatedStr) : null;
       
       // Set the last updated date to display in the UI
-      setLastUpdated(lastUpdatedStr);
+      setLastUpdated(lastUpdatedStr || currentDate.toISOString());
       
       // Calculate if a week has passed since last update
       const needsRefresh = !lastUpdatedDate || 
@@ -69,138 +76,174 @@ const TopResearch = () => {
       
       // If we have cached data and it's less than a week old, use it
       if (cachedData && !needsRefresh) {
-        setStockRecommendations(JSON.parse(cachedData));
-        setIsLoading(false);
-        return;
+        try {
+          setStockRecommendations(JSON.parse(cachedData));
+          setIsLoading(false);
+          return;
+        } catch (parseError) {
+          console.warn("Error parsing cached data:", parseError);
+        }
       }
       
       // In a real implementation, this would make an API call
       // For now, we'll use sample data since the backend API isn't implemented yet
       // This simulates an API call with a slight delay
       setTimeout(() => {
-        // Sample data - in a real implementation, this would come from the API
-        const sampleStocks: ResearchStock[] = [
-          { 
-            symbol: "AAPL", 
-            name: "Apple Inc.", 
-            price: 169.58, 
-            intrinsicValue: 210.25, 
-            buyBelowPrice: 178.71, 
-            qualityBuyPrice: 168.20, 
-            discount: 19.34,
-            quality: 'Exceptional'
-          },
-          { 
-            symbol: "MSFT", 
-            name: "Microsoft Corporation", 
-            price: 404.87, 
-            intrinsicValue: 475.32, 
-            buyBelowPrice: 404.02, 
-            qualityBuyPrice: 380.26, 
-            discount: 14.82,
-            quality: 'Exceptional'
-          },
-          { 
-            symbol: "GOOG", 
-            name: "Alphabet Inc.", 
-            price: 151.77, 
-            intrinsicValue: 185.24, 
-            buyBelowPrice: 157.45, 
-            qualityBuyPrice: 148.19, 
-            discount: 18.07,
-            quality: 'Exceptional'
-          },
-          { 
-            symbol: "AMZN", 
-            name: "Amazon.com Inc.", 
-            price: 175.35, 
-            intrinsicValue: 210.42, 
-            buyBelowPrice: 178.86, 
-            qualityBuyPrice: 168.34, 
-            discount: 16.67,
-            quality: 'Good'
-          },
-          { 
-            symbol: "NVDA", 
-            name: "NVIDIA Corporation", 
-            price: 870.39, 
-            intrinsicValue: 950.75, 
-            buyBelowPrice: 808.14, 
-            qualityBuyPrice: 760.60, 
-            discount: 8.45,
-            quality: 'Exceptional'
-          },
-          { 
-            symbol: "BRK-B", 
-            name: "Berkshire Hathaway Inc.", 
-            price: 407.13, 
-            intrinsicValue: 490.45, 
-            buyBelowPrice: 416.88, 
-            qualityBuyPrice: 392.36, 
-            discount: 17.00,
-            quality: 'Exceptional'
-          },
-          { 
-            symbol: "META", 
-            name: "Meta Platforms Inc.", 
-            price: 474.03, 
-            intrinsicValue: 565.72, 
-            buyBelowPrice: 480.86, 
-            qualityBuyPrice: 452.58, 
-            discount: 16.20,
-            quality: 'Good'
-          },
-          { 
-            symbol: "TSM", 
-            name: "Taiwan Semiconductor", 
-            price: 139.85, 
-            intrinsicValue: 172.34, 
-            buyBelowPrice: 146.49, 
-            qualityBuyPrice: 137.87, 
-            discount: 18.85,
-            quality: 'Exceptional'
-          },
-          { 
-            symbol: "V", 
-            name: "Visa Inc.", 
-            price: 274.52, 
-            intrinsicValue: 340.25, 
-            buyBelowPrice: 289.21, 
-            qualityBuyPrice: 272.20, 
-            discount: 19.32,
-            quality: 'Exceptional'
-          },
-          { 
-            symbol: "WMT", 
-            name: "Walmart Inc.", 
-            price: 59.68, 
-            intrinsicValue: 70.42, 
-            buyBelowPrice: 59.86, 
-            qualityBuyPrice: 56.34, 
-            discount: 15.25,
-            quality: 'Good'
-          }
-        ];
+        // Get sample data from our helper function
+        const sampleStocks: ResearchStock[] = getFullSampleStocks();
         
-        // Cache the results and update timestamp
-        localStorage.setItem('topStockRecommendations', JSON.stringify(sampleStocks));
-        localStorage.setItem('topStockRecommendationsUpdated', currentDate.toISOString());
+        // Try to cache the results and update timestamp
+        try {
+          localStorage.setItem('topStockRecommendations', JSON.stringify(sampleStocks));
+          localStorage.setItem('topStockRecommendationsUpdated', currentDate.toISOString());
+        } catch (storageError) {
+          console.warn("Could not save to localStorage:", storageError);
+        }
         
         setStockRecommendations(sampleStocks);
         setIsLoading(false);
       }, 800);
       
     } catch (err) {
+      console.error("Error in fetchTopStocks:", err);
+      
       // If there's an error, try to use cached data if available
-      const cachedData = localStorage.getItem('topStockRecommendations');
-      if (cachedData) {
-        setStockRecommendations(JSON.parse(cachedData));
-        setError("Using cached data. Could not refresh recommendations.");
-      } else {
-        setError("Failed to fetch top stock recommendations");
+      try {
+        const cachedData = localStorage.getItem('topStockRecommendations');
+        if (cachedData) {
+          setStockRecommendations(JSON.parse(cachedData));
+          setError("Using cached data. Could not refresh recommendations.");
+        } else {
+          // Always set some data even if localStorage fails
+          const fallbackStocks = getSampleStocks();
+          setStockRecommendations(fallbackStocks);
+        }
+      } catch (storageError) {
+        // If localStorage access fails, use the fallback data
+        const fallbackStocks = getSampleStocks();
+        setStockRecommendations(fallbackStocks);
+        setError("Could not access cached data. Using sample data.");
       }
+      
       setIsLoading(false);
     }
+  };
+  
+  // Helper function to get sample stocks data (short version)
+  const getSampleStocks = (): ResearchStock[] => {
+    return [
+      { 
+        symbol: "AAPL", 
+        name: "Apple Inc.", 
+        price: 169.58, 
+        intrinsicValue: 210.25, 
+        buyBelowPrice: 178.71, 
+        qualityBuyPrice: 168.20, 
+        discount: 19.34,
+        quality: 'Exceptional'
+      },
+      { 
+        symbol: "MSFT", 
+        name: "Microsoft Corporation", 
+        price: 404.87, 
+        intrinsicValue: 475.32, 
+        buyBelowPrice: 404.02, 
+        qualityBuyPrice: 380.26, 
+        discount: 14.82,
+        quality: 'Exceptional'
+      },
+      { 
+        symbol: "GOOG", 
+        name: "Alphabet Inc.", 
+        price: 151.77, 
+        intrinsicValue: 185.24, 
+        buyBelowPrice: 157.45, 
+        qualityBuyPrice: 148.19, 
+        discount: 18.07,
+        quality: 'Exceptional'
+      },
+      { 
+        symbol: "AMZN", 
+        name: "Amazon.com Inc.", 
+        price: 175.35, 
+        intrinsicValue: 210.42, 
+        buyBelowPrice: 178.86, 
+        qualityBuyPrice: 168.34, 
+        discount: 16.67,
+        quality: 'Good'
+      },
+      { 
+        symbol: "NVDA", 
+        name: "NVIDIA Corporation", 
+        price: 870.39, 
+        intrinsicValue: 950.75, 
+        buyBelowPrice: 808.14, 
+        qualityBuyPrice: 760.60, 
+        discount: 8.45,
+        quality: 'Exceptional'
+      }
+    ];
+  };
+  
+  // Helper function to get full sample stocks data
+  const getFullSampleStocks = (): ResearchStock[] => {
+    // Start with the basic stocks
+    const basicStocks = getSampleStocks();
+    
+    // Add more stocks for the full list
+    return [
+      ...basicStocks,
+      { 
+        symbol: "BRK-B", 
+        name: "Berkshire Hathaway Inc.", 
+        price: 407.13, 
+        intrinsicValue: 490.45, 
+        buyBelowPrice: 416.88, 
+        qualityBuyPrice: 392.36, 
+        discount: 17.00,
+        quality: 'Exceptional'
+      },
+      { 
+        symbol: "META", 
+        name: "Meta Platforms Inc.", 
+        price: 474.03, 
+        intrinsicValue: 565.72, 
+        buyBelowPrice: 480.86, 
+        qualityBuyPrice: 452.58, 
+        discount: 16.20,
+        quality: 'Good'
+      },
+      { 
+        symbol: "TSM", 
+        name: "Taiwan Semiconductor", 
+        price: 139.85, 
+        intrinsicValue: 172.34, 
+        buyBelowPrice: 146.49, 
+        qualityBuyPrice: 137.87, 
+        discount: 18.85,
+        quality: 'Exceptional'
+      },
+      { 
+        symbol: "V", 
+        name: "Visa Inc.", 
+        price: 274.52, 
+        intrinsicValue: 340.25, 
+        buyBelowPrice: 289.21, 
+        qualityBuyPrice: 272.20, 
+        discount: 19.32,
+        quality: 'Exceptional'
+      },
+      { 
+        symbol: "WMT", 
+        name: "Walmart Inc.", 
+        price: 59.68, 
+        intrinsicValue: 70.42, 
+        buyBelowPrice: 59.86, 
+        qualityBuyPrice: 56.34, 
+        discount: 15.25,
+        quality: 'Good'
+      }
+    ];
   };
 
   // Initialize on component mount
