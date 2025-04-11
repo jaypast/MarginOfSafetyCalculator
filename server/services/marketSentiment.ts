@@ -19,12 +19,6 @@ export interface RealTimeSentiment {
  */
 export async function getMarketSentiment(): Promise<RealTimeSentiment[]> {
   try {
-    // Check if API key is available
-    if (!process.env.RAPIDAPI_KEY) {
-      console.warn('RAPIDAPI_KEY is not set. Will return fallback data.');
-      return await getMostActiveStocks();
-    }
-    
     // Using Yahoo Finance API via RapidAPI to get trending tickers
     const options = {
       method: 'GET',
@@ -113,38 +107,11 @@ export async function getMarketSentiment(): Promise<RealTimeSentiment[]> {
 }
 
 /**
- * Returns static fallback data for situations where the API key is not available
- * This is used for development, demos, and when no API key is configured
- */
-function getStaticFallbackData(): RealTimeSentiment[] {
-  const currentDate = new Date().toISOString();
-  return [
-    { symbol: 'AAPL', name: 'Apple Inc.', sentimentScore: 78, mentionCount: 32150000, priceMovement: 1.5, weeklyTrend: 'up', lastUpdated: currentDate },
-    { symbol: 'MSFT', name: 'Microsoft Corporation', sentimentScore: 82, mentionCount: 29800000, priceMovement: 2.1, weeklyTrend: 'up', lastUpdated: currentDate },
-    { symbol: 'GOOGL', name: 'Alphabet Inc.', sentimentScore: 75, mentionCount: 27500000, priceMovement: 1.2, weeklyTrend: 'up', lastUpdated: currentDate },
-    { symbol: 'AMZN', name: 'Amazon.com Inc.', sentimentScore: 71, mentionCount: 26800000, priceMovement: 0.8, weeklyTrend: 'stable', lastUpdated: currentDate },
-    { symbol: 'META', name: 'Meta Platforms Inc.', sentimentScore: 68, mentionCount: 24500000, priceMovement: 0.5, weeklyTrend: 'stable', lastUpdated: currentDate },
-    { symbol: 'NVDA', name: 'NVIDIA Corporation', sentimentScore: 88, mentionCount: 23700000, priceMovement: 3.2, weeklyTrend: 'up', lastUpdated: currentDate },
-    { symbol: 'TSLA', name: 'Tesla Inc.', sentimentScore: 62, mentionCount: 22900000, priceMovement: -1.2, weeklyTrend: 'down', lastUpdated: currentDate },
-    { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.', sentimentScore: 65, mentionCount: 8500000, priceMovement: 0.3, weeklyTrend: 'stable', lastUpdated: currentDate },
-    { symbol: 'JPM', name: 'JPMorgan Chase & Co.', sentimentScore: 60, mentionCount: 12400000, priceMovement: -0.5, weeklyTrend: 'stable', lastUpdated: currentDate },
-    { symbol: 'V', name: 'Visa Inc.', sentimentScore: 63, mentionCount: 9800000, priceMovement: 0.2, weeklyTrend: 'stable', lastUpdated: currentDate }
-  ];
-}
-
-/**
  * Fallback function that returns most active stocks when API fails
  * This is used as a backup when the main API is unavailable
  */
 export async function getMostActiveStocks(): Promise<RealTimeSentiment[]> {
   try {
-    // Check if API key is available
-    if (!process.env.RAPIDAPI_KEY) {
-      console.warn('RAPIDAPI_KEY is not set. Will return static fallback data.');
-      // Return static fallback data for development/demo
-      return getStaticFallbackData();
-    }
-
     // Using Yahoo Finance API via RapidAPI to get most active stocks
     const options = {
       method: 'GET',

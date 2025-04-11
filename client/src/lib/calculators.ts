@@ -84,7 +84,7 @@ export const calculateDCF = (
   }
   
   // Special handling for Japanese stocks to ensure minimum value
-  if (symbol && typeof symbol === 'string' && symbol.endsWith('.T')) {
+  if (symbol.endsWith('.T')) {
     const minValue = stockData.price * 0.65; // At minimum 65% of current price
     intrinsicValue = Math.max(minValue, intrinsicValue);
   }
@@ -160,7 +160,7 @@ export const calculatePE = (
   }
   
   // For Japanese stocks, ensure a minimum reasonable value
-  if (stockData.symbol && typeof stockData.symbol === 'string' && stockData.symbol.endsWith('.T')) {
+  if (stockData.symbol.endsWith('.T')) {
     const minValue = stockData.price * 0.7; // At minimum 70% of current price
     intrinsicValue = Math.max(minValue, intrinsicValue);
   }
@@ -209,7 +209,7 @@ export const calculateGraham = (
   }
   
   // For Japanese stocks, ensure a minimum reasonable value
-  if (stockData.symbol && typeof stockData.symbol === 'string' && stockData.symbol.endsWith('.T')) {
+  if (stockData.symbol.endsWith('.T')) {
     const minValue = stockData.price * 0.65; // At minimum 65% of current price
     intrinsicValue = Math.max(minValue, intrinsicValue);
   }

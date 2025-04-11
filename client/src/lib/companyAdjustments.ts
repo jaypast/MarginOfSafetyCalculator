@@ -100,13 +100,6 @@ export const specialCases: Record<string, Partial<AdjustmentFactors>> = {
     terminalMultipleCap: 12,
     priceToCap: 2.0  // Stricter cap for Japanese listing
   },
-  // Ford special handling - FCF appears unusually high compared to earnings
-  'F': {
-    fcfToEpsRatio: 0.85, // Lower FCF to EPS ratio to prevent overvaluation
-    terminalMultipleCap: 8, // Lower terminal multiple for Ford
-    fcfMultipleCap: 15, // Lower FCF multiple cap
-    priceToCap: 1.8 // Stricter price cap for Ford
-  },
   // Other special cases can be added here
 };
 
@@ -170,18 +163,17 @@ export function determineIndustry(stockData: StockData): string {
   // (future enhancement when sector data becomes available)
   
   // Check for symbol patterns to detect industry
-  const symbol = stockData.symbol || '';
+  const symbol = stockData.symbol;
   
   // Check for Japanese auto manufacturers by pattern
-  if (symbol && typeof symbol === 'string' && symbol.endsWith('.T') && 
+  if (symbol.endsWith('.T') && 
       (symbol.startsWith('7') || symbol.includes('AUTO') || symbol.includes('MOTOR'))) {
     return 'AUTO_MANUFACTURER';
   }
   
   // Check for financial companies by pattern
-  if (symbol && typeof symbol === 'string' && 
-      (symbol.includes('BANK') || symbol.includes('FINANCIAL') || 
-       symbol.includes('INSURANCE') || symbol.includes('CAPITAL'))) {
+  if (symbol.includes('BANK') || symbol.includes('FINANCIAL') || 
+      symbol.includes('INSURANCE') || symbol.includes('CAPITAL')) {
     return 'FINANCIAL';
   }
   
@@ -235,7 +227,7 @@ export function getAdjustmentFactors(stockData: StockData): AdjustmentFactors {
   }
   
   // Handle market-specific adjustments
-  if (stockData.symbol && typeof stockData.symbol === 'string' && stockData.symbol.endsWith('.T')) {
+  if (stockData.symbol.endsWith('.T')) {
     // Japanese market tends to have lower valuations
     return {
       ...baseAdjustments,
