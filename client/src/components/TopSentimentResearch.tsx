@@ -11,7 +11,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronUp, Calendar, TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { StockSentiment, AnalyzedStock, getTopStocksBySentiment } from '@/lib/sentimentAnalysis';
+import { StockSentiment, AnalyzedStock } from '@/lib/sentimentAnalysis';
 import { formatCurrency, formatPercent } from '@/lib/utils';
 import { StockData } from '@/lib/types';
 import { 
@@ -50,16 +50,24 @@ const TopSentimentResearch: React.FC = () => {
     setIsLoading(true);
     
     try {
-      // Get top stocks by sentiment
-      const topStocks = getTopStocksBySentiment(10);
+      // Get top stocks from API sentiment analysis
+      const response = await fetch('/api/sentiment');
+      if (!response.ok) {
+        throw new Error('Failed to fetch sentiment data');
+      }
       
-      if (topStocks.length > 0) {
-        setLastUpdated(topStocks[0].lastUpdated);
+      const topStocks: StockSentiment[] = await response.json();
+      
+      // Only use up to 10 stocks
+      const topTenStocks = topStocks.slice(0, 10);
+      
+      if (topTenStocks.length > 0) {
+        setLastUpdated(topTenStocks[0].lastUpdated);
       }
       
       // For each stock, fetch current data and calculate safety metrics
       const analyzedResults = await Promise.all(
-        topStocks.map(async (stock) => {
+        topTenStocks.map(async (stock: StockSentiment) => {
           try {
             // Fetch stock data
             const response = await fetch(`/api/stock/${stock.symbol}`);
@@ -177,7 +185,7 @@ const TopSentimentResearch: React.FC = () => {
       );
       
       // Sort by a combination of sentiment and value gap (if available)
-      const sortedResults = analyzedResults.sort((a, b) => {
+      const sortedResults = analyzedResults.sort((a: AnalyzedStock, b: AnalyzedStock) => {
         // First prioritize stocks with value calculations
         if (a.valueGap !== null && b.valueGap === null) return -1;
         if (a.valueGap === null && b.valueGap !== null) return 1;
@@ -260,7 +268,7 @@ const TopSentimentResearch: React.FC = () => {
           className="text-xl font-semibold text-[#1A2942] cursor-pointer" 
           onClick={toggleExpanded}
         >
-          Top Social Media Stocks Research
+          Top Trending Stocks Analysis
         </h2>
         <div className="flex items-center gap-2">
           {lastUpdated && (
@@ -369,9 +377,9 @@ const TopSentimentResearch: React.FC = () => {
             <div className="bg-blue-50 p-3 rounded-md border border-blue-100">
               <p className="text-xs text-blue-700 font-medium mb-1">RESEARCH METHODOLOGY</p>
               <p className="text-xs text-blue-700">
-                Social Score measures popularity and sentiment on social media. 
-                Quality is based on financial metrics. 
-                Value Gap shows the difference between current price and intrinsic value.
+                Based on real-time trending stock data from Yahoo Finance. Social Score combines market sentiment, 
+                volume, and price momentum. Quality assessment evaluates financial health metrics.
+                Value Gap shows the difference between current price and calculated intrinsic value.
                 Negative gaps suggest potential undervaluation.
               </p>
             </div>

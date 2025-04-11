@@ -135,7 +135,7 @@ export async function getMostActiveStocks(): Promise<RealTimeSentiment[]> {
     
     // Combine all movers (gainers, losers, and actives)
     let allMovers: any[] = [];
-    response.data.finance.result.forEach(category => {
+    response.data.finance.result.forEach((category: any) => {
       if (category.quotes) {
         allMovers = [...allMovers, ...category.quotes];
       }
@@ -152,7 +152,7 @@ export async function getMostActiveStocks(): Promise<RealTimeSentiment[]> {
       .slice(0, 20);
     
     // Process similar to trending tickers
-    const sentimentResults = topMovers.map(mover => {
+    const sentimentResults = topMovers.map((mover: any) => {
       const symbol = mover.symbol;
       const stockInfo = popularStocks.find(stock => stock.symbol === symbol);
       const name = stockInfo ? stockInfo.name : mover.shortName || 'Unknown';
