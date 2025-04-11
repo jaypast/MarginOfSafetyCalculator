@@ -1,12 +1,13 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { StockResponse } from '../../shared/schema';
+import { withCache } from '../utils/cacheManager';
 
 // Promisify the exec function to use with async/await
 const execAsync = promisify(exec);
 
-// Function to get stock data from Yahoo Finance using the Python yfinance package
-export async function getYahooFinanceData(symbol: string): Promise<StockResponse> {
+// The base function to get stock data from Yahoo Finance using the Python yfinance package
+async function fetchYahooFinanceData(symbol: string): Promise<StockResponse> {
   try {
     console.log(`Fetching Yahoo Finance data for ${symbol} using yfinance`);
     
@@ -36,3 +37,16 @@ export async function getYahooFinanceData(symbol: string): Promise<StockResponse
     throw new Error(`Failed to fetch data for ${symbol}`);
   }
 }
+
+// TTL of 5 minutes (300,000 ms) for stock data
+const STOCK_DATA_TTL = 5 * 60 * 1000;
+
+// Create a cache key generator function
+const createStockCacheKey = (symbol: string) => `yahoo_finance:${symbol.toUpperCase()}`;
+
+// Export the cached version of the function
+export const getYahooFinanceData = withCache(
+  fetchYahooFinanceData,
+  createStockCacheKey,
+  STOCK_DATA_TTL
+);
