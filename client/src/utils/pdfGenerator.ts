@@ -1,20 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { StockData, ValuationParams, ValuationResult, MarginOfSafetyParams as MoSParams } from '@/lib/types';
 import { formatCurrency, formatPercent } from '@/lib/utils';
-import 'jspdf-autotable';
-
-// Import the autotable plugin
-// @ts-ignore
-import { jsPDF as jsPDFType } from 'jspdf';
-// @ts-ignore
-import { UserOptions } from 'jspdf-autotable';
-
-interface jsPDFWithAutoTable extends jsPDFType {
-  autoTable: (options: UserOptions) => jsPDFWithAutoTable;
-  lastAutoTable: {
-    finalY: number;
-  };
-}
 
 export const generateCalculationsPDF = (
   stockData: StockData,
@@ -24,7 +10,7 @@ export const generateCalculationsPDF = (
 ): void => {
   try {
     // Initialize PDF document
-    const doc = new jsPDF() as jsPDFWithAutoTable;
+    const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     
     // Add header
@@ -254,31 +240,46 @@ export const generateCalculationsPDF = (
     doc.setTextColor(26, 32, 44);
     doc.text("Valuation Summary", 14, 20);
     
-    // Create a summary table
-    const tableHeaders = [['Valuation Method', 'Intrinsic Value', 'Buy Below', 'Discount/Premium']];
-    const tableData = valuationResults.map(result => [
-      result.method,
-      formatCurrency(result.intrinsicValue),
-      formatCurrency(result.buyBelow),
-      `${result.discountPremium > 0 ? '+' : ''}${result.discountPremium.toFixed(1)}%`
-    ]);
+    // Create a summary section manually
+    let summaryY = 30;
     
-    // Create table with autotable
-    doc.autoTable({
-      startY: 30,
-      head: tableHeaders,
-      body: tableData,
-      theme: 'striped',
-      headStyles: { fillColor: [42, 62, 92], textColor: [255, 255, 255] },
-      bodyStyles: { textColor: [50, 50, 50] },
-      alternateRowStyles: { fillColor: [240, 240, 240] }
+    // Draw table headers
+    doc.setFillColor(42, 62, 92);
+    doc.setDrawColor(42, 62, 92);
+    doc.rect(14, summaryY, pageWidth - 28, 8, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    
+    doc.text("Valuation Method", 16, summaryY + 5.5);
+    doc.text("Intrinsic Value", pageWidth/2 - 20, summaryY + 5.5);
+    doc.text("Buy Below", pageWidth/2 + 20, summaryY + 5.5);
+    doc.text("Discount/Premium", pageWidth - 40, summaryY + 5.5);
+    
+    summaryY += 10;
+    
+    // Draw table rows
+    doc.setTextColor(50, 50, 50);
+    valuationResults.forEach((result, index) => {
+      const isEven = index % 2 === 0;
+      
+      if (isEven) {
+        doc.setFillColor(240, 240, 240);
+        doc.rect(14, summaryY - 2, pageWidth - 28, 8, 'F');
+      }
+      
+      doc.text(result.method, 16, summaryY + 3);
+      doc.text(formatCurrency(result.intrinsicValue), pageWidth/2 - 20, summaryY + 3);
+      doc.text(formatCurrency(result.buyBelow), pageWidth/2 + 20, summaryY + 3);
+      doc.text(`${result.discountPremium > 0 ? '+' : ''}${result.discountPremium.toFixed(1)}%`, pageWidth - 40, summaryY + 3);
+      
+      summaryY += 10;
     });
     
     // Add conclusion
     const avgResult = valuationResults.find(r => r.method === 'Average');
     if (avgResult) {
       // Get the last Y position after the table
-      const lastY = doc.lastAutoTable?.finalY || 160;
+      const lastY = summaryY + 20;
       
       doc.setFontSize(14);
       doc.setTextColor(26, 32, 44);
