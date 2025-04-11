@@ -30,7 +30,17 @@ import { getCompanyQuality, getRecommendedMarginOfSafety, getDefaultMarginOfSafe
 
 const MarginOfSafetyCalculator: React.FC = () => {
   // Stock data state from API
-  const { stockData, isLoading, isError, error, fetchStockData } = useStockData();
+  const { stockData: apiStockData, isLoading, isError, error, fetchStockData } = useStockData();
+  
+  // Local, potentially edited stock data
+  const [stockData, setStockData] = useState<StockData | undefined>(undefined);
+  
+  // Update local stock data when API data changes
+  useEffect(() => {
+    if (apiStockData) {
+      setStockData(apiStockData);
+    }
+  }, [apiStockData]);
 
   // Calculation method state
   const [activeMethod, setActiveMethod] = useState<CalculationMethod>('dcf');
@@ -62,6 +72,13 @@ const MarginOfSafetyCalculator: React.FC = () => {
   const [valuationResults, setValuationResults] = useState<ValuationResult[]>([]);
   const [companyQuality, setCompanyQuality] = useState<CompanyQualityResult | null>(null);
   
+  // Handle stock data updates from user edits
+  const handleStockDataUpdate = (updatedData: StockData) => {
+    setStockData(updatedData);
+    // Recalculate values after data update
+    calculateIntrinsicValue(updatedData);
+  };
+  
   // Update default MoS and automatically calculate when stock data changes
   useEffect(() => {
     if (stockData && !stockData.error) {
@@ -92,23 +109,26 @@ const MarginOfSafetyCalculator: React.FC = () => {
   }, [stockData]);
   
   // Calculate intrinsic value and buy below price
-  const calculateIntrinsicValue = () => {
-    if (!stockData || stockData.error) return;
+  const calculateIntrinsicValue = (dataToUse?: StockData) => {
+    // Use provided data or the current stockData
+    const data = dataToUse || stockData;
+    
+    if (!data || data.error) return;
     
     // Calculate DCF valuation
-    const dcfValue = calculateDCF(stockData, valuationParams);
+    const dcfValue = calculateDCF(data, valuationParams);
     const dcfBuyBelow = calculateBuyBelow(dcfValue, marginOfSafetyParams.marginOfSafety);
-    const dcfDiscountPremium = calculateDiscountPremium(stockData.price, dcfBuyBelow);
+    const dcfDiscountPremium = calculateDiscountPremium(data.price, dcfBuyBelow);
     
     // Calculate P/E valuation
-    const peValue = calculatePE(stockData, valuationParams);
+    const peValue = calculatePE(data, valuationParams);
     const peBuyBelow = calculateBuyBelow(peValue, marginOfSafetyParams.marginOfSafety);
-    const peDiscountPremium = calculateDiscountPremium(stockData.price, peBuyBelow);
+    const peDiscountPremium = calculateDiscountPremium(data.price, peBuyBelow);
     
     // Calculate Graham valuation
-    const grahamValue = calculateGraham(stockData, valuationParams);
+    const grahamValue = calculateGraham(data, valuationParams);
     const grahamBuyBelow = calculateBuyBelow(grahamValue, marginOfSafetyParams.marginOfSafety);
-    const grahamDiscountPremium = calculateDiscountPremium(stockData.price, grahamBuyBelow);
+    const grahamDiscountPremium = calculateDiscountPremium(data.price, grahamBuyBelow);
     
     // Store results
     const results: ValuationResult[] = [
