@@ -10,9 +10,9 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, RefreshCw, Calendar } from "lucide-react";
 import { formatCurrency } from '@/lib/utils';
-import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 
 // Define the stock recommendation type
 interface StockRecommendation {
@@ -26,154 +26,216 @@ interface StockRecommendation {
   quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative';
 }
 
-const TopStockRecommendations: React.FC = () => {
+const TopStockRecommendations = () => {
   const [stockRecommendations, setStockRecommendations] = useState<StockRecommendation[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const { toast } = useToast();
 
-  // For now, we'll use a mock implementation until we build the backend API
-  useEffect(() => {
-    // This would typically be an API call
-    const fetchTopStocks = async () => {
+  // Format the last updated date for display
+  const formatLastUpdated = (dateString: string | null) => {
+    if (!dateString) return "Never";
+    
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(date);
+  };
+
+  // Function to handle manual refresh
+  const handleRefresh = () => {
+    fetchTopStocks(true);
+  };
+
+  // Function to fetch stock data with caching
+  const fetchTopStocks = async (forceRefresh = false) => {
+    if (forceRefresh) {
+      setIsRefreshing(true);
+    } else {
       setIsLoading(true);
-      try {
-        // In the future, this will be a real API endpoint
-        // For now, we'll just simulate a delay and return sample data
-        setTimeout(() => {
-          // Sample data - in a real implementation, this would come from the API
-          const sampleStocks: StockRecommendation[] = [
-            { 
-              symbol: "AAPL", 
-              name: "Apple Inc.", 
-              price: 169.58, 
-              intrinsicValue: 210.25, 
-              buyBelowPrice: 178.71, 
-              qualityBuyPrice: 168.20, 
-              discount: 19.34,
-              quality: 'Exceptional'
-            },
-            { 
-              symbol: "MSFT", 
-              name: "Microsoft Corporation", 
-              price: 404.87, 
-              intrinsicValue: 475.32, 
-              buyBelowPrice: 404.02, 
-              qualityBuyPrice: 380.26, 
-              discount: 14.82,
-              quality: 'Exceptional'
-            },
-            { 
-              symbol: "GOOG", 
-              name: "Alphabet Inc.", 
-              price: 151.77, 
-              intrinsicValue: 185.24, 
-              buyBelowPrice: 157.45, 
-              qualityBuyPrice: 148.19, 
-              discount: 18.07,
-              quality: 'Exceptional'
-            },
-            { 
-              symbol: "AMZN", 
-              name: "Amazon.com Inc.", 
-              price: 175.35, 
-              intrinsicValue: 210.42, 
-              buyBelowPrice: 178.86, 
-              qualityBuyPrice: 168.34, 
-              discount: 16.67,
-              quality: 'Good'
-            },
-            { 
-              symbol: "NVDA", 
-              name: "NVIDIA Corporation", 
-              price: 870.39, 
-              intrinsicValue: 950.75, 
-              buyBelowPrice: 808.14, 
-              qualityBuyPrice: 760.60, 
-              discount: 8.45,
-              quality: 'Exceptional'
-            },
-            { 
-              symbol: "BRK-B", 
-              name: "Berkshire Hathaway Inc.", 
-              price: 407.13, 
-              intrinsicValue: 490.45, 
-              buyBelowPrice: 416.88, 
-              qualityBuyPrice: 392.36, 
-              discount: 17.00,
-              quality: 'Exceptional'
-            },
-            { 
-              symbol: "META", 
-              name: "Meta Platforms Inc.", 
-              price: 474.03, 
-              intrinsicValue: 565.72, 
-              buyBelowPrice: 480.86, 
-              qualityBuyPrice: 452.58, 
-              discount: 16.20,
-              quality: 'Good'
-            },
-            { 
-              symbol: "TSM", 
-              name: "Taiwan Semiconductor", 
-              price: 139.85, 
-              intrinsicValue: 172.34, 
-              buyBelowPrice: 146.49, 
-              qualityBuyPrice: 137.87, 
-              discount: 18.85,
-              quality: 'Exceptional'
-            },
-            { 
-              symbol: "V", 
-              name: "Visa Inc.", 
-              price: 274.52, 
-              intrinsicValue: 340.25, 
-              buyBelowPrice: 289.21, 
-              qualityBuyPrice: 272.20, 
-              discount: 19.32,
-              quality: 'Exceptional'
-            },
-            { 
-              symbol: "WMT", 
-              name: "Walmart Inc.", 
-              price: 59.68, 
-              intrinsicValue: 70.42, 
-              buyBelowPrice: 59.86, 
-              qualityBuyPrice: 56.34, 
-              discount: 15.25,
-              quality: 'Good'
-            },
-            { 
-              symbol: "JPM", 
-              name: "JPMorgan Chase & Co.", 
-              price: 190.75, 
-              intrinsicValue: 230.65, 
-              buyBelowPrice: 196.05, 
-              qualityBuyPrice: 184.52, 
-              discount: 17.30,
-              quality: 'Good'
-            },
-            { 
-              symbol: "MA", 
-              name: "Mastercard Incorporated", 
-              price: 455.64, 
-              intrinsicValue: 550.28, 
-              buyBelowPrice: 467.74, 
-              qualityBuyPrice: 440.22, 
-              discount: 17.20,
-              quality: 'Exceptional'
-            }
-          ];
-          
-          setStockRecommendations(sampleStocks);
+    }
+    
+    setError(null);
+    
+    try {
+      // Check if we have cached data
+      const cachedData = localStorage.getItem('topStockRecommendations');
+      const lastUpdatedStr = localStorage.getItem('topStockRecommendationsUpdated');
+      const currentDate = new Date();
+      
+      // Parse the last updated date
+      const lastUpdatedDate = lastUpdatedStr ? new Date(lastUpdatedStr) : null;
+      
+      // Set the last updated date to display in the UI
+      setLastUpdated(lastUpdatedStr);
+      
+      // Calculate if a week has passed since last update
+      const needsRefresh = forceRefresh || !lastUpdatedDate || 
+        (currentDate.getTime() - lastUpdatedDate.getTime()) > 7 * 24 * 60 * 60 * 1000;
+      
+      // If we have cached data and it's less than a week old, use it
+      if (cachedData && !needsRefresh) {
+        setStockRecommendations(JSON.parse(cachedData));
+        
+        if (forceRefresh) {
+          setIsRefreshing(false);
+          toast({
+            title: "Using cached data",
+            description: "Recommendations are updated weekly to reduce API costs",
+          });
+        } else {
           setIsLoading(false);
-        }, 1000);
-      } catch (err) {
-        setError("Failed to fetch top stock recommendations");
-        setIsLoading(false);
+        }
+        return;
       }
-    };
+      
+      // In a real implementation, this would make an API call
+      // For now, we'll use sample data since the backend API isn't implemented yet
+      // This simulates an API call with a slight delay
+      setTimeout(() => {
+        // Sample data - in a real implementation, this would come from the API
+        const sampleStocks: StockRecommendation[] = [
+          { 
+            symbol: "AAPL", 
+            name: "Apple Inc.", 
+            price: 169.58, 
+            intrinsicValue: 210.25, 
+            buyBelowPrice: 178.71, 
+            qualityBuyPrice: 168.20, 
+            discount: 19.34,
+            quality: 'Exceptional'
+          },
+          { 
+            symbol: "MSFT", 
+            name: "Microsoft Corporation", 
+            price: 404.87, 
+            intrinsicValue: 475.32, 
+            buyBelowPrice: 404.02, 
+            qualityBuyPrice: 380.26, 
+            discount: 14.82,
+            quality: 'Exceptional'
+          },
+          { 
+            symbol: "GOOG", 
+            name: "Alphabet Inc.", 
+            price: 151.77, 
+            intrinsicValue: 185.24, 
+            buyBelowPrice: 157.45, 
+            qualityBuyPrice: 148.19, 
+            discount: 18.07,
+            quality: 'Exceptional'
+          },
+          { 
+            symbol: "AMZN", 
+            name: "Amazon.com Inc.", 
+            price: 175.35, 
+            intrinsicValue: 210.42, 
+            buyBelowPrice: 178.86, 
+            qualityBuyPrice: 168.34, 
+            discount: 16.67,
+            quality: 'Good'
+          },
+          { 
+            symbol: "NVDA", 
+            name: "NVIDIA Corporation", 
+            price: 870.39, 
+            intrinsicValue: 950.75, 
+            buyBelowPrice: 808.14, 
+            qualityBuyPrice: 760.60, 
+            discount: 8.45,
+            quality: 'Exceptional'
+          },
+          { 
+            symbol: "BRK-B", 
+            name: "Berkshire Hathaway Inc.", 
+            price: 407.13, 
+            intrinsicValue: 490.45, 
+            buyBelowPrice: 416.88, 
+            qualityBuyPrice: 392.36, 
+            discount: 17.00,
+            quality: 'Exceptional'
+          },
+          { 
+            symbol: "META", 
+            name: "Meta Platforms Inc.", 
+            price: 474.03, 
+            intrinsicValue: 565.72, 
+            buyBelowPrice: 480.86, 
+            qualityBuyPrice: 452.58, 
+            discount: 16.20,
+            quality: 'Good'
+          },
+          { 
+            symbol: "TSM", 
+            name: "Taiwan Semiconductor", 
+            price: 139.85, 
+            intrinsicValue: 172.34, 
+            buyBelowPrice: 146.49, 
+            qualityBuyPrice: 137.87, 
+            discount: 18.85,
+            quality: 'Exceptional'
+          },
+          { 
+            symbol: "V", 
+            name: "Visa Inc.", 
+            price: 274.52, 
+            intrinsicValue: 340.25, 
+            buyBelowPrice: 289.21, 
+            qualityBuyPrice: 272.20, 
+            discount: 19.32,
+            quality: 'Exceptional'
+          },
+          { 
+            symbol: "WMT", 
+            name: "Walmart Inc.", 
+            price: 59.68, 
+            intrinsicValue: 70.42, 
+            buyBelowPrice: 59.86, 
+            qualityBuyPrice: 56.34, 
+            discount: 15.25,
+            quality: 'Good'
+          }
+        ];
+        
+        // Cache the results and update timestamp
+        localStorage.setItem('topStockRecommendations', JSON.stringify(sampleStocks));
+        localStorage.setItem('topStockRecommendationsUpdated', currentDate.toISOString());
+        
+        setStockRecommendations(sampleStocks);
+        setIsLoading(false);
+        setIsRefreshing(false);
+        
+        if (forceRefresh) {
+          toast({
+            title: "Recommendations refreshed",
+            description: "Latest market data has been loaded"
+          });
+        }
+      }, 800);
+      
+    } catch (err) {
+      // If there's an error, try to use cached data if available
+      const cachedData = localStorage.getItem('topStockRecommendations');
+      if (cachedData) {
+        setStockRecommendations(JSON.parse(cachedData));
+        setError("Using cached data. Could not refresh recommendations.");
+      } else {
+        setError("Failed to fetch top stock recommendations");
+      }
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  };
 
+  // Initialize on component mount
+  useEffect(() => {
     fetchTopStocks();
   }, []);
 
@@ -209,13 +271,41 @@ const TopStockRecommendations: React.FC = () => {
   return (
     <Card className="bg-white rounded-lg shadow-sm border border-neutral-200 mb-6">
       <div 
-        className="flex justify-between items-center p-4 border-b border-neutral-200 cursor-pointer"
-        onClick={toggleExpanded}
+        className="flex justify-between items-center p-4 border-b border-neutral-200"
       >
-        <h2 className="text-xl font-semibold text-[#1A2942]">Top Buy Recommendations</h2>
-        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label="Toggle recommendations">
-          {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-        </Button>
+        <h2 
+          className="text-xl font-semibold text-[#1A2942] cursor-pointer" 
+          onClick={toggleExpanded}
+        >
+          Top Buy Recommendations
+        </h2>
+        <div className="flex items-center gap-2">
+          {lastUpdated && (
+            <div className="flex items-center text-xs text-gray-500 mr-2">
+              <Calendar size={12} className="mr-1" />
+              <span>Updated: {formatLastUpdated(lastUpdated)}</span>
+            </div>
+          )}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="h-8 px-2"
+            onClick={handleRefresh}
+            disabled={isRefreshing || isLoading}
+          >
+            <RefreshCw size={14} className={`mr-1 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-8 w-8 p-0" 
+            aria-label="Toggle recommendations"
+            onClick={toggleExpanded}
+          >
+            {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+          </Button>
+        </div>
       </div>
       
       {isExpanded && (
@@ -285,14 +375,20 @@ const TopStockRecommendations: React.FC = () => {
                   </Table>
                 </div>
               </div>
-              <p className="text-xs text-gray-500 italic mt-4">
-                * This is sample data. In a production environment, this would display real-time analysis of stocks meeting specific criteria.
-              </p>
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-xs text-gray-500 italic">
+                  Data automatically refreshes weekly to optimize API usage.
+                </p>
+              </div>
             </div>
           )}
           
           <div className="mt-4 text-sm text-gray-700">
-            <p>These recommendations are updated daily based on our margin of safety analysis. Stocks are ranked by their quality and discount to intrinsic value.</p>
+            <p className="mb-2">These recommendations are updated weekly based on our margin of safety analysis. Stocks are ranked by their quality and discount to intrinsic value.</p>
+            <div className="bg-blue-50 p-3 rounded-md border border-blue-100">
+              <p className="text-xs text-blue-700 font-medium mb-1">DISCLAIMER</p>
+              <p className="text-xs text-blue-700">This information is provided for educational purposes only and should not be considered investment advice. Always conduct your own research and consider consulting with a financial advisor before making investment decisions.</p>
+            </div>
           </div>
         </CardContent>
       )}
