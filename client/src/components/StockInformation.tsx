@@ -27,13 +27,11 @@ const StockInformation: React.FC<StockInformationProps> = ({
   };
 
   const handleFetchData = () => {
-    if (symbolInput.trim()) {
-      onFetchData(symbolInput);
-    }
+    onFetchData(symbolInput);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && symbolInput.trim()) {
+    if (e.key === 'Enter') {
       handleFetchData();
     }
   };
@@ -52,7 +50,7 @@ const StockInformation: React.FC<StockInformationProps> = ({
             onChange={handleSymbolChange}
             onKeyDown={handleKeyDown}
             className="custom-input rounded-r-none focus:z-10"
-            placeholder="ENTER STOCK SYMBOL"
+            placeholder="E.G. AAPL"
           />
           <Button
             onClick={handleFetchData}
