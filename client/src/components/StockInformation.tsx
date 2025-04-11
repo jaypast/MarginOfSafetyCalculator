@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { StockData } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
-import { popularStocks } from '@/lib/stockSymbols';
 
 interface StockInformationProps {
   stockData: StockData | undefined;
@@ -21,37 +20,7 @@ const StockInformation: React.FC<StockInformationProps> = ({
   errorMessage
 }) => {
   const [inputValue, setInputValue] = useState('');
-  const [suggestion, setSuggestion] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-
-  // Find suggestion as user types
-  useEffect(() => {
-    if (inputValue) {
-      const upperValue = inputValue.toUpperCase();
-      
-      // First check if input already exactly matches a complete stock symbol
-      const exactMatch = popularStocks.find(stock => stock.symbol === upperValue);
-      if (exactMatch) {
-        // If we have an exact match, don't suggest anything further
-        setSuggestion('');
-        return;
-      }
-      
-      // Otherwise find first matching stock that starts with the current input
-      const matchingStock = popularStocks.find(stock => 
-        stock.symbol.startsWith(upperValue)
-      );
-      
-      // Set suggestion to the complete symbol if found
-      if (matchingStock) {
-        setSuggestion(matchingStock.symbol);
-      } else {
-        setSuggestion('');
-      }
-    } else {
-      setSuggestion('');
-    }
-  }, [inputValue]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.toUpperCase();
@@ -63,20 +32,6 @@ const StockInformation: React.FC<StockInformationProps> = ({
       if (inputValue) {
         onFetchData(inputValue);
       }
-    } else if (e.key === 'Tab' && suggestion && suggestion !== inputValue) {
-      e.preventDefault();
-      setInputValue(suggestion);
-      // Position cursor at the end
-      setTimeout(() => {
-        if (inputRef.current) {
-          inputRef.current.selectionStart = suggestion.length;
-          inputRef.current.selectionEnd = suggestion.length;
-        }
-      }, 0);
-    } else if (e.key === 'ArrowRight' && suggestion && suggestion !== inputValue) {
-      // Complete suggestion with arrow right
-      setInputValue(suggestion);
-      e.preventDefault();
     }
   };
 
@@ -104,16 +59,7 @@ const StockInformation: React.FC<StockInformationProps> = ({
               className="pr-4 w-full"
               placeholder="e.g. AAPL"
             />
-            {suggestion && suggestion !== inputValue && (
-              <div className="absolute inset-0 flex items-center pointer-events-none">
-                <span className="pl-3">
-                  <span className="text-black">{inputValue}</span>
-                  <span className="text-gray-400">
-                    {suggestion.slice(inputValue.length)}
-                  </span>
-                </span>
-              </div>
-            )}
+
           </div>
           <Button
             onClick={handleFetchData}
