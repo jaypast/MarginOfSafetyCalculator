@@ -5,6 +5,7 @@ import { stockResponseSchema } from "@shared/schema";
 import { getStockData } from "./services/stockData";
 import { getMarketSentiment, getMostActiveStocks, RealTimeSentiment } from "./services/marketSentiment";
 import { ZodError } from "zod";
+import cacheRoutes from "./routes/cacheRoutes";
 
 // Cache for sentiment data to prevent excessive API calls
 let sentimentCache: {
@@ -16,6 +17,9 @@ let sentimentCache: {
 const CACHE_DURATION = 5 * 60 * 1000;
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Register cache management routes
+  app.use('/api/cache', cacheRoutes);
+  
   // API Routes
   app.get('/api/stock/:symbol', async (req, res) => {
     try {
