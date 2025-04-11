@@ -1,7 +1,7 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { stockResponseSchema } from "@shared/schema";
+import { stockResponseSchema, insertFeedbackSchema } from "@shared/schema";
 import { getStockData } from "./services/stockData";
 import { getMarketSentiment, getMostActiveStocks, RealTimeSentiment } from "./services/marketSentiment";
 import { ZodError } from "zod";
@@ -86,6 +86,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({
         error: true,
         message: "Failed to retrieve market sentiment data"
+      });
+    }
+  });
+
+  // Feedback API endpoints
+  app.post('/api/feedback', async (req: Request, res: Response) => {
+    try {
+      // Validate the incoming data
+      const feedbackData = insertFeedbackSchema.parse(req.body);
+      
+      // Store the feedback in the database
+      const savedFeedback = await storage.createFeedback(feedbackData);
+      
+      return res.status(201).json({
+        success: true,
+        message: 'Feedback submitted successfully',
+        id: savedFeedback.id
+      });
+    } catch (error) {
+      console.error('Error saving feedback:', error);
+      
+      if (error instanceof ZodError) {
+        return res.status(400).json({ 
+          success: false,
+          message: 'Invalid feedback data',
+          details: error.errors 
+        });
+      }
+      
+      return res.status(500).json({ 
+        success: false,
+        message: 'An error occurred while saving your feedback'
+      });
+    }
+  });
+  
+  // Admin route to get all feedback (we'll add authentication later)
+  app.get('/api/feedback', async (_req: Request, res: Response) => {
+    try {
+      const feedbackList = await storage.getAllFeedback();
+      
+      return res.json({
+        success: true,
+        count: feedbackList.length,
+        feedback: feedbackList
+      });
+    } catch (error) {
+      console.error('Error retrieving feedback:', error);
+      
+      return res.status(500).json({ 
+        success: false,
+        message: 'An error occurred while retrieving feedback data'
       });
     }
   });

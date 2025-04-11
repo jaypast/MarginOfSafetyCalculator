@@ -44,11 +44,26 @@ export function FeedbackForm() {
     setIsSubmitting(true);
     
     try {
-      // In a real app, this would send the data to a server
-      console.log('Feedback submitted:', data);
+      // Send feedback data to the API
+      const response = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: data.name || '',
+          email: data.email || '',
+          pmfScore: data.pmfScore || '',
+          improvement: data.improvement || '',
+          feedback: data.feedback || '',
+        }),
+      });
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to submit feedback');
+      }
       
       // Show success toast
       toast({
@@ -60,10 +75,13 @@ export function FeedbackForm() {
       form.reset();
       setSubmitted(true);
     } catch (error) {
+      console.error('Error submitting feedback:', error);
       toast({
         variant: "destructive",
         title: "Submission failed",
-        description: "There was a problem submitting your feedback.",
+        description: error instanceof Error 
+          ? error.message 
+          : "There was a problem submitting your feedback.",
       });
     } finally {
       setIsSubmitting(false);

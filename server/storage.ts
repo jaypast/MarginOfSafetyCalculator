@@ -85,18 +85,27 @@ export class MemStorage implements IStorage {
   async createFeedback(insertFeedback: InsertFeedback): Promise<Feedback> {
     const id = this.feedbackCurrentId++;
     const now = new Date();
+    
+    // Create feedback with required fields
     const feedback: Feedback = { 
-      ...insertFeedback, 
-      id, 
-      submittedAt: now
+      id,
+      name: insertFeedback.name ?? '',
+      email: insertFeedback.email ?? '',
+      pmfScore: insertFeedback.pmfScore ?? '',
+      improvement: insertFeedback.improvement ?? '',
+      feedback: insertFeedback.feedback ?? '',
+      submittedAt: now 
     };
+    
     this.feedbackItems.set(id, feedback);
     return feedback;
   }
   
   async getAllFeedback(): Promise<Feedback[]> {
     return Array.from(this.feedbackItems.values()).sort((a, b) => {
-      return new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime();
+      const dateA = new Date(a.submittedAt).getTime();
+      const dateB = new Date(b.submittedAt).getTime();
+      return dateB - dateA; // Most recent first
     });
   }
 }

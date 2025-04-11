@@ -66,12 +66,12 @@ export type StockResponse = z.infer<typeof stockResponseSchema>;
 // Feedback schema
 export const feedbacks = pgTable("feedbacks", {
   id: serial("id").primaryKey(),
-  name: text("name"),
-  email: text("email"),
-  pmfScore: text("pmf_score"),
-  improvement: text("improvement"),
-  feedback: text("feedback"),
-  submittedAt: timestamp("submitted_at").defaultNow(),
+  name: text("name").notNull().default(''),
+  email: text("email").notNull().default(''),
+  pmfScore: text("pmf_score").notNull().default(''),
+  improvement: text("improvement").notNull().default(''),
+  feedback: text("feedback").notNull().default(''),
+  submittedAt: timestamp("submitted_at").notNull().defaultNow(),
 });
 
 export const insertFeedbackSchema = createInsertSchema(feedbacks).omit({
