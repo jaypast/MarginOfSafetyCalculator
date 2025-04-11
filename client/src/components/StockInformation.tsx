@@ -22,7 +22,8 @@ const StockInformation: React.FC<StockInformationProps> = ({
   const [symbolInput, setSymbolInput] = useState('');
 
   const handleSymbolChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSymbolInput(e.target.value);
+    // Convert input to uppercase automatically
+    setSymbolInput(e.target.value.toUpperCase());
   };
 
   const handleFetchData = () => {
@@ -49,7 +50,7 @@ const StockInformation: React.FC<StockInformationProps> = ({
             onChange={handleSymbolChange}
             onKeyDown={handleKeyDown}
             className="custom-input rounded-r-none focus:z-10"
-            placeholder="e.g. AAPL"
+            placeholder="E.G. AAPL"
           />
           <Button
             onClick={handleFetchData}
