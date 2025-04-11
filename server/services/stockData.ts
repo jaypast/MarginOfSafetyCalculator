@@ -1,6 +1,7 @@
 import { StockResponse } from '@shared/schema';
 import { getYahooFinanceData } from './yahooFinance';
 import { withCache } from '../utils/cacheManager';
+import { formatStockData } from '../utils/numberFormatting';
 
 // Main function to fetch stock data, will be wrapped with cache
 async function fetchStockData(symbol: string): Promise<StockResponse> {
