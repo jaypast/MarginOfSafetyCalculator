@@ -71,6 +71,23 @@ const KeyMetrics: React.FC<KeyMetricsProps> = ({
     }
   };
   
+  // Automatically update calculations when editing values
+  useEffect(() => {
+    if (isEditing && stockData && onStockDataUpdate && Object.keys(editedData).length > 0) {
+      // Create a working copy of data with edits applied
+      const workingData = { ...stockData };
+      
+      Object.entries(editedData).forEach(([key, value]) => {
+        if (value !== '') {
+          workingData[key as keyof StockData] = value as never;
+        }
+      });
+      
+      // Update calculations in real-time as user edits
+      onStockDataUpdate(workingData);
+    }
+  }, [editedData, isEditing, onStockDataUpdate, stockData]);
+  
   const cancelEditing = () => {
     setIsEditing(false);
     setEditedData({});

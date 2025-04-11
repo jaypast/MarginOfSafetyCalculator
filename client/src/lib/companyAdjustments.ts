@@ -170,17 +170,18 @@ export function determineIndustry(stockData: StockData): string {
   // (future enhancement when sector data becomes available)
   
   // Check for symbol patterns to detect industry
-  const symbol = stockData.symbol;
+  const symbol = stockData.symbol || '';
   
   // Check for Japanese auto manufacturers by pattern
-  if (symbol.endsWith('.T') && 
+  if (symbol && typeof symbol === 'string' && symbol.endsWith('.T') && 
       (symbol.startsWith('7') || symbol.includes('AUTO') || symbol.includes('MOTOR'))) {
     return 'AUTO_MANUFACTURER';
   }
   
   // Check for financial companies by pattern
-  if (symbol.includes('BANK') || symbol.includes('FINANCIAL') || 
-      symbol.includes('INSURANCE') || symbol.includes('CAPITAL')) {
+  if (symbol && typeof symbol === 'string' && 
+      (symbol.includes('BANK') || symbol.includes('FINANCIAL') || 
+       symbol.includes('INSURANCE') || symbol.includes('CAPITAL'))) {
     return 'FINANCIAL';
   }
   
@@ -234,7 +235,7 @@ export function getAdjustmentFactors(stockData: StockData): AdjustmentFactors {
   }
   
   // Handle market-specific adjustments
-  if (stockData.symbol.endsWith('.T')) {
+  if (stockData.symbol && typeof stockData.symbol === 'string' && stockData.symbol.endsWith('.T')) {
     // Japanese market tends to have lower valuations
     return {
       ...baseAdjustments,
