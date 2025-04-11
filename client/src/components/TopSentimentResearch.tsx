@@ -45,25 +45,45 @@ const TopSentimentResearch: React.FC = () => {
     loadSentimentResearch();
   }, []);
 
-  // Load sentiment data and analyze stocks
+  // Load popular stocks with real-time data
   const loadSentimentResearch = async () => {
     setIsLoading(true);
     
     try {
-      // Get top stocks from API sentiment analysis
-      const response = await fetch('/api/sentiment');
-      if (!response.ok) {
-        throw new Error('Failed to fetch sentiment data');
-      }
+      // Use a list of popular/interesting stocks to analyze
+      // These are high-interest stocks across different sectors
+      const popularStockSymbols = [
+        'AAPL',   // Apple
+        'MSFT',   // Microsoft
+        'GOOGL',  // Alphabet (Google)
+        'AMZN',   // Amazon
+        'META',   // Meta (Facebook)
+        'TSLA',   // Tesla
+        'NVDA',   // NVIDIA
+        'JPM',    // JPMorgan Chase
+        'WMT',    // Walmart
+        'DIS',    // Disney
+        'NFLX',   // Netflix
+        'PYPL',   // PayPal
+        'AMD',    // AMD
+        'INTC',   // Intel
+        'XOM'     // Exxon Mobil
+      ];
       
-      const topStocks: StockSentiment[] = await response.json();
+      // Use today's date for the update timestamp
+      const today = new Date();
+      setLastUpdated(today.toISOString());
       
-      // Only use up to 10 stocks
-      const topTenStocks = topStocks.slice(0, 10);
-      
-      if (topTenStocks.length > 0) {
-        setLastUpdated(topTenStocks[0].lastUpdated);
-      }
+      // Convert to format expected by the rest of the component
+      const topTenStocks: StockSentiment[] = popularStockSymbols.slice(0, 10).map(symbol => ({
+        symbol,
+        name: symbol, // Will be replaced with actual name from API
+        sentimentScore: 80, // Placeholder since we're focusing on popularity, not sentiment
+        mentionCount: 1000, // Placeholder
+        priceMovement: 0,
+        weeklyTrend: 'stable' as 'stable',
+        lastUpdated: today.toISOString()
+      }));
       
       // For each stock, fetch current data and calculate safety metrics
       const analyzedResults = await Promise.all(
@@ -268,7 +288,7 @@ const TopSentimentResearch: React.FC = () => {
           className="text-xl font-semibold text-[#1A2942] cursor-pointer" 
           onClick={toggleExpanded}
         >
-          Top Trending Stocks Analysis
+          Popular Stocks Investment Ideas
         </h2>
         <div className="flex items-center gap-2">
           {lastUpdated && (
@@ -322,7 +342,6 @@ const TopSentimentResearch: React.FC = () => {
                         <TableHead className="text-left">Symbol</TableHead>
                         <TableHead className="text-left">Company</TableHead>
                         <TableHead className="text-right">Current Price</TableHead>
-                        <TableHead className="text-right">Social Score</TableHead>
                         <TableHead className="text-right">Quality</TableHead>
                         <TableHead className="text-right">Intrinsic Value</TableHead>
                         <TableHead className="text-right">Buy Below</TableHead>
@@ -335,9 +354,6 @@ const TopSentimentResearch: React.FC = () => {
                           <TableCell className="font-medium">{stock.symbol}</TableCell>
                           <TableCell className="text-neutral-800">{stock.name}</TableCell>
                           <TableCell className="text-right">{stock.price > 0 ? formatCurrency(stock.price) : "N/A"}</TableCell>
-                          <TableCell className={`text-right ${getSentimentColor(stock.sentimentScore)}`}>
-                            {stock.sentimentScore.toFixed(0)}
-                          </TableCell>
                           <TableCell className="text-right">
                             <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getQualityColor(stock.quality)}`}>
                               {stock.quality}
@@ -373,14 +389,14 @@ const TopSentimentResearch: React.FC = () => {
           )}
           
           <div className="mt-4 text-sm text-gray-700">
-            <p className="mb-2">This analysis combines social media sentiment with value investment principles. Stocks with negative value gaps may be undervalued relative to their intrinsic value.</p>
+            <p className="mb-2">This analysis applies value investment principles to popular and widely-held stocks. Stocks with negative value gaps may be undervalued relative to their intrinsic value.</p>
             <div className="bg-blue-50 p-3 rounded-md border border-blue-100">
-              <p className="text-xs text-blue-700 font-medium mb-1">RESEARCH METHODOLOGY</p>
+              <p className="text-xs text-blue-700 font-medium mb-1">INVESTMENT METHODOLOGY</p>
               <p className="text-xs text-blue-700">
-                Based on real-time trending stock data from Yahoo Finance. Social Score combines market sentiment, 
-                volume, and price momentum. Quality assessment evaluates financial health metrics.
+                Based on real-time financial data from Yahoo Finance for widely-held stocks. 
+                Quality assessment evaluates financial health metrics including ROE, debt ratios, and competitive position.
                 Value Gap shows the difference between current price and calculated intrinsic value.
-                Negative gaps suggest potential undervaluation.
+                Negative gaps suggest potential undervaluation according to Graham principles.
               </p>
             </div>
           </div>
