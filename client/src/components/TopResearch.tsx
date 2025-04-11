@@ -14,7 +14,7 @@ import { ChevronDown, ChevronUp, Calendar } from "lucide-react";
 import { formatCurrency } from '@/lib/utils';
 
 // Define the stock recommendation type
-interface StockRecommendation {
+interface ResearchStock {
   symbol: string;
   name: string;
   price: number;
@@ -25,8 +25,8 @@ interface StockRecommendation {
   quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative';
 }
 
-const TopStockRecommendations = () => {
-  const [stockRecommendations, setStockRecommendations] = useState<StockRecommendation[]>([]);
+const TopResearch = () => {
+  const [stockRecommendations, setStockRecommendations] = useState<ResearchStock[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
@@ -79,7 +79,7 @@ const TopStockRecommendations = () => {
       // This simulates an API call with a slight delay
       setTimeout(() => {
         // Sample data - in a real implementation, this would come from the API
-        const sampleStocks: StockRecommendation[] = [
+        const sampleStocks: ResearchStock[] = [
           { 
             symbol: "AAPL", 
             name: "Apple Inc.", 
@@ -343,7 +343,7 @@ const TopStockRecommendations = () => {
           )}
           
           <div className="mt-4 text-sm text-gray-700">
-            <p className="mb-2">These recommendations are updated weekly based on our margin of safety analysis. Stocks are ranked by their quality and discount to intrinsic value.</p>
+            <p className="mb-2">This research is updated weekly based on our margin of safety analysis. Stocks are ranked by their quality and discount to intrinsic value.</p>
             <div className="bg-blue-50 p-3 rounded-md border border-blue-100">
               <p className="text-xs text-blue-700 font-medium mb-1">DISCLAIMER</p>
               <p className="text-xs text-blue-700">This information is provided for educational purposes only and should not be considered investment advice. Always conduct your own research and consider consulting with a financial advisor before making investment decisions.</p>
@@ -355,4 +355,4 @@ const TopStockRecommendations = () => {
   );
 };
 
-export default TopStockRecommendations;
+export default TopResearch;
