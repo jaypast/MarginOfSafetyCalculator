@@ -28,7 +28,16 @@ const StockInformation: React.FC<StockInformationProps> = ({
   useEffect(() => {
     if (inputValue) {
       const upperValue = inputValue.toUpperCase();
-      // Find first matching stock that starts with the current input
+      
+      // First check if input already exactly matches a complete stock symbol
+      const exactMatch = popularStocks.find(stock => stock.symbol === upperValue);
+      if (exactMatch) {
+        // If we have an exact match, don't suggest anything further
+        setSuggestion('');
+        return;
+      }
+      
+      // Otherwise find first matching stock that starts with the current input
       const matchingStock = popularStocks.find(stock => 
         stock.symbol.startsWith(upperValue)
       );

@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 import json
 import sys
-import yfinance as yf
 import re
+try:
+    import yfinance as yf
+except ImportError:
+    print("Warning: yfinance module not found. Please install it using 'pip install yfinance'", file=sys.stderr)
 
 def get_stock_data(symbol):
     """
@@ -199,6 +202,33 @@ def get_stock_data(symbol):
         # Check if we have a name correction for this symbol
         if symbol.upper() in name_corrections:
             name = name_corrections[symbol.upper()]
+            
+        # Special handling for Japanese stocks (especially Toyota)
+        if symbol.endswith('.T'):
+            # Japanese stocks need special handling for fundamentals calculation
+            # For Toyota (7203.T), try to use TM (US ADR) data for better accuracy
+            if symbol == '7203.T':
+                try:
+                    tm_ticker = yf.Ticker('TM')
+                    tm_info = tm_ticker.info
+                    
+                    # Get TM's fundamentals data which is more accurate for calculations
+                    tm_eps = tm_info.get('trailingEps', 0)
+                    tm_pe = tm_info.get('trailingPE', 0)
+                    
+                    if tm_eps > 0 and price > 0:
+                        # Use TM's EPS and PE ratio but keep original price
+                        # We already imported sys at the top of the file, so we can use it directly
+                        print(f"Adjusting 7203.T calculations using TM (Toyota US) data", file=sys.stderr)
+                        eps = tm_eps
+                        pe_ratio = tm_pe
+                        fcf_per_share = tm_info.get('operatingCashflow', 0) / tm_info.get('sharesOutstanding', 1)
+                        
+                        # If we got good data from TM, use a more reasonable intrinsic value calculation
+                        if fcf_per_share <= 0:
+                            fcf_per_share = tm_eps * 0.9  # Estimate FCF as 90% of EPS
+                except Exception as e:
+                    print(f"Failed to adjust Toyota calculations: {str(e)}", file=sys.stderr)
             
         response = {
             "symbol": symbol.upper(),
