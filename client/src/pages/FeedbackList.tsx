@@ -63,39 +63,58 @@ export default function FeedbackList() {
 
   const [isExporting, setIsExporting] = useState(false);
 
-  // Function to export feedback data as simple CSV
+  // Function to export feedback data in a simpler way
   const exportToCSV = () => {
     if (!data || !data.feedback || data.feedback.length === 0) return;
     
     setIsExporting(true);
     try {
-      // Create CSV content
-      let csvContent = "Name,Email,PMF Score,Improvement,Feedback,Date\n";
+      // Create a simple text representation of the data
+      let textContent = "Feedback Export - " + new Date().toLocaleString() + "\n\n";
       
-      // Add data rows
-      data.feedback.forEach(item => {
-        const name = item.name ? `"${item.name.replace(/"/g, '""')}"` : "(Anonymous)";
-        const email = item.email ? `"${item.email.replace(/"/g, '""')}"` : "";
-        const pmfScore = item.pmfScore ? `"${pmfLabels[item.pmfScore] || item.pmfScore}"` : "Not answered";
-        const improvement = item.improvement ? `"${item.improvement.replace(/"/g, '""')}"` : "";
-        const feedback = item.feedback ? `"${item.feedback.replace(/"/g, '""')}"` : "";
-        const date = format(new Date(item.submittedAt), 'yyyy-MM-dd');
-        
-        csvContent += `${name},${email},${pmfScore},${improvement},${feedback},${date}\n`;
+      // Add summary
+      textContent += `Total Responses: ${data.feedback.length}\n`;
+      textContent += `PMF Score: ${pmfPercentage}%\n\n`;
+      
+      // Add each feedback entry
+      data.feedback.forEach((item, index) => {
+        textContent += `--- RESPONSE #${index + 1} ---\n`;
+        textContent += `Name: ${item.name || "(Anonymous)"}\n`;
+        textContent += `Email: ${item.email || "-"}\n`;
+        textContent += `PMF Response: ${pmfLabels[item.pmfScore] || item.pmfScore || "Not answered"}\n`;
+        textContent += `Improvement Ideas: ${item.improvement || "-"}\n`;
+        textContent += `Additional Feedback: ${item.feedback || "-"}\n`;
+        textContent += `Date: ${format(new Date(item.submittedAt), 'MMM d, yyyy')}\n\n`;
       });
       
-      // Create download link
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', 'feedback-data.csv');
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Open in a new tab for easy copying
+      const newTab = window.open();
+      if (newTab) {
+        newTab.document.write(`
+          <html>
+            <head>
+              <title>Feedback Export</title>
+              <style>
+                body { font-family: monospace; white-space: pre-wrap; padding: 20px; }
+                button { padding: 8px 16px; margin-bottom: 20px; cursor: pointer; }
+              </style>
+            </head>
+            <body>
+              <button onclick="navigator.clipboard.writeText(document.getElementById('content').innerText)">
+                Copy All Text
+              </button>
+              <div id="content">${textContent}</div>
+            </body>
+          </html>
+        `);
+        newTab.document.close();
+      } else {
+        console.error("Unable to open new tab. Please check your browser settings.");
+        alert("Unable to open export in new tab. Please check your browser settings.");
+      }
     } catch (error) {
       console.error('Error exporting data:', error);
+      alert('Error exporting data. Please try again.');
     } finally {
       setIsExporting(false);
     }
@@ -157,7 +176,7 @@ export default function FeedbackList() {
             ) : (
               <>
                 <Download className="h-4 w-4" />
-                Export CSV
+                Export Data
               </>
             )}
           </Button>
