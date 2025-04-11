@@ -204,24 +204,35 @@ const TopSentimentResearch: React.FC = () => {
         })
       );
       
-      // Sort by a combination of sentiment and value gap (if available)
+      // Sort by value opportunity (prioritizing undervalued quality stocks)
       const sortedResults = analyzedResults.sort((a: AnalyzedStock, b: AnalyzedStock) => {
         // First prioritize stocks with value calculations
         if (a.valueGap !== null && b.valueGap === null) return -1;
         if (a.valueGap === null && b.valueGap !== null) return 1;
         
-        // Then if both have calculations, prioritize undervalued stocks
+        // Then prioritize undervalued stocks by quality
         if (a.valueGap !== null && b.valueGap !== null) {
+          // Both undervalued, compare by quality then by value gap
+          if (a.valueGap < 0 && b.valueGap < 0) {
+            // Higher quality comes first
+            const qualityOrder = { 'Exceptional': 1, 'Good': 2, 'Average': 3, 'Speculative': 4 };
+            if (qualityOrder[a.quality] !== qualityOrder[b.quality]) {
+              return qualityOrder[a.quality] - qualityOrder[b.quality];
+            }
+            // If same quality, more undervalued comes first
+            return a.valueGap - b.valueGap;
+          }
+          
+          // Undervalued stocks come before overvalued ones
           if (a.valueGap < 0 && b.valueGap >= 0) return -1;
           if (a.valueGap >= 0 && b.valueGap < 0) return 1;
           
-          // If both undervalued or both overvalued, compare by value
-          if (a.valueGap < 0 && b.valueGap < 0) return a.valueGap - b.valueGap;
-          if (a.valueGap >= 0 && b.valueGap >= 0) return a.valueGap - b.valueGap;
+          // Both overvalued, least overvalued comes first
+          return a.valueGap - b.valueGap;
         }
         
-        // If no good value comparisons, fall back to sentiment
-        return b.sentimentScore - a.sentimentScore;
+        // Fallback to alphabetical sorting by symbol
+        return a.symbol.localeCompare(b.symbol);
       });
       
       setAnalyzedStocks(sortedResults);
@@ -353,27 +364,29 @@ const TopSentimentResearch: React.FC = () => {
                         <TableRow key={index} className="hover:bg-gray-50">
                           <TableCell className="font-medium">{stock.symbol}</TableCell>
                           <TableCell className="text-neutral-800">{stock.name}</TableCell>
-                          <TableCell className="text-right">{stock.price > 0 ? formatCurrency(stock.price) : "N/A"}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            {stock.price > 0 ? formatCurrency(stock.price) : "N/A"}
+                          </TableCell>
                           <TableCell className="text-right">
                             <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getQualityColor(stock.quality)}`}>
                               {stock.quality}
                             </span>
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-right font-medium">
                             {stock.intrinsicValue !== null ? formatCurrency(stock.intrinsicValue) : "N/A"}
                           </TableCell>
-                          <TableCell className={`text-right ${stock.price > 0 && stock.buyBelowPrice !== null ? getBuyBelowColor(stock.price, stock.buyBelowPrice) : ""}`}>
+                          <TableCell className={`text-right font-medium ${stock.price > 0 && stock.buyBelowPrice !== null ? getBuyBelowColor(stock.price, stock.buyBelowPrice) : ""}`}>
                             {stock.buyBelowPrice !== null ? formatCurrency(stock.buyBelowPrice) : "N/A"}
                           </TableCell>
                           <TableCell className={`text-right font-medium ${getValueGapColor(stock.valueGap)}`}>
                             {stock.valueGap !== null ? (
                               <div className="flex items-center justify-end gap-1">
                                 {stock.valueGap < -2 ? (
-                                  <TrendingDown className="h-3 w-3" />
+                                  <TrendingDown className="h-3 w-3 text-green-500" />
                                 ) : stock.valueGap > 2 ? (
-                                  <TrendingUp className="h-3 w-3" />
+                                  <TrendingUp className="h-3 w-3 text-red-500" />
                                 ) : (
-                                  <Minus className="h-3 w-3" />
+                                  <Minus className="h-3 w-3 text-amber-500" />
                                 )}
                                 {formatPercent(stock.valueGap)}
                               </div>
