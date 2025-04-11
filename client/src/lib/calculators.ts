@@ -8,19 +8,25 @@ export const calculateDCF = (
   const { fcfPerShare, eps, symbol, growthRate } = stockData;
   const { dcfGrowthRate, dcfDiscountRate, dcfTerminalMultiple, dcfForecastPeriod } = params;
   
-  // Special handling for Alibaba and similar stocks
+  // Special handling for specific stocks
   const isAlibaba = symbol === 'BABA' || symbol === '9988.HK';
+  const isToyota = symbol === 'TM' || symbol === '7203.T';
+  const isAutoManufacturer = isToyota || symbol === 'F' || symbol === 'GM' || symbol === 'TSLA' ||
+                              symbol === 'HMC' || symbol === '7267.T'; // Honda
   
   // Determine effective FCF to use
   let effectiveFCF = fcfPerShare;
   
-  // For Alibaba or stocks with unusual FCF issues, use EPS-based estimation
-  if (isAlibaba || (fcfPerShare <= 0)) {
+  // For stocks with unusual FCF issues, use EPS-based estimation
+  if (isAlibaba || isToyota || isAutoManufacturer || (fcfPerShare <= 0 || fcfPerShare > eps * 3)) {
     // If EPS is positive, use it as a basis for estimation
     if (eps > 0) {
       if (isAlibaba) {
-        // For Alibaba specifically, use a more accurate FCF/EPS ratio based on historical patterns
+        // For Alibaba specifically, use a more accurate FCF/EPS ratio
         effectiveFCF = eps * 0.85; // Alibaba historically generates ~85% of EPS as FCF
+      } else if (isToyota || isAutoManufacturer) {
+        // Auto manufacturers often have unusual FCF characteristics due to their financing arms
+        effectiveFCF = eps * 0.75; // More conservative FCF estimate for auto manufacturers
       } else {
         // For other companies with FCF issues
         effectiveFCF = eps * 0.75; // Conservative estimate
@@ -28,6 +34,11 @@ export const calculateDCF = (
     } else {
       return -1; // If both FCF and EPS are negative, DCF isn't applicable
     }
+  } 
+  
+  // Sanity check: cap FCF to EPS ratio for outlier data points
+  if (eps > 0 && effectiveFCF > eps * 3) {
+    effectiveFCF = eps * 2.5; // Cap at 2.5x EPS if FCF seems unreasonably high
   }
   
   // Determine effective growth rate
@@ -68,6 +79,11 @@ export const calculateDCF = (
     effectiveTerminalMultiple = 15; // More conservative terminal multiple for Alibaba
   }
   
+  // Auto manufacturers typically have lower terminal multiples due to cyclical business
+  if ((isToyota || isAutoManufacturer) && effectiveTerminalMultiple > 12) {
+    effectiveTerminalMultiple = 12; // More conservative for car manufacturers
+  }
+  
   const terminalValue = (terminalFCF * effectiveTerminalMultiple) / 
     Math.pow(1 + dcfDiscountRate / 100, dcfForecastPeriod);
   
@@ -76,8 +92,26 @@ export const calculateDCF = (
   
   // Cap extremely high valuations to prevent unrealistic results
   const priceFCFRatio = intrinsicValue / effectiveFCF;
-  if (priceFCFRatio > 40) {
-    intrinsicValue = effectiveFCF * 40; // Cap at 40x P/FCF multiple for conservatism
+  
+  // Different cap based on the type of company
+  if (isToyota || isAutoManufacturer) {
+    // Auto manufacturers typically have lower multiples
+    if (priceFCFRatio > 20) {
+      intrinsicValue = effectiveFCF * 20; // More restrictive cap for auto industry
+    }
+    
+    // Additional check specific to Toyota to prevent extreme valuations
+    if (symbol === 'TM' || symbol === '7203.T') {
+      // Final sanity check - never allow Toyota intrinsic value to exceed certain price multiple
+      const priceMultipleCap = 3.0; // Cap at 3x current price for Toyota
+      const maxAllowedValue = stockData.price * priceMultipleCap;
+      
+      if (intrinsicValue > maxAllowedValue) {
+        intrinsicValue = maxAllowedValue;
+      }
+    }
+  } else if (priceFCFRatio > 40) {
+    intrinsicValue = effectiveFCF * 40; // Cap at 40x P/FCF multiple for other companies
   }
   
   return parseFloat(intrinsicValue.toFixed(2));
