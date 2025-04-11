@@ -1,10 +1,7 @@
 import { StockResponse } from '@shared/schema';
 import { getYahooFinanceData } from './yahooFinance';
-import { withCache } from '../utils/cacheManager';
-import { formatStockData } from '../utils/numberFormatting';
 
-// Main function to fetch stock data, will be wrapped with cache
-async function fetchStockData(symbol: string): Promise<StockResponse> {
+export async function getStockData(symbol: string): Promise<StockResponse> {
   try {
     // Use yfinance Python integration to fetch stock data
     console.log(`Using yfinance Python integration to fetch data for ${symbol}`);
@@ -74,16 +71,3 @@ function evaluateCompetitivePosition(overview: any): 'Strong' | 'Good' | 'Averag
   // For demo, we'll return 'Strong' position
   return 'Strong';
 }
-
-// TTL of 5 minutes (300,000 ms) for stock data results
-const STOCK_DATA_TTL = 5 * 60 * 1000;
-
-// Create a cache key generator function for the main stock data
-const createStockDataCacheKey = (symbol: string) => `stock_data:${symbol.toUpperCase()}`;
-
-// Export the cached version of the function
-export const getStockData = withCache(
-  fetchStockData,
-  createStockDataCacheKey,
-  STOCK_DATA_TTL
-);
