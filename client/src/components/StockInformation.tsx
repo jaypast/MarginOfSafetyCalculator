@@ -121,7 +121,7 @@ const StockInformation: React.FC<StockInformationProps> = ({
           </Button>
         </div>
         <p className="mt-2 text-sm text-neutral-500">
-          Enter US ticker (AAPL) or international: BP.L, 7203.T, 0700.HK. Tab to complete.
+          Enter US ticker (AAPL) or international: BP.L, 7203.T, 0700.HK.
         </p>
         
         {/* Error Message */}
