@@ -195,7 +195,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                 className="absolute top-0 bottom-0 left-0 bg-[#415876] flex items-center justify-end px-2"
                 style={{ width: `${intrinsicPercent}%` }}
               >
-                <span className="text-white text-xs font-medium whitespace-nowrap">IV: {formatCurrency(activeResult.intrinsicValue)}</span>
+                <span className="text-white text-xs font-medium whitespace-nowrap">Intrinsic: {formatCurrency(activeResult.intrinsicValue)}</span>
               </div>
               <div 
                 className="absolute top-0 bottom-0 left-0 bg-green-500 flex items-center justify-end px-2"
