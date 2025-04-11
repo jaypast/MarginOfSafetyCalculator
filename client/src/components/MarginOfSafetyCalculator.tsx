@@ -272,6 +272,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
                 stockData={stockData}
                 isLoading={isLoading}
                 companyQuality={companyQuality?.quality}
+                onStockDataUpdate={handleStockDataUpdate}
               />
             )}
           </div>
