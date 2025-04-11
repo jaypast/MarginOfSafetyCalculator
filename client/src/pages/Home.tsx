@@ -50,6 +50,15 @@ const Home: React.FC = () => {
           <div className="mt-8 text-center text-neutral-500 text-sm">
             <p>© 2025 Margin of Safety Calculator. All rights reserved.</p>
             <p className="mt-1">A tool for value investors to make data-driven investment decisions.</p>
+            <p className="mt-4">
+              <a 
+                href="/admin/feedback" 
+                className="text-xs text-neutral-400 hover:text-neutral-600 transition-colors"
+                rel="noopener noreferrer"
+              >
+                Admin Dashboard
+              </a>
+            </p>
           </div>
         </div>
       </div>
