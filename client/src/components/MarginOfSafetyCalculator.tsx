@@ -182,6 +182,8 @@ const MarginOfSafetyCalculator: React.FC = () => {
               valuationResults={valuationResults} 
               stockData={stockData}
               activeMethod={activeMethod}
+              valuationParams={valuationParams}
+              marginOfSafetyParams={marginOfSafetyParams}
             />
           </div>
         )}

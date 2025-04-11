@@ -6,10 +6,14 @@ import 'jspdf-autotable';
 import { StockData, ValuationParams, ValuationResult, MarginOfSafetyParams as MoSParams } from '@/lib/types';
 import { formatCurrency, formatPercent } from '@/lib/utils';
 
-// This extends the jsPDF type to include autotable functionality
+// This extends the jsPDF type to include autotable functionality 
 declare module 'jspdf' {
   interface jsPDF {
-    autoTable: (options: any) => jsPDF;
+    autoTable: (options: any) => jsPDF & {
+      lastAutoTable: {
+        finalY: number;
+      };
+    };
   }
 }
 
