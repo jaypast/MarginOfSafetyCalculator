@@ -2,6 +2,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { StockResponse } from '../../shared/schema';
 import { withCache } from '../utils/cacheManager';
+import { formatStockData } from '../utils/numberFormatting';
 
 // Promisify the exec function to use with async/await
 const execAsync = promisify(exec);
@@ -29,8 +30,11 @@ async function fetchYahooFinanceData(symbol: string): Promise<StockResponse> {
     
     console.log(`Successfully received data for ${symbol}`);
     
-    // Return the stock data directly
-    return data as StockResponse;
+    // Format the data to ensure consistent decimal precision
+    const formattedData = formatStockData(data);
+    
+    // Return the formatted stock data
+    return formattedData as StockResponse;
     
   } catch (error) {
     console.error('Error fetching Yahoo Finance data:', error);

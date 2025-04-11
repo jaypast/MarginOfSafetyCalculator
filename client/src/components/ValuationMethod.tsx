@@ -85,7 +85,7 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
               step={0.1}
             />
             <p className="mt-1 text-xs text-neutral-500">
-              Historical: {stockData ? `${stockData.growthRate}% (5Y Average)` : '-'}
+              Historical: {stockData ? `${stockData.growthRate.toFixed(2)}% (5Y Average)` : '-'}
             </p>
           </div>
           
@@ -171,7 +171,7 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
                 <SelectValue placeholder="Select P/E type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="current">Current P/E ({stockData ? stockData.peRatio.toFixed(1) : '-'})</SelectItem>
+                <SelectItem value="current">Current P/E ({stockData ? stockData.peRatio.toFixed(2) : '-'})</SelectItem>
                 <SelectItem value="5year">5-Year Average (18.6)</SelectItem>
                 <SelectItem value="10year">10-Year Average (16.2)</SelectItem>
                 <SelectItem value="industry">Industry Average (22.5)</SelectItem>
