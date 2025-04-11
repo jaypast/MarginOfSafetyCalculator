@@ -334,11 +334,7 @@ const TopResearch = () => {
                   </Table>
                 </div>
               </div>
-              <div className="flex items-center justify-between mt-4">
-                <p className="text-xs text-gray-500 italic">
-                  Data automatically refreshes weekly to optimize API usage.
-                </p>
-              </div>
+
             </div>
           )}
           
