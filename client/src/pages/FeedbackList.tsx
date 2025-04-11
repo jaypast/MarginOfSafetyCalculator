@@ -63,52 +63,39 @@ export default function FeedbackList() {
 
   const [isExporting, setIsExporting] = useState(false);
 
-  // Function to export feedback data as PDF
-  const exportToPDF = () => {
-    if (!data || !data.feedback) return;
+  // Function to export feedback data as simple CSV
+  const exportToCSV = () => {
+    if (!data || !data.feedback || data.feedback.length === 0) return;
     
     setIsExporting(true);
     try {
-      const doc = new jsPDF();
+      // Create CSV content
+      let csvContent = "Name,Email,PMF Score,Improvement,Feedback,Date\n";
       
-      // Add title
-      doc.setFontSize(18);
-      doc.text('Margin of Safety Calculator - Feedback Report', 14, 22);
-      
-      // Add date
-      doc.setFontSize(11);
-      doc.text(`Generated: ${format(new Date(), 'PPP p')}`, 14, 30);
-      doc.text(`Total Feedback: ${data.feedback.length}`, 14, 38);
-      
-      // Calculate PMF metrics
-      const veryDisappointed = data.feedback.filter(item => item.pmfScore === '1').length;
-      const totalResponses = data.feedback.filter(item => item.pmfScore).length;
-      const pmfPercentage = totalResponses > 0 
-        ? Math.round((veryDisappointed / totalResponses) * 100) 
-        : 0;
-      
-      doc.text(`PMF Score: ${pmfPercentage}% (${veryDisappointed}/${totalResponses} "Very Disappointed")`, 14, 46);
-      
-      // Prepare table data
-      const tableData = data.feedback.map(item => [
-        item.name || '(Anonymous)',
-        pmfLabels[item.pmfScore] || 'Not answered',
-        item.improvement?.substring(0, 50) + (item.improvement?.length > 50 ? '...' : '') || '',
-        format(new Date(item.submittedAt), 'MMM d, yyyy')
-      ]);
-      
-      // Generate table
-      (doc as any).autoTable({
-        startY: 55,
-        head: [['Name', 'PMF Response', 'Improvement Ideas', 'Date']],
-        body: tableData,
-        headStyles: { fillColor: [26, 41, 66] } // Dark blue header
+      // Add data rows
+      data.feedback.forEach(item => {
+        const name = item.name ? `"${item.name.replace(/"/g, '""')}"` : "(Anonymous)";
+        const email = item.email ? `"${item.email.replace(/"/g, '""')}"` : "";
+        const pmfScore = item.pmfScore ? `"${pmfLabels[item.pmfScore] || item.pmfScore}"` : "Not answered";
+        const improvement = item.improvement ? `"${item.improvement.replace(/"/g, '""')}"` : "";
+        const feedback = item.feedback ? `"${item.feedback.replace(/"/g, '""')}"` : "";
+        const date = format(new Date(item.submittedAt), 'yyyy-MM-dd');
+        
+        csvContent += `${name},${email},${pmfScore},${improvement},${feedback},${date}\n`;
       });
       
-      // Save the PDF
-      doc.save('feedback-report.pdf');
+      // Create download link
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', 'feedback-data.csv');
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     } catch (error) {
-      console.error('Error exporting to PDF:', error);
+      console.error('Error exporting data:', error);
     } finally {
       setIsExporting(false);
     }
@@ -158,7 +145,7 @@ export default function FeedbackList() {
           <Button 
             variant="default" 
             size="sm" 
-            onClick={exportToPDF} 
+            onClick={exportToCSV} 
             disabled={isExporting || feedbackItems.length === 0}
             className="flex items-center gap-1 bg-[#1A2942] hover:bg-[#283c5f]"
           >
@@ -170,7 +157,7 @@ export default function FeedbackList() {
             ) : (
               <>
                 <Download className="h-4 w-4" />
-                Export PDF
+                Export CSV
               </>
             )}
           </Button>
