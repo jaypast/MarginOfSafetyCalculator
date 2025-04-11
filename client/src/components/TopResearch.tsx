@@ -32,103 +32,6 @@ const TopResearch = () => {
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
-  // Format the last updated date for display
-  const formatLastUpdated = (dateString: string | null) => {
-    if (!dateString) return "Never";
-    
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date);
-  };
-
-  // Function to fetch stock data with caching
-  const fetchTopStocks = async () => {
-    setIsLoading(true);    
-    setError(null);
-    
-    try {
-      let cachedData = null;
-      let lastUpdatedStr = null;
-      const currentDate = new Date();
-      
-      // Safely try to access localStorage
-      try {
-        cachedData = localStorage.getItem('topStockRecommendations');
-        lastUpdatedStr = localStorage.getItem('topStockRecommendationsUpdated');
-      } catch (storageError) {
-        console.warn("LocalStorage is not available:", storageError);
-      }
-      
-      // Parse the last updated date
-      const lastUpdatedDate = lastUpdatedStr ? new Date(lastUpdatedStr) : null;
-      
-      // Set the last updated date to display in the UI
-      setLastUpdated(lastUpdatedStr || currentDate.toISOString());
-      
-      // Calculate if a week has passed since last update
-      const needsRefresh = !lastUpdatedDate || 
-        (currentDate.getTime() - lastUpdatedDate.getTime()) > 7 * 24 * 60 * 60 * 1000;
-      
-      // If we have cached data and it's less than a week old, use it
-      if (cachedData && !needsRefresh) {
-        try {
-          setStockRecommendations(JSON.parse(cachedData));
-          setIsLoading(false);
-          return;
-        } catch (parseError) {
-          console.warn("Error parsing cached data:", parseError);
-        }
-      }
-      
-      // In a real implementation, this would make an API call
-      // For now, we'll use sample data since the backend API isn't implemented yet
-      // This simulates an API call with a slight delay
-      setTimeout(() => {
-        // Get sample data from our helper function
-        const sampleStocks: ResearchStock[] = getFullSampleStocks();
-        
-        // Try to cache the results and update timestamp
-        try {
-          localStorage.setItem('topStockRecommendations', JSON.stringify(sampleStocks));
-          localStorage.setItem('topStockRecommendationsUpdated', currentDate.toISOString());
-        } catch (storageError) {
-          console.warn("Could not save to localStorage:", storageError);
-        }
-        
-        setStockRecommendations(sampleStocks);
-        setIsLoading(false);
-      }, 800);
-      
-    } catch (err) {
-      console.error("Error in fetchTopStocks:", err);
-      
-      // If there's an error, try to use cached data if available
-      try {
-        const cachedData = localStorage.getItem('topStockRecommendations');
-        if (cachedData) {
-          setStockRecommendations(JSON.parse(cachedData));
-          setError("Using cached data. Could not refresh recommendations.");
-        } else {
-          // Always set some data even if localStorage fails
-          const fallbackStocks = getSampleStocks();
-          setStockRecommendations(fallbackStocks);
-        }
-      } catch (storageError) {
-        // If localStorage access fails, use the fallback data
-        const fallbackStocks = getSampleStocks();
-        setStockRecommendations(fallbackStocks);
-        setError("Could not access cached data. Using sample data.");
-      }
-      
-      setIsLoading(false);
-    }
-  };
-  
   // Helper function to get sample stocks data (short version)
   const getSampleStocks = (): ResearchStock[] => {
     return [
@@ -244,6 +147,103 @@ const TopResearch = () => {
         quality: 'Good'
       }
     ];
+  };
+
+  // Format the last updated date for display
+  const formatLastUpdated = (dateString: string | null) => {
+    if (!dateString) return "Never";
+    
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(date);
+  };
+
+  // Function to fetch stock data with caching
+  const fetchTopStocks = async () => {
+    setIsLoading(true);    
+    setError(null);
+    
+    try {
+      let cachedData = null;
+      let lastUpdatedStr = null;
+      const currentDate = new Date();
+      
+      // Safely try to access localStorage
+      try {
+        cachedData = localStorage.getItem('topStockRecommendations');
+        lastUpdatedStr = localStorage.getItem('topStockRecommendationsUpdated');
+      } catch (storageError) {
+        console.warn("LocalStorage is not available:", storageError);
+      }
+      
+      // Parse the last updated date
+      const lastUpdatedDate = lastUpdatedStr ? new Date(lastUpdatedStr) : null;
+      
+      // Set the last updated date to display in the UI
+      setLastUpdated(lastUpdatedStr || currentDate.toISOString());
+      
+      // Calculate if a week has passed since last update
+      const needsRefresh = !lastUpdatedDate || 
+        (currentDate.getTime() - lastUpdatedDate.getTime()) > 7 * 24 * 60 * 60 * 1000;
+      
+      // If we have cached data and it's less than a week old, use it
+      if (cachedData && !needsRefresh) {
+        try {
+          setStockRecommendations(JSON.parse(cachedData));
+          setIsLoading(false);
+          return;
+        } catch (parseError) {
+          console.warn("Error parsing cached data:", parseError);
+        }
+      }
+      
+      // In a real implementation, this would make an API call
+      // For now, we'll use sample data since the backend API isn't implemented yet
+      // This simulates an API call with a slight delay
+      setTimeout(() => {
+        // Get sample data from our helper function
+        const sampleStocks = getFullSampleStocks();
+        
+        // Try to cache the results and update timestamp
+        try {
+          localStorage.setItem('topStockRecommendations', JSON.stringify(sampleStocks));
+          localStorage.setItem('topStockRecommendationsUpdated', currentDate.toISOString());
+        } catch (storageError) {
+          console.warn("Could not save to localStorage:", storageError);
+        }
+        
+        setStockRecommendations(sampleStocks);
+        setIsLoading(false);
+      }, 800);
+      
+    } catch (err) {
+      console.error("Error in fetchTopStocks:", err);
+      
+      // If there's an error, try to use cached data if available
+      try {
+        const cachedData = localStorage.getItem('topStockRecommendations');
+        if (cachedData) {
+          setStockRecommendations(JSON.parse(cachedData));
+          setError("Using cached data. Could not refresh recommendations.");
+        } else {
+          // Always set some data even if localStorage fails
+          const fallbackStocks = getSampleStocks();
+          setStockRecommendations(fallbackStocks);
+        }
+      } catch (storageError) {
+        // If localStorage access fails, use the fallback data
+        const fallbackStocks = getSampleStocks();
+        setStockRecommendations(fallbackStocks);
+        setError("Could not access cached data. Using sample data.");
+      }
+      
+      setIsLoading(false);
+    }
   };
 
   // Initialize on component mount
