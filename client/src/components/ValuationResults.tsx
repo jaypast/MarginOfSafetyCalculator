@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Table, 
   TableBody, 
@@ -10,6 +10,8 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FileText } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { StockData, ValuationResult, CalculationMethod, ValuationParams, MarginOfSafetyParams } from '@/lib/types';
 import { formatCurrency, isETF } from '@/lib/utils';
 import { generateCalculationsPDF } from '@/utils/pdfGenerator';
@@ -29,6 +31,10 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
   valuationParams,
   marginOfSafetyParams
 }) => {
+  // Add state for dialog control and report content
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  const [reportContent, setReportContent] = useState("");
+  
   // Check if the stock is an ETF
   const etfDetected = stockData && isETF(stockData);
   
@@ -259,27 +265,44 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
           </div>
         </div>
         
-        {/* Show Work Button - Text Report Export */}
+        {/* Show Work Button - Display Report in Dialog */}
         {stockData && valuationParams && marginOfSafetyParams && !etfDetected && !isSpecialCase && (
           <div className="mt-6 flex justify-center">
             <Button 
               variant="outline" 
               className="flex items-center gap-2 border-[#1A2942] text-[#1A2942] hover:bg-[#E9ECF1]"
               onClick={() => {
-                generateCalculationsPDF(
+                // Generate the report content
+                const content = generateCalculationsPDF(
                   stockData,
                   valuationParams,
                   marginOfSafetyParams,
                   valuationResults
                 );
+                setReportContent(content);
+                setShowReportDialog(true);
               }}
-              title="Download detailed valuation report as text file"
+              title="View detailed valuation calculations"
             >
               <FileText size={18} />
               Show Work
             </Button>
           </div>
         )}
+        
+        {/* Dialog for showing the report */}
+        <Dialog open={showReportDialog} onOpenChange={setShowReportDialog}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>
+                Valuation Calculation Details: {stockData?.name} ({stockData?.symbol})
+              </DialogTitle>
+            </DialogHeader>
+            <ScrollArea className="h-[70vh] rounded border p-4 bg-gray-50">
+              <pre className="font-mono text-sm whitespace-pre-wrap">{reportContent}</pre>
+            </ScrollArea>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

@@ -6,7 +6,7 @@ export const generateCalculationsPDF = (
   valuationParams: ValuationParams,
   marginOfSafetyParams: MoSParams,
   valuationResults: ValuationResult[]
-): void => {
+): string => {
   try {
     // Generate a text report instead of PDF to ensure cross-browser compatibility
     let text = `VALUATION CALCULATION DETAILS: ${stockData.name} (${stockData.symbol})\n`;
@@ -188,21 +188,11 @@ export const generateCalculationsPDF = (
     text += `All calculations are based on available data and assumptions. Always conduct your own research and consider\n`;
     text += `consulting with a financial advisor before making investment decisions.\n`;
     
-    // Download as a text file
-    const blob = new Blob([text], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${stockData.symbol}_Valuation_${new Date().toISOString().split('T')[0]}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
     console.log(`Text report successfully generated for ${stockData.symbol}`);
+    return text;
   } catch (error) {
     console.error("Error generating report:", error);
-    alert("There was an error generating the report. Please try again.");
+    return `Error generating report: ${error}`;
   }
 };
 
