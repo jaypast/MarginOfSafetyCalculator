@@ -163,6 +163,63 @@ const TopResearch = () => {
     }).format(date);
   };
 
+  // Function to fetch individual stock data and transform it into a ResearchStock
+  const fetchAndTransformStock = async (symbol: string): Promise<ResearchStock | null> => {
+    try {
+      const response = await fetch(`/api/stock/${symbol}`);
+      
+      if (!response.ok) {
+        console.warn(`Failed to fetch data for ${symbol}`);
+        return null;
+      }
+      
+      const data = await response.json();
+      
+      // Skip if there's an error in the data
+      if (data.error) {
+        console.warn(`Error in data for ${symbol}: ${data.errorMessage}`);
+        return null;
+      }
+      
+      // Calculate intrinsic value (using DCF method for simplicity)
+      const intrinsicValue = data.fcfPerShare * 15; // Simple multiple of FCF
+      
+      // For exceptional companies (high ROE, low debt, etc.), use smaller margin of safety
+      let quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative' = 'Average';
+      let marginOfSafety = 0.25; // Default 25%
+      
+      if (data.roe > 20 && data.debtToEquity < 0.5 && data.currentRatio > 1.5) {
+        quality = 'Exceptional';
+        marginOfSafety = 0.15; // 15% for exceptional companies
+      } else if (data.roe > 15 && data.debtToEquity < 1 && data.currentRatio > 1.2) {
+        quality = 'Good';
+        marginOfSafety = 0.20; // 20% for good companies
+      } else if (data.roe < 10 || data.debtToEquity > 2 || data.currentRatio < 1) {
+        quality = 'Speculative';
+        marginOfSafety = 0.40; // 40% for speculative companies
+      }
+      
+      // Calculate buy below price and discount
+      const buyBelowPrice = intrinsicValue * (1 - marginOfSafety);
+      const qualityBuyPrice = intrinsicValue * (1 - (marginOfSafety + 0.10)); // Additional 10% discount for strong buy
+      const discount = data.price < intrinsicValue ? ((intrinsicValue - data.price) / intrinsicValue) * 100 : 0;
+      
+      return {
+        symbol: data.symbol,
+        name: data.name,
+        price: data.price,
+        intrinsicValue,
+        buyBelowPrice,
+        qualityBuyPrice,
+        discount,
+        quality
+      };
+    } catch (error) {
+      console.error(`Error fetching data for ${symbol}:`, error);
+      return null;
+    }
+  };
+
   // Function to fetch stock data with caching
   const fetchTopStocks = async () => {
     setIsLoading(true);    
@@ -185,13 +242,13 @@ const TopResearch = () => {
       const lastUpdatedDate = lastUpdatedStr ? new Date(lastUpdatedStr) : null;
       
       // Set the last updated date to display in the UI
-      setLastUpdated(lastUpdatedStr || currentDate.toISOString());
+      setLastUpdated(currentDate.toISOString());
       
-      // Calculate if a week has passed since last update
+      // Calculate if a day has passed since last update (reduced from a week to ensure fresh data)
       const needsRefresh = !lastUpdatedDate || 
-        (currentDate.getTime() - lastUpdatedDate.getTime()) > 7 * 24 * 60 * 60 * 1000;
+        (currentDate.getTime() - lastUpdatedDate.getTime()) > 24 * 60 * 60 * 1000;
       
-      // If we have cached data and it's less than a week old, use it
+      // If we have cached data and it's recent, use it
       if (cachedData && !needsRefresh) {
         try {
           setStockRecommendations(JSON.parse(cachedData));
@@ -202,24 +259,30 @@ const TopResearch = () => {
         }
       }
       
-      // In a real implementation, this would make an API call
-      // For now, we'll use sample data since the backend API isn't implemented yet
-      // This simulates an API call with a slight delay
-      setTimeout(() => {
-        // Get sample data from our helper function
-        const sampleStocks = getFullSampleStocks();
-        
-        // Try to cache the results and update timestamp
-        try {
-          localStorage.setItem('topStockRecommendations', JSON.stringify(sampleStocks));
-          localStorage.setItem('topStockRecommendationsUpdated', currentDate.toISOString());
-        } catch (storageError) {
-          console.warn("Could not save to localStorage:", storageError);
-        }
-        
-        setStockRecommendations(sampleStocks);
-        setIsLoading(false);
-      }, 800);
+      // List of top stocks to analyze
+      const stockSymbols = ['AAPL', 'MSFT', 'GOOG', 'AMZN', 'NVDA', 'BRK-B', 'META', 'TSM', 'V', 'WMT'];
+      
+      // Fetch data for all stocks
+      const stockPromises = stockSymbols.map(symbol => fetchAndTransformStock(symbol));
+      const stockResults = await Promise.all(stockPromises);
+      
+      // Filter out null results and sort by discount
+      const validStocks = stockResults
+        .filter((stock): stock is ResearchStock => stock !== null)
+        .sort((a, b) => b.discount - a.discount); // Sort by highest discount
+      
+      // Save to state and localStorage
+      setStockRecommendations(validStocks);
+      
+      // Try to cache the results and update timestamp
+      try {
+        localStorage.setItem('topStockRecommendations', JSON.stringify(validStocks));
+        localStorage.setItem('topStockRecommendationsUpdated', currentDate.toISOString());
+      } catch (storageError) {
+        console.warn("Could not save to localStorage:", storageError);
+      }
+      
+      setIsLoading(false);
       
     } catch (err) {
       console.error("Error in fetchTopStocks:", err);
