@@ -1,6 +1,8 @@
 import { StockData, ValuationParams, ValuationResult } from './types';
 
 // DCF Analysis calculation
+import { getAdjustmentFactors, detectDataIssues } from './companyAdjustments';
+
 export const calculateDCF = (
   stockData: StockData,
   params: ValuationParams
@@ -8,29 +10,21 @@ export const calculateDCF = (
   const { fcfPerShare, eps, symbol, growthRate } = stockData;
   const { dcfGrowthRate, dcfDiscountRate, dcfTerminalMultiple, dcfForecastPeriod } = params;
   
-  // Special handling for specific stocks
-  const isAlibaba = symbol === 'BABA' || symbol === '9988.HK';
-  const isToyota = symbol === 'TM' || symbol === '7203.T';
-  const isAutoManufacturer = isToyota || symbol === 'F' || symbol === 'GM' || symbol === 'TSLA' ||
-                              symbol === 'HMC' || symbol === '7267.T'; // Honda
+  // Get appropriate adjustment factors for this stock
+  const adjustments = getAdjustmentFactors(stockData);
+  
+  // Check for data quality issues
+  const dataIssues = detectDataIssues(stockData);
   
   // Determine effective FCF to use
   let effectiveFCF = fcfPerShare;
   
-  // For stocks with unusual FCF issues, use EPS-based estimation
-  if (isAlibaba || isToyota || isAutoManufacturer || (fcfPerShare <= 0 || fcfPerShare > eps * 3)) {
+  // Handle FCF issues with EPS-based estimation
+  if (dataIssues.hasFcfIssue || dataIssues.hasExtremeFcf) {
     // If EPS is positive, use it as a basis for estimation
     if (eps > 0) {
-      if (isAlibaba) {
-        // For Alibaba specifically, use a more accurate FCF/EPS ratio
-        effectiveFCF = eps * 0.85; // Alibaba historically generates ~85% of EPS as FCF
-      } else if (isToyota || isAutoManufacturer) {
-        // Auto manufacturers often have unusual FCF characteristics due to their financing arms
-        effectiveFCF = eps * 0.75; // More conservative FCF estimate for auto manufacturers
-      } else {
-        // For other companies with FCF issues
-        effectiveFCF = eps * 0.75; // Conservative estimate
-      }
+      // Use the industry-appropriate FCF to EPS ratio
+      effectiveFCF = eps * adjustments.fcfToEpsRatio;
     } else {
       return -1; // If both FCF and EPS are negative, DCF isn't applicable
     }
@@ -44,13 +38,8 @@ export const calculateDCF = (
   // Determine effective growth rate
   let effectiveGrowthRate = dcfGrowthRate > 0 ? dcfGrowthRate : growthRate;
   
-  // Apply company-specific growth rate adjustments
-  if (isAlibaba && effectiveGrowthRate > 15) {
-    effectiveGrowthRate = 15; // Cap Alibaba growth at 15% as a more realistic long-term rate
-  }
-  
-  // Cap growth rate to reasonable bounds (2-20%)
-  effectiveGrowthRate = Math.max(2, Math.min(effectiveGrowthRate, 20));
+  // Cap growth rate based on industry adjustment
+  effectiveGrowthRate = Math.max(2, Math.min(effectiveGrowthRate, adjustments.growthRateCap));
   
   let intrinsicValue = 0;
   let currentFCF = effectiveFCF;
@@ -73,16 +62,8 @@ export const calculateDCF = (
   const terminalGrowthRate = Math.min(effectiveGrowthRate * 0.5, 4);
   const terminalFCF = currentFCF * (1 + terminalGrowthRate / 100);
   
-  // Use more conservative terminal multiple for certain companies
-  let effectiveTerminalMultiple = dcfTerminalMultiple;
-  if (isAlibaba && effectiveTerminalMultiple > 15) {
-    effectiveTerminalMultiple = 15; // More conservative terminal multiple for Alibaba
-  }
-  
-  // Auto manufacturers typically have lower terminal multiples due to cyclical business
-  if ((isToyota || isAutoManufacturer) && effectiveTerminalMultiple > 12) {
-    effectiveTerminalMultiple = 12; // More conservative for car manufacturers
-  }
+  // Use industry-appropriate terminal multiple
+  const effectiveTerminalMultiple = Math.min(dcfTerminalMultiple, adjustments.terminalMultipleCap);
   
   const terminalValue = (terminalFCF * effectiveTerminalMultiple) / 
     Math.pow(1 + dcfDiscountRate / 100, dcfForecastPeriod);
@@ -90,42 +71,22 @@ export const calculateDCF = (
   // Add terminal value to intrinsic value
   intrinsicValue += terminalValue;
   
-  // Cap extremely high valuations to prevent unrealistic results
+  // Apply FCF multiple cap based on industry
   const priceFCFRatio = intrinsicValue / effectiveFCF;
+  if (priceFCFRatio > adjustments.fcfMultipleCap) {
+    intrinsicValue = effectiveFCF * adjustments.fcfMultipleCap;
+  }
   
-  // Different cap based on the type of company
-  if (isToyota || isAutoManufacturer) {
-    // Auto manufacturers typically have lower multiples
-    if (priceFCFRatio > 20) {
-      intrinsicValue = effectiveFCF * 20; // More restrictive cap for auto industry
-    }
-    
-    // Additional check specific to Toyota to prevent extreme valuations
-    if (symbol === 'TM' || symbol === '7203.T') {
-      // Handle Toyota differently based on market (US vs Japan)
-      const isToyotaJapan = symbol === '7203.T';
-      
-      // For Japanese listing, apply stricter cap as it's more prone to data issues
-      const priceMultipleCap = isToyotaJapan ? 2.5 : 3.0;
-      const maxAllowedValue = stockData.price * priceMultipleCap;
-      
-      if (intrinsicValue > maxAllowedValue) {
-        intrinsicValue = maxAllowedValue;
-      }
-      
-      // For Japanese listing (7203.T), ensure the valuation is consistent with the U.S. listing (TM)
-      // since they represent the same company
-      if (isToyotaJapan) {
-        // Typical Toyota price-to-book ratio is around 1.0-1.3
-        // Limit the DCF value to be within a reasonable multiple of current price
-        const minValue = stockData.price * 0.7; // At minimum 70% of current price
-        const maxValue = stockData.price * 2.0; // At maximum 2x current price
-        
-        intrinsicValue = Math.max(minValue, Math.min(intrinsicValue, maxValue));
-      }
-    }
-  } else if (priceFCFRatio > 40) {
-    intrinsicValue = effectiveFCF * 40; // Cap at 40x P/FCF multiple for other companies
+  // Apply final price-based cap from industry adjustments
+  const maxAllowedValue = stockData.price * adjustments.priceToCap;
+  if (intrinsicValue > maxAllowedValue) {
+    intrinsicValue = maxAllowedValue;
+  }
+  
+  // Special handling for Japanese stocks to ensure minimum value
+  if (symbol.endsWith('.T')) {
+    const minValue = stockData.price * 0.65; // At minimum 65% of current price
+    intrinsicValue = Math.max(minValue, intrinsicValue);
   }
   
   return parseFloat(intrinsicValue.toFixed(2));
@@ -139,6 +100,9 @@ export const calculatePE = (
   const { eps, peRatio, growthRate } = stockData;
   const { peType, peCustomValue, peAdjustment } = params;
   
+  // Get appropriate adjustment factors for this stock
+  const adjustments = getAdjustmentFactors(stockData);
+  
   // If EPS is negative, P/E valuation isn't meaningful
   if (eps <= 0) {
     return -1; // Return negative value to indicate the valuation is not applicable
@@ -151,8 +115,10 @@ export const calculatePE = (
     case 'current':
       // Use current P/E with validation
       selectedPE = peRatio > 0 ? peRatio : 15;
-      // Cap extremely high P/E ratios that could skew valuations
-      if (selectedPE > 50) selectedPE = 50;
+      // Cap P/E ratio based on industry adjustments
+      if (selectedPE > adjustments.peMultipleCap) {
+        selectedPE = adjustments.peMultipleCap;
+      }
       break;
     case '5year':
       selectedPE = 18.6; // Example historical value
@@ -171,9 +137,11 @@ export const calculatePE = (
       if (growthRate > 0) {
         // Use PEG ratio of 1.5 as a reasonable benchmark
         selectedPE = growthRate * 1.5;
-        // Apply realistic bounds
+        // Apply industry-appropriate bounds
         if (selectedPE < 10) selectedPE = 10;
-        if (selectedPE > 30) selectedPE = 30;
+        if (selectedPE > adjustments.peMultipleCap) {
+          selectedPE = adjustments.peMultipleCap;
+        }
       } else {
         selectedPE = 18.6; // Default to 5-year average
       }
@@ -185,13 +153,16 @@ export const calculatePE = (
   // Calculate intrinsic value
   let intrinsicValue = adjustedEPS * selectedPE;
   
-  // Special handling for Toyota Japan to ensure reasonable valuation
-  if (stockData.symbol === '7203.T') {
-    // Limit PE-based valuation to reasonable range for Toyota Japan
+  // Apply price-based cap from industry adjustments
+  const maxAllowedValue = stockData.price * adjustments.priceToCap;
+  if (intrinsicValue > maxAllowedValue) {
+    intrinsicValue = maxAllowedValue;
+  }
+  
+  // For Japanese stocks, ensure a minimum reasonable value
+  if (stockData.symbol.endsWith('.T')) {
     const minValue = stockData.price * 0.7; // At minimum 70% of current price
-    const maxValue = stockData.price * 1.8; // At maximum 1.8x current price
-    
-    intrinsicValue = Math.max(minValue, Math.min(intrinsicValue, maxValue));
+    intrinsicValue = Math.max(minValue, intrinsicValue);
   }
   
   return parseFloat(intrinsicValue.toFixed(2));
@@ -205,6 +176,9 @@ export const calculateGraham = (
   const { eps, growthRate } = stockData;
   const { grahamGrowthRate, grahamBaseValue } = params;
   
+  // Get appropriate adjustment factors for this stock
+  const adjustments = getAdjustmentFactors(stockData);
+  
   // If EPS is negative, Graham valuation isn't applicable
   if (eps <= 0) {
     return -1; // Return negative value to indicate the valuation is not applicable
@@ -215,26 +189,29 @@ export const calculateGraham = (
   const effectiveGrowthRate = grahamGrowthRate > 0 ? grahamGrowthRate : 
                              (growthRate > 0 ? growthRate : 7); // Default to 7% if no growth data
   
-  // Cap growth rate at 20% as per Graham's suggestion
-  const cappedGrowthRate = Math.min(effectiveGrowthRate, 20);
+  // Cap growth rate based on industry adjustment and Graham's 20% suggestion
+  const cappedGrowthRate = Math.min(effectiveGrowthRate, 
+                                   Math.min(20, adjustments.growthRateCap));
   
   // Apply Graham Formula: Intrinsic Value = EPS × (Base + 2g)
   let intrinsicValue = eps * (grahamBaseValue + (2 * cappedGrowthRate));
   
-  // Apply a sanity check for exceptionally high valuations
-  // Graham typically avoided stocks with P/E ratios over 20
+  // Apply a sanity check for exceptionally high valuations based on industry
   const impliedPE = intrinsicValue / eps;
-  if (impliedPE > 40) {
-    intrinsicValue = eps * 40; // Cap at 40x P/E as an upper bound for Graham method
+  if (impliedPE > adjustments.peMultipleCap) {
+    intrinsicValue = eps * adjustments.peMultipleCap;
   }
   
-  // Special handling for Toyota Japan to ensure reasonable Graham valuation
-  if (stockData.symbol === '7203.T') {
-    // Limit Graham valuation to reasonable range for Toyota Japan
+  // Apply price-based cap from industry adjustments
+  const maxAllowedValue = stockData.price * adjustments.priceToCap;
+  if (intrinsicValue > maxAllowedValue) {
+    intrinsicValue = maxAllowedValue;
+  }
+  
+  // For Japanese stocks, ensure a minimum reasonable value
+  if (stockData.symbol.endsWith('.T')) {
     const minValue = stockData.price * 0.65; // At minimum 65% of current price
-    const maxValue = stockData.price * 1.6;  // At maximum 1.6x current price
-    
-    intrinsicValue = Math.max(minValue, Math.min(intrinsicValue, maxValue));
+    intrinsicValue = Math.max(minValue, intrinsicValue);
   }
   
   return parseFloat(intrinsicValue.toFixed(2));
