@@ -246,7 +246,7 @@ const TopResearch = () => {
           className="text-xl font-semibold text-[#1A2942] cursor-pointer" 
           onClick={toggleExpanded}
         >
-          Top Research
+          Top Research Ideas
         </h2>
         <div className="flex items-center gap-2">
           {lastUpdated && (
