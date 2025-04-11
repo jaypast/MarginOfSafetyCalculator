@@ -1,4 +1,3 @@
-import { jsPDF } from 'jspdf';
 import { StockData, ValuationParams, ValuationResult, MarginOfSafetyParams as MoSParams } from '@/lib/types';
 import { formatCurrency, formatPercent } from '@/lib/utils';
 
@@ -9,158 +8,89 @@ export const generateCalculationsPDF = (
   valuationResults: ValuationResult[]
 ): void => {
   try {
-    // Initialize PDF document
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    
-    // Add header
-    doc.setFontSize(20);
-    doc.setTextColor(26, 32, 44); // dark blue color
-    doc.text(`Valuation Calculation Details: ${stockData.name} (${stockData.symbol})`, 14, 20);
-    
-    doc.setFontSize(12);
-    doc.setTextColor(100, 100, 100);
-    const date = new Date().toLocaleDateString();
-    doc.text(`Generated on: ${date}`, 14, 30);
+    // Generate a text report instead of PDF to ensure cross-browser compatibility
+    let text = `VALUATION CALCULATION DETAILS: ${stockData.name} (${stockData.symbol})\n`;
+    text += `Generated on: ${new Date().toLocaleDateString()}\n\n`;
     
     // Input parameters section
-    doc.setFontSize(16);
-    doc.setTextColor(26, 32, 44);
-    doc.text("Input Parameters", 14, 40);
-    
-    doc.setFontSize(11);
-    doc.setTextColor(60, 60, 60);
-    doc.text(`Current Price: ${formatCurrency(stockData.price)}`, 14, 48);
-    doc.text(`EPS: ${formatCurrency(stockData.eps)}`, 14, 54);
-    doc.text(`P/E Ratio: ${stockData.peRatio.toFixed(2)}`, 14, 60);
-    doc.text(`Free Cash Flow Per Share: ${formatCurrency(stockData.fcfPerShare)}`, 14, 66);
-    doc.text(`Growth Rate: ${formatPercent(stockData.growthRate)}`, 14, 72);
-    doc.text(`Return on Equity: ${formatPercent(stockData.roe)}`, 14, 78);
-    doc.text(`Debt to Equity: ${stockData.debtToEquity.toFixed(2)}`, 14, 84);
-    doc.text(`Current Ratio: ${stockData.currentRatio.toFixed(2)}`, 14, 90);
-    doc.text(`Margin of Safety Applied: ${formatPercent(marginOfSafetyParams.marginOfSafety)}`, 14, 96);
-    
-    // Add separator line
-    doc.setDrawColor(200, 200, 200);
-    doc.line(14, 102, pageWidth - 14, 102);
+    text += `============ INPUT PARAMETERS ============\n`;
+    text += `Current Price: ${formatCurrency(stockData.price)}\n`;
+    text += `EPS: ${formatCurrency(stockData.eps)}\n`;
+    text += `P/E Ratio: ${stockData.peRatio.toFixed(2)}\n`;
+    text += `Free Cash Flow Per Share: ${formatCurrency(stockData.fcfPerShare)}\n`;
+    text += `Growth Rate: ${formatPercent(stockData.growthRate)}\n`;
+    text += `Return on Equity: ${formatPercent(stockData.roe)}\n`;
+    text += `Debt to Equity: ${stockData.debtToEquity.toFixed(2)}\n`;
+    text += `Current Ratio: ${stockData.currentRatio.toFixed(2)}\n`;
+    text += `Margin of Safety Applied: ${formatPercent(marginOfSafetyParams.marginOfSafety)}\n\n`;
     
     // DCF Calculation Section
-    doc.setFontSize(16);
-    doc.setTextColor(26, 32, 44);
-    doc.text("DCF Analysis Calculation", 14, 112);
+    text += `============ DCF ANALYSIS ============\n`;
+    text += `Discounted Cash Flow (DCF) analysis estimates intrinsic value based on projected future cash flows.\n\n`;
     
-    doc.setFontSize(11);
-    doc.setTextColor(60, 60, 60);
-    doc.text("Discounted Cash Flow (DCF) analysis estimates intrinsic value based on", 14, 120);
-    doc.text("projected future free cash flows discounted to present value.", 14, 126);
+    text += `DCF Parameters:\n`;
+    text += `Growth Rate: ${formatPercent(valuationParams.dcfGrowthRate)}\n`;
+    text += `Discount Rate: ${formatPercent(valuationParams.dcfDiscountRate)}\n`;
+    text += `Terminal Multiple: ${valuationParams.dcfTerminalMultiple}x\n`;
+    text += `Forecast Period: ${valuationParams.dcfForecastPeriod} years\n\n`;
     
-    doc.setFontSize(12);
-    doc.text("DCF Parameters:", 14, 136);
-    doc.text(`Growth Rate: ${formatPercent(valuationParams.dcfGrowthRate)}`, 20, 144);
-    doc.text(`Discount Rate: ${formatPercent(valuationParams.dcfDiscountRate)}`, 20, 150);
-    doc.text(`Terminal Multiple: ${valuationParams.dcfTerminalMultiple}x`, 20, 156);
-    doc.text(`Forecast Period: ${valuationParams.dcfForecastPeriod} years`, 20, 162);
+    text += `DCF Calculation Steps:\n`;
+    text += `1. Base Free Cash Flow Per Share: ${formatCurrency(stockData.fcfPerShare)}\n`;
     
-    // DCF Calculation Step-by-Step
-    doc.setFontSize(12);
-    doc.text("DCF Calculation Steps:", 14, 172);
-    
-    let y = 180;
+    // Calculate projections
     const fcfProjections = calculateDCFProjections(stockData, valuationParams);
-    
-    doc.text(`1. Base Free Cash Flow Per Share: ${formatCurrency(stockData.fcfPerShare)}`, 20, y);
-    y += 6;
-    
-    doc.text(`2. Projected Cash Flows:`, 20, y);
-    y += 6;
-    
+    text += `2. Projected Cash Flows:\n`;
     fcfProjections.forEach((fcf, index) => {
       const year = new Date().getFullYear() + index;
-      doc.text(`   Year ${index + 1} (${year}): ${formatCurrency(fcf)}`, 20, y);
-      y += 6;
+      text += `   Year ${index + 1} (${year}): ${formatCurrency(fcf)}\n`;
     });
     
     // Calculate terminal value
     const terminalValue = fcfProjections[fcfProjections.length - 1] * valuationParams.dcfTerminalMultiple;
-    doc.text(`3. Terminal Value: ${formatCurrency(terminalValue)}`, 20, y);
-    y += 6;
+    text += `3. Terminal Value: ${formatCurrency(terminalValue)}\n`;
     
-    // Calculate the discount factors
-    doc.text(`4. Discount Factors Applied:`, 20, y);
-    y += 6;
-    
+    // Calculate discount factors
+    text += `4. Discount Factors Applied:\n`;
     const discountFactors = fcfProjections.map((_, index) => {
       return 1 / Math.pow(1 + (valuationParams.dcfDiscountRate / 100), index + 1);
     });
     
     discountFactors.forEach((factor, index) => {
-      doc.text(`   Year ${index + 1}: ${factor.toFixed(4)}`, 20, y);
-      y += 6;
+      text += `   Year ${index + 1}: ${factor.toFixed(4)}\n`;
     });
     
-    // If we need a new page
-    if (y > 270) {
-      doc.addPage();
-      y = 20;
-    }
-    
-    // Add terminal value discount factor
-    const terminalValueDiscount = 1 / Math.pow(1 + (valuationParams.dcfDiscountRate / 100), 
-                                             valuationParams.dcfForecastPeriod);
-    doc.text(`   Terminal Value Discount: ${terminalValueDiscount.toFixed(4)}`, 20, y);
-    y += 6;
+    // Terminal value discount
+    const terminalValueDiscount = 1 / Math.pow(1 + (valuationParams.dcfDiscountRate / 100), valuationParams.dcfForecastPeriod);
+    text += `   Terminal Value Discount: ${terminalValueDiscount.toFixed(4)}\n`;
     
     // Calculate discounted values
     const discountedCashFlows = fcfProjections.map((fcf, index) => fcf * discountFactors[index]);
     const discountedTerminalValue = terminalValue * terminalValueDiscount;
     
-    doc.text(`5. Discounted Cash Flows:`, 20, y);
-    y += 6;
-    
+    text += `5. Discounted Cash Flows:\n`;
     discountedCashFlows.forEach((dcf, index) => {
-      doc.text(`   Year ${index + 1}: ${formatCurrency(dcf)}`, 20, y);
-      y += 6;
+      text += `   Year ${index + 1}: ${formatCurrency(dcf)}\n`;
     });
-    
-    doc.text(`   Discounted Terminal Value: ${formatCurrency(discountedTerminalValue)}`, 20, y);
-    y += 6;
+    text += `   Discounted Terminal Value: ${formatCurrency(discountedTerminalValue)}\n`;
     
     // Calculate intrinsic value
     const intrinsicValue = discountedCashFlows.reduce((acc, val) => acc + val, 0) + discountedTerminalValue;
-    
-    doc.text(`6. Sum of Discounted Values: ${formatCurrency(intrinsicValue)}`, 20, y);
-    y += 10;
+    text += `6. Sum of Discounted Values: ${formatCurrency(intrinsicValue)}\n\n`;
     
     const dcfResult = valuationResults.find(r => r.method.includes('DCF'));
+    text += `DCF Intrinsic Value: ${formatCurrency(dcfResult?.intrinsicValue || intrinsicValue)}\n`;
+    text += `Buy Below Price (with MoS): ${formatCurrency(dcfResult?.buyBelow || (intrinsicValue * (1 - marginOfSafetyParams.marginOfSafety/100)))}\n\n`;
     
-    doc.setFontSize(14);
-    doc.setTextColor(0, 100, 0);
-    doc.text(`DCF Intrinsic Value: ${formatCurrency(dcfResult?.intrinsicValue || intrinsicValue)}`, 14, y);
-    y += 6;
+    // P/E Section
+    text += `============ P/E MULTIPLE VALUATION ============\n`;
+    text += `The P/E valuation method multiplies earnings per share by an appropriate P/E multiple.\n\n`;
     
-    doc.text(`Buy Below Price (with MoS): ${formatCurrency(dcfResult?.buyBelow || 
-                                                          (intrinsicValue * (1 - marginOfSafetyParams.marginOfSafety/100)))}`, 14, y);
-    
-    // Add a new page for P/E and Graham
-    doc.addPage();
-    
-    // P/E Calculation Section
-    doc.setFontSize(16);
-    doc.setTextColor(26, 32, 44);
-    doc.text("P/E Multiple Valuation", 14, 20);
-    
-    doc.setFontSize(11);
-    doc.setTextColor(60, 60, 60);
-    doc.text("The P/E valuation method multiplies earnings per share by an appropriate", 14, 28);
-    doc.text("P/E multiple to estimate intrinsic value.", 14, 34);
-    
-    doc.setFontSize(12);
-    doc.text("P/E Parameters:", 14, 44);
-    doc.text(`P/E Type: ${valuationParams.peType}`, 20, 52);
+    text += `P/E Parameters:\n`;
+    text += `P/E Type: ${valuationParams.peType}\n`;
     if (valuationParams.peType === 'custom') {
-      doc.text(`Custom P/E Value: ${valuationParams.peCustomValue}`, 20, 58);
+      text += `Custom P/E Value: ${valuationParams.peCustomValue}\n`;
     }
-    doc.text(`P/E Adjustment: ${valuationParams.peAdjustment}%`, 20, 64);
+    text += `P/E Adjustment: ${valuationParams.peAdjustment}%\n\n`;
     
     // P/E Calculation steps
     let peValue = 0;
@@ -182,151 +112,97 @@ export const generateCalculationsPDF = (
         break;
     }
     
-    doc.setFontSize(12);
-    doc.text("P/E Calculation Steps:", 14, 74);
-    doc.text(`1. Earnings Per Share (EPS): ${formatCurrency(stockData.eps)}`, 20, 82);
-    doc.text(`2. Selected P/E Multiple: ${valuationParams.peType === 'custom' ? 
-                                        valuationParams.peCustomValue.toFixed(2) : 
-                                        stockData.peRatio.toFixed(2)}`, 20, 88);
-    doc.text(`3. Adjusted P/E Multiple (with ${valuationParams.peAdjustment}% adjustment): ${adjustedPE.toFixed(2)}`, 20, 94);
-    doc.text(`4. Intrinsic Value Calculation: ${formatCurrency(stockData.eps)} × ${adjustedPE.toFixed(2)} = ${formatCurrency(peValue)}`, 20, 100);
+    text += `P/E Calculation Steps:\n`;
+    text += `1. Earnings Per Share (EPS): ${formatCurrency(stockData.eps)}\n`;
+    text += `2. Selected P/E Multiple: ${valuationParams.peType === 'custom' ? valuationParams.peCustomValue.toFixed(2) : stockData.peRatio.toFixed(2)}\n`;
+    text += `3. Adjusted P/E Multiple (with ${valuationParams.peAdjustment}% adjustment): ${adjustedPE.toFixed(2)}\n`;
+    text += `4. Intrinsic Value Calculation: ${formatCurrency(stockData.eps)} × ${adjustedPE.toFixed(2)} = ${formatCurrency(peValue)}\n\n`;
     
     const peResult = valuationResults.find(r => r.method.includes('P/E'));
+    text += `P/E Based Intrinsic Value: ${formatCurrency(peResult?.intrinsicValue || peValue)}\n`;
+    text += `Buy Below Price (with MoS): ${formatCurrency(peResult?.buyBelow || (peValue * (1 - marginOfSafetyParams.marginOfSafety/100)))}\n\n`;
     
-    doc.setFontSize(14);
-    doc.setTextColor(0, 100, 0);
-    doc.text(`P/E Based Intrinsic Value: ${formatCurrency(peResult?.intrinsicValue || peValue)}`, 14, 114);
-    doc.text(`Buy Below Price (with MoS): ${formatCurrency(peResult?.buyBelow || 
-                                                          (peValue * (1 - marginOfSafetyParams.marginOfSafety/100)))}`, 14, 120);
+    // Graham Section
+    text += `============ GRAHAM FORMULA VALUATION ============\n`;
+    text += `The Graham Formula estimates intrinsic value using Benjamin Graham's formula: V = EPS × (8.5 + 2g)\n\n`;
     
-    // Graham Formula Section
-    doc.setFontSize(16);
-    doc.setTextColor(26, 32, 44);
-    doc.text("Graham Formula Valuation", 14, 134);
-    
-    doc.setFontSize(11);
-    doc.setTextColor(60, 60, 60);
-    doc.text("The Graham Formula estimates intrinsic value using Benjamin Graham's", 14, 142);
-    doc.text("formula: V = EPS × (8.5 + 2g) where g is the growth rate.", 14, 148);
-    
-    doc.setFontSize(12);
-    doc.text("Graham Parameters:", 14, 158);
-    doc.text(`Base Value: ${valuationParams.grahamBaseValue}`, 20, 166);
-    doc.text(`Growth Rate: ${formatPercent(valuationParams.grahamGrowthRate)}`, 20, 172);
+    text += `Graham Parameters:\n`;
+    text += `Base Value: ${valuationParams.grahamBaseValue}\n`;
+    text += `Growth Rate: ${formatPercent(valuationParams.grahamGrowthRate)}\n\n`;
     
     // Graham Calculation steps
     const grahamFormula = valuationParams.grahamBaseValue + (2 * valuationParams.grahamGrowthRate);
     const grahamValue = stockData.eps * grahamFormula;
     
-    doc.setFontSize(12);
-    doc.text("Graham Calculation Steps:", 14, 182);
-    doc.text(`1. Earnings Per Share (EPS): ${formatCurrency(stockData.eps)}`, 20, 190);
-    doc.text(`2. Graham Formula: ${valuationParams.grahamBaseValue} + (2 × ${valuationParams.grahamGrowthRate}%) = ${grahamFormula.toFixed(2)}`, 20, 196);
-    doc.text(`3. Intrinsic Value Calculation: ${formatCurrency(stockData.eps)} × ${grahamFormula.toFixed(2)} = ${formatCurrency(grahamValue)}`, 20, 202);
+    text += `Graham Calculation Steps:\n`;
+    text += `1. Earnings Per Share (EPS): ${formatCurrency(stockData.eps)}\n`;
+    text += `2. Graham Formula: ${valuationParams.grahamBaseValue} + (2 × ${valuationParams.grahamGrowthRate}%) = ${grahamFormula.toFixed(2)}\n`;
+    text += `3. Intrinsic Value Calculation: ${formatCurrency(stockData.eps)} × ${grahamFormula.toFixed(2)} = ${formatCurrency(grahamValue)}\n\n`;
     
     const grahamResult = valuationResults.find(r => r.method.includes('Graham'));
+    text += `Graham Formula Intrinsic Value: ${formatCurrency(grahamResult?.intrinsicValue || grahamValue)}\n`;
+    text += `Buy Below Price (with MoS): ${formatCurrency(grahamResult?.buyBelow || (grahamValue * (1 - marginOfSafetyParams.marginOfSafety/100)))}\n\n`;
     
-    doc.setFontSize(14);
-    doc.setTextColor(0, 100, 0);
-    doc.text(`Graham Formula Intrinsic Value: ${formatCurrency(grahamResult?.intrinsicValue || grahamValue)}`, 14, 216);
-    doc.text(`Buy Below Price (with MoS): ${formatCurrency(grahamResult?.buyBelow || 
-                                                         (grahamValue * (1 - marginOfSafetyParams.marginOfSafety/100)))}`, 14, 222);
+    // Summary Section  
+    text += `============ VALUATION SUMMARY ============\n`;
+    text += `Method          Intrinsic Value    Buy Below    Discount/Premium\n`;
+    text += `--------------------------------------------------------------\n`;
     
-    // Add a new page for the summary
-    doc.addPage();
-    
-    // Summary of all valuation methods
-    doc.setFontSize(16);
-    doc.setTextColor(26, 32, 44);
-    doc.text("Valuation Summary", 14, 20);
-    
-    // Create a summary section manually
-    let summaryY = 30;
-    
-    // Draw table headers
-    doc.setFillColor(42, 62, 92);
-    doc.setDrawColor(42, 62, 92);
-    doc.rect(14, summaryY, pageWidth - 28, 8, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
-    
-    doc.text("Valuation Method", 16, summaryY + 5.5);
-    doc.text("Intrinsic Value", pageWidth/2 - 20, summaryY + 5.5);
-    doc.text("Buy Below", pageWidth/2 + 20, summaryY + 5.5);
-    doc.text("Discount/Premium", pageWidth - 40, summaryY + 5.5);
-    
-    summaryY += 10;
-    
-    // Draw table rows
-    doc.setTextColor(50, 50, 50);
-    valuationResults.forEach((result, index) => {
-      const isEven = index % 2 === 0;
+    valuationResults.forEach(result => {
+      // Format each column to a specific width
+      const method = result.method.padEnd(15);
+      const intrinsicValue = formatCurrency(result.intrinsicValue).padEnd(18);
+      const buyBelow = formatCurrency(result.buyBelow).padEnd(12);
+      const premium = `${result.discountPremium > 0 ? '+' : ''}${result.discountPremium.toFixed(1)}%`;
       
-      if (isEven) {
-        doc.setFillColor(240, 240, 240);
-        doc.rect(14, summaryY - 2, pageWidth - 28, 8, 'F');
-      }
-      
-      doc.text(result.method, 16, summaryY + 3);
-      doc.text(formatCurrency(result.intrinsicValue), pageWidth/2 - 20, summaryY + 3);
-      doc.text(formatCurrency(result.buyBelow), pageWidth/2 + 20, summaryY + 3);
-      doc.text(`${result.discountPremium > 0 ? '+' : ''}${result.discountPremium.toFixed(1)}%`, pageWidth - 40, summaryY + 3);
-      
-      summaryY += 10;
+      text += `${method}${intrinsicValue}${buyBelow}${premium}\n`;
     });
+    text += `\n`;
     
-    // Add conclusion
+    // Conclusion
     const avgResult = valuationResults.find(r => r.method === 'Average');
     if (avgResult) {
-      // Get the last Y position after the table
-      const lastY = summaryY + 20;
-      
-      doc.setFontSize(14);
-      doc.setTextColor(26, 32, 44);
-      doc.text("Conclusion", 14, lastY + 20);
-      
-      doc.setFontSize(12);
-      doc.setTextColor(60, 60, 60);
-      doc.text(`Based on an average of all valuation methods, ${stockData.name} (${stockData.symbol})`, 14, lastY + 30);
+      text += `============ CONCLUSION ============\n`;
+      text += `Based on an average of all valuation methods, ${stockData.name} (${stockData.symbol}) `;
       
       if (avgResult.discountPremium < 0) {
-        doc.text(`appears to be trading at a ${Math.abs(avgResult.discountPremium).toFixed(1)}% discount to its calculated`, 14, lastY + 38);
-        doc.text(`intrinsic value of ${formatCurrency(avgResult.intrinsicValue)}.`, 14, lastY + 46);
+        text += `appears to be trading at a ${Math.abs(avgResult.discountPremium).toFixed(1)}% discount to its calculated `;
+        text += `intrinsic value of ${formatCurrency(avgResult.intrinsicValue)}.\n\n`;
         
-        doc.setFontSize(13);
-        doc.setTextColor(0, 128, 0);
         if (avgResult.discountPremium < -25) {
-          doc.text(`This represents a substantial margin of safety.`, 14, lastY + 56);
+          text += `This represents a substantial margin of safety.\n`;
         } else if (avgResult.discountPremium < -10) {
-          doc.text(`This represents a reasonable margin of safety.`, 14, lastY + 56);
+          text += `This represents a reasonable margin of safety.\n`;
         } else {
-          doc.text(`This represents a modest discount to intrinsic value.`, 14, lastY + 56);
+          text += `This represents a modest discount to intrinsic value.\n`;
         }
       } else {
-        doc.text(`appears to be trading at a ${avgResult.discountPremium.toFixed(1)}% premium to its calculated`, 14, lastY + 38);
-        doc.text(`intrinsic value of ${formatCurrency(avgResult.intrinsicValue)}.`, 14, lastY + 46);
-        
-        doc.setFontSize(13);
-        doc.setTextColor(200, 0, 0);
-        doc.text(`This does not provide an adequate margin of safety.`, 14, lastY + 56);
+        text += `appears to be trading at a ${avgResult.discountPremium.toFixed(1)}% premium to its calculated `;
+        text += `intrinsic value of ${formatCurrency(avgResult.intrinsicValue)}.\n\n`;
+        text += `This does not provide an adequate margin of safety.\n`;
       }
     }
     
     // Add disclaimer
-    doc.setFontSize(8);
-    doc.setTextColor(100, 100, 100);
-    doc.text("DISCLAIMER: This report is generated for educational purposes only and should not be considered investment", 14, 270);
-    doc.text("advice. All calculations are based on available data and assumptions. Always conduct your own research", 14, 275);
-    doc.text("and consider consulting with a financial advisor before making investment decisions.", 14, 280);
+    text += `\nDISCLAIMER: This report is generated for educational purposes only and should not be considered investment advice.\n`;
+    text += `All calculations are based on available data and assumptions. Always conduct your own research and consider\n`;
+    text += `consulting with a financial advisor before making investment decisions.\n`;
     
-    // Save the PDF
-    const fileName = `${stockData.symbol}_Valuation_${new Date().toISOString().split('T')[0]}.pdf`;
-    doc.save(fileName);
+    // Download as a text file
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${stockData.symbol}_Valuation_${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
     
-    console.log(`PDF successfully generated for ${stockData.symbol}`);
+    console.log(`Text report successfully generated for ${stockData.symbol}`);
   } catch (error) {
-    console.error("Error generating PDF:", error);
-    alert("There was an error generating the PDF. Please try again.");
+    console.error("Error generating report:", error);
+    alert("There was an error generating the report. Please try again.");
   }
 };
 

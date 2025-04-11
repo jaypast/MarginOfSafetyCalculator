@@ -259,7 +259,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
           </div>
         </div>
         
-        {/* Show Work Button - PDF Export */}
+        {/* Show Work Button - Text Report Export */}
         {stockData && valuationParams && marginOfSafetyParams && !etfDetected && !isSpecialCase && (
           <div className="mt-6 flex justify-center">
             <Button 
@@ -273,6 +273,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                   valuationResults
                 );
               }}
+              title="Download detailed valuation report as text file"
             >
               <FileText size={18} />
               Show Work
