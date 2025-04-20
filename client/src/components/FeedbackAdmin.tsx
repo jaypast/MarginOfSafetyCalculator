@@ -30,10 +30,10 @@ interface FeedbackStats {
 interface Feedback {
   id: number;
   satisfaction: string;
-  mainBenefit: string | null;
+  main_benefit: string | null;
   improvements: string | null;
   email: string | null;
-  createdAt: string; // ISO date string
+  created_at: string; // ISO date string
 }
 
 const FeedbackAdmin: React.FC = () => {
@@ -197,11 +197,11 @@ const FeedbackAdmin: React.FC = () => {
                   {feedbackEntries.map((entry) => (
                     <TableRow key={entry.id}>
                       <TableCell className="whitespace-nowrap">
-                        {formatDate(entry.createdAt)}
+                        {formatDate(entry.created_at)}
                       </TableCell>
                       <TableCell>{formatSatisfaction(entry.satisfaction)}</TableCell>
                       <TableCell className="max-w-xs truncate">
-                        {entry.mainBenefit || '-'}
+                        {entry.main_benefit || '-'}
                       </TableCell>
                       <TableCell className="max-w-xs truncate">
                         {entry.improvements || '-'}
