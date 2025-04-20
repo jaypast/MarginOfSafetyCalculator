@@ -30,10 +30,12 @@ interface FeedbackStats {
 interface Feedback {
   id: number;
   satisfaction: string;
-  main_benefit: string | null;
+  main_benefit?: string | null;
+  mainBenefit?: string | null;
   improvements: string | null;
   email: string | null;
-  created_at: string; // ISO date string
+  created_at?: string; // ISO date string
+  createdAt?: string; // ISO date string
 }
 
 const FeedbackAdmin: React.FC = () => {
@@ -76,7 +78,8 @@ const FeedbackAdmin: React.FC = () => {
   };
 
   // Helper function to format date
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | undefined) => {
+    if (!dateString) return '-';
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
@@ -197,11 +200,11 @@ const FeedbackAdmin: React.FC = () => {
                   {feedbackEntries.map((entry) => (
                     <TableRow key={entry.id}>
                       <TableCell className="whitespace-nowrap">
-                        {formatDate(entry.created_at)}
+                        {formatDate(entry.created_at || entry.createdAt)}
                       </TableCell>
                       <TableCell>{formatSatisfaction(entry.satisfaction)}</TableCell>
                       <TableCell className="max-w-xs truncate">
-                        {entry.main_benefit || '-'}
+                        {entry.main_benefit || entry.mainBenefit || '-'}
                       </TableCell>
                       <TableCell className="max-w-xs truncate">
                         {entry.improvements || '-'}
