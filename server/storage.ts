@@ -67,6 +67,8 @@ export class DatabaseStorage implements IStorage {
     const allFeedback = await this.getAllFeedback();
     const totalResponses = allFeedback.length;
     
+    console.log("Feedback stats - all feedback:", JSON.stringify(allFeedback));
+    
     if (totalResponses === 0) {
       return {
         totalResponses: 0,
@@ -80,6 +82,8 @@ export class DatabaseStorage implements IStorage {
     const veryDisappointed = allFeedback.filter(f => f.satisfaction === 'very_disappointed').length;
     const somewhatDisappointed = allFeedback.filter(f => f.satisfaction === 'somewhat_disappointed').length;
     const notDisappointed = allFeedback.filter(f => f.satisfaction === 'not_disappointed').length;
+    
+    console.log(`Feedback counts - very: ${veryDisappointed}, somewhat: ${somewhatDisappointed}, not: ${notDisappointed}`);
     
     // Calculate PMF score (% of users who would be "very disappointed" without your product)
     const pmfScore = (veryDisappointed / totalResponses) * 100;
