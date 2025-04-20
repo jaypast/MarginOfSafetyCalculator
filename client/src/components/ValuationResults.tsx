@@ -105,12 +105,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
   const hasExtremeDiscountPremium = Math.abs(activeResult.discountPremium) > 5000;
   const isSpecialCase = hasNegativeIntrinsicValue || hasExtremeDiscountPremium;
   
-  // Calculate value gap percentages for visualization
-  const maxValue = Math.max(...valuationResults.map(r => r.intrinsicValue > 0 ? r.intrinsicValue : 0), 
-                            stockData ? stockData.price * 1.5 : 300); // Max for scale
-  const intrinsicPercent = !hasNegativeIntrinsicValue ? (activeResult.intrinsicValue / maxValue) * 100 : 0;
-  const buyBelowPercent = activeResult.buyBelow > 0 ? (activeResult.buyBelow / maxValue) * 100 : 0;
-  const currentPercent = stockData ? (stockData.price / maxValue) * 100 : 0;
+  // Value Gap visualization calculations have been removed
 
   // Determine status color
   const getStatusColor = (discountPremium: number): string => {
@@ -186,40 +181,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
           </div>
         )}
         
-        {/* Value Gap Visualization - only show for valid calculation cases */}
-        {!isSpecialCase && !hasNegativeIntrinsicValue && !hasExtremeDiscountPremium && (
-          <div className="mb-6">
-            <h3 className="text-base font-medium text-[#21324F] mb-2">Value Gap</h3>
-            <div className="h-10 bg-neutral-100 rounded-lg relative overflow-hidden">
-              <div 
-                className="absolute top-0 bottom-0 left-0 bg-[#415876] flex items-center justify-end px-2"
-                style={{ width: `${intrinsicPercent}%` }}
-              >
-                <span className="text-white text-xs font-medium whitespace-nowrap">IV: {formatCurrency(activeResult.intrinsicValue)}</span>
-              </div>
-              <div 
-                className="absolute top-0 bottom-0 left-0 bg-green-500 flex items-center justify-end px-2"
-                style={{ width: `${buyBelowPercent}%` }}
-              >
-                <span className="text-white text-xs font-medium whitespace-nowrap">Buy: {formatCurrency(activeResult.buyBelow)}</span>
-              </div>
-              {stockData && (
-                <div 
-                  className={`absolute top-0 bottom-0 left-0 ${activeResult.discountPremium < 0 ? 'bg-amber-500' : 'bg-red-500'} flex items-center justify-end px-2`}
-                  style={{ width: `${currentPercent}%` }}
-                >
-                  <span className="text-white text-xs font-medium whitespace-nowrap">Now: {formatCurrency(stockData.price)}</span>
-                </div>
-              )}
-            </div>
-            <div className="flex justify-between text-xs text-neutral-500 mt-1">
-              <span>$0</span>
-              <span>${Math.round(maxValue * 0.33)}</span>
-              <span>${Math.round(maxValue * 0.66)}</span>
-              <span>${Math.round(maxValue)}</span>
-            </div>
-          </div>
-        )}
+        {/* Value Gap visualization has been removed */}
         
         {/* Method Comparison */}
         <div>
