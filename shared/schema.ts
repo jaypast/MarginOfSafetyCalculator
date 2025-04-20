@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, decimal, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, decimal, varchar, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -62,3 +62,30 @@ export const stockResponseSchema = z.object({
 });
 
 export type StockResponse = z.infer<typeof stockResponseSchema>;
+
+// Sean Ellis Product-Market Fit feedback schema
+export const feedback = pgTable("feedback", {
+  id: serial("id").primaryKey(),
+  satisfaction: text("satisfaction").notNull(), // "very disappointed", "somewhat disappointed", "not disappointed"
+  mainBenefit: text("main_benefit"),
+  improvements: text("improvements"),
+  email: text("email"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertFeedbackSchema = createInsertSchema(feedback).omit({
+  id: true,
+  createdAt: true, 
+});
+
+export const feedbackResponseSchema = z.object({
+  id: z.number(),
+  satisfaction: z.string(),
+  mainBenefit: z.string().nullable(),
+  improvements: z.string().nullable(),
+  email: z.string().nullable(),
+  createdAt: z.date(),
+});
+
+export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
+export type Feedback = typeof feedback.$inferSelect;
