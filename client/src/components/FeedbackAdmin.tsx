@@ -241,7 +241,7 @@ const FeedbackAdmin: React.FC = () => {
               size="sm"
             >
               <Download className="mr-2 h-4 w-4" />
-              Export to CSV
+              View Feedback Data
             </Button>
           </CardFooter>
         )}

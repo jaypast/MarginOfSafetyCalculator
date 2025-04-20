@@ -140,7 +140,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).send('No feedback data available for export');
       }
       
-      // Format satisfaction for CSV
+      // Format satisfaction for display
       const formatSatisfaction = (sat: string) => {
         switch (sat) {
           case 'very_disappointed': return 'Very Disappointed';
@@ -162,27 +162,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       };
       
-      // Prepare CSV header
-      const headers = ['Date', 'Satisfaction', 'Main Benefit', 'Improvements', 'Email'];
+      // Generate a simple HTML page with the data in a table format for easier viewing on mobile
+      let htmlContent = `
+        <html>
+        <head>
+          <title>Feedback Data - ${new Date().toISOString().split('T')[0]}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            table { border-collapse: collapse; width: 100%; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            .export-info { margin-bottom: 20px; }
+            h1 { color: #333; }
+          </style>
+        </head>
+        <body>
+          <h1>Feedback Data Export</h1>
+          <div class="export-info">
+            <p>Generated on: ${new Date().toLocaleString()}</p>
+            <p>Total responses: ${allFeedback.length}</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Satisfaction</th>
+                <th>Main Benefit</th>
+                <th>Improvements</th>
+                <th>Email</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
       
-      // Prepare CSV data
-      const csvData = allFeedback.map(entry => [
-        formatDate(entry.createdAt?.toString() || ''),
-        formatSatisfaction(entry.satisfaction),
-        (entry.mainBenefit || '').replace(/,/g, ';'),  // Replace commas to avoid CSV issues
-        (entry.improvements || '').replace(/,/g, ';'),
-        entry.email || ''
-      ]);
+      // Add all feedback entries to the table
+      allFeedback.forEach(entry => {
+        htmlContent += `
+          <tr>
+            <td>${formatDate(entry.createdAt?.toString() || '')}</td>
+            <td>${formatSatisfaction(entry.satisfaction)}</td>
+            <td>${entry.mainBenefit || ''}</td>
+            <td>${entry.improvements || ''}</td>
+            <td>${entry.email || ''}</td>
+          </tr>
+        `;
+      });
       
-      // Convert to CSV format
-      const csvContent = [
-        headers.join(','),
-        ...csvData.map(row => row.join(','))
-      ].join('\n');
+      // Close the HTML
+      htmlContent += `
+            </tbody>
+          </table>
+        </body>
+        </html>
+      `;
       
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename=feedback-data-${new Date().toISOString().split('T')[0]}.csv`);
-      return res.send(csvContent);
+      res.setHeader('Content-Type', 'text/html');
+      return res.send(htmlContent);
     } catch (error) {
       console.error("Error exporting feedback:", error);
       return res.status(500).json({
