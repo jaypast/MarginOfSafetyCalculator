@@ -4,9 +4,11 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -17,6 +19,7 @@ import {
 } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { Download } from 'lucide-react';
 import { apiRequest } from '@/lib/queryClient';
 
 interface FeedbackStats {
@@ -67,11 +70,11 @@ const FeedbackAdmin: React.FC = () => {
   const formatSatisfaction = (satisfaction: string) => {
     switch (satisfaction) {
       case 'very_disappointed':
-        return <Badge variant="destructive">Very Disappointed</Badge>;
+        return <Badge className="bg-green-500 hover:bg-green-600">Very Disappointed</Badge>;
       case 'somewhat_disappointed':
-        return <Badge variant="outline">Somewhat Disappointed</Badge>;
+        return <Badge variant="outline" className="text-gray-600">Somewhat Disappointed</Badge>;
       case 'not_disappointed':
-        return <Badge variant="secondary">Not Disappointed</Badge>;
+        return <Badge className="bg-red-500 hover:bg-red-600">Not Disappointed</Badge>;
       default:
         return satisfaction;
     }
@@ -95,6 +98,50 @@ const FeedbackAdmin: React.FC = () => {
     if (score >= 40) return 'text-green-600 font-bold'; // Over 40% is great (Product-Market Fit)
     if (score >= 25) return 'text-amber-600 font-bold'; // 25-40% is okay
     return 'text-red-600 font-bold'; // Under 25% needs improvement
+  };
+
+  // Function to export feedback data to CSV
+  const exportToCsv = () => {
+    if (!feedbackEntries || feedbackEntries.length === 0) return;
+    
+    // Format satisfaction for CSV
+    const formatSatisfactionText = (sat: string) => {
+      switch (sat) {
+        case 'very_disappointed': return 'Very Disappointed';
+        case 'somewhat_disappointed': return 'Somewhat Disappointed';
+        case 'not_disappointed': return 'Not Disappointed';
+        default: return sat;
+      }
+    };
+    
+    // Prepare CSV header
+    const headers = ['Date', 'Satisfaction', 'Main Benefit', 'Improvements', 'Email'];
+    
+    // Prepare CSV data
+    const csvData = feedbackEntries.map(entry => [
+      formatDate(entry.created_at || entry.createdAt),
+      formatSatisfactionText(entry.satisfaction),
+      (entry.main_benefit || entry.mainBenefit || '').replace(/,/g, ';'),  // Replace commas to avoid CSV issues
+      (entry.improvements || '').replace(/,/g, ';'),
+      entry.email || ''
+    ]);
+    
+    // Convert to CSV format
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => row.join(','))
+    ].join('\n');
+    
+    // Create download link
+    const encodedUri = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `feedback-data-${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    
+    // Trigger download and cleanup
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -135,27 +182,27 @@ const FeedbackAdmin: React.FC = () => {
                   <p className="text-xs text-gray-500">Total Responses</p>
                   <p className="text-xl font-bold">{stats.totalResponses}</p>
                 </div>
-                <div className="bg-red-50 p-3 rounded-md border border-red-100">
-                  <p className="text-xs text-red-500">Very Disappointed</p>
-                  <p className="text-xl font-bold text-red-600">
+                <div className="bg-green-50 p-3 rounded-md border border-green-100">
+                  <p className="text-xs text-green-600">Very Disappointed</p>
+                  <p className="text-xl font-bold text-green-600">
                     {stats.veryDisappointed}{' '}
                     <span className="text-sm font-normal">
                       ({((stats.veryDisappointed / stats.totalResponses) * 100).toFixed(1)}%)
                     </span>
                   </p>
                 </div>
-                <div className="bg-amber-50 p-3 rounded-md border border-amber-100">
-                  <p className="text-xs text-amber-500">Somewhat Disappointed</p>
-                  <p className="text-xl font-bold text-amber-600">
+                <div className="bg-gray-50 p-3 rounded-md border border-gray-200">
+                  <p className="text-xs text-gray-600">Somewhat Disappointed</p>
+                  <p className="text-xl font-bold text-gray-600">
                     {stats.somewhatDisappointed}{' '}
                     <span className="text-sm font-normal">
                       ({((stats.somewhatDisappointed / stats.totalResponses) * 100).toFixed(1)}%)
                     </span>
                   </p>
                 </div>
-                <div className="bg-blue-50 p-3 rounded-md border border-blue-100">
-                  <p className="text-xs text-blue-500">Not Disappointed</p>
-                  <p className="text-xl font-bold text-blue-600">
+                <div className="bg-red-50 p-3 rounded-md border border-red-100">
+                  <p className="text-xs text-red-600">Not Disappointed</p>
+                  <p className="text-xl font-bold text-red-600">
                     {stats.notDisappointed}{' '}
                     <span className="text-sm font-normal">
                       ({((stats.notDisappointed / stats.totalResponses) * 100).toFixed(1)}%)
@@ -221,6 +268,19 @@ const FeedbackAdmin: React.FC = () => {
             </div>
           )}
         </CardContent>
+        {feedbackEntries && feedbackEntries.length > 0 && (
+          <CardFooter>
+            <Button 
+              className="ml-auto"
+              variant="outline"
+              onClick={exportToCsv}
+              size="sm"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export to CSV
+            </Button>
+          </CardFooter>
+        )}
       </Card>
     </div>
   );
