@@ -33,6 +33,46 @@ const QualityIndicators: React.FC<QualityIndicatorsProps> = ({
       return '20%';
     }
   };
+  
+  const getIndicatorColor = (value: number, benchmark: number, inverse: boolean = false) => {
+    if (inverse) {
+      // For metrics where lower is better (like debt ratios)
+      if (value <= benchmark) return 'bg-green-500'; // Good/Strong/Preferred
+      if (value <= benchmark * 1.5) return 'bg-amber-500'; // Average/Moderate
+      return 'bg-red-500'; // Below average/Weak
+    } else {
+      // For metrics where higher is better (like ROE)
+      if (value >= benchmark) return 'bg-green-500'; // Good/Strong/Preferred
+      if (value >= benchmark / 2) return 'bg-amber-500'; // Average/Moderate
+      return 'bg-red-500'; // Below average/Weak
+    }
+  };
+  
+  const getStabilityColor = (stability: string) => {
+    if (stability === 'High') return 'bg-green-500';
+    if (stability === 'Medium') return 'bg-amber-500';
+    return 'bg-red-500';
+  };
+  
+  const getCompetitivePositionColor = (position: string) => {
+    if (position === 'Strong' || position === 'Good') return 'bg-green-500';
+    if (position === 'Average') return 'bg-amber-500';
+    return 'bg-red-500';
+  };
+  
+  const getTextColor = (value: number, benchmark: number, inverse: boolean = false) => {
+    if (inverse) {
+      // For metrics where lower is better (like debt ratios)
+      if (value <= benchmark) return 'text-green-600'; // Good/Strong/Preferred
+      if (value <= benchmark * 1.5) return 'text-amber-600'; // Average/Moderate
+      return 'text-red-600'; // Below average/Weak
+    } else {
+      // For metrics where higher is better (like ROE)
+      if (value >= benchmark) return 'text-green-600'; // Good/Strong/Preferred
+      if (value >= benchmark / 2) return 'text-amber-600'; // Average/Moderate
+      return 'text-red-600'; // Below average/Weak
+    }
+  };
 
   const getQualityColorClass = (quality?: string) => {
     switch (quality) {
@@ -66,11 +106,11 @@ const QualityIndicators: React.FC<QualityIndicatorsProps> = ({
               <div>
                 <div className="flex justify-between mb-1">
                   <span className="text-sm text-neutral-600">Return on Equity</span>
-                  <span className="text-sm font-medium text-green-600">{stockData.roe.toFixed(1)}%</span>
+                  <span className={`text-sm font-medium ${getTextColor(stockData.roe, 15)}`}>{stockData.roe.toFixed(1)}%</span>
                 </div>
                 <div className="h-2 bg-neutral-200 rounded-full">
                   <div 
-                    className="h-2 bg-green-500 rounded-full"
+                    className={`h-2 ${getIndicatorColor(stockData.roe, 15)} rounded-full`}
                     style={{ width: getProgressWidth(stockData.roe, 15) }}
                   ></div>
                 </div>
@@ -84,11 +124,11 @@ const QualityIndicators: React.FC<QualityIndicatorsProps> = ({
               <div>
                 <div className="flex justify-between mb-1">
                   <span className="text-sm text-neutral-600">Debt to Equity</span>
-                  <span className="text-sm font-medium text-green-600">{stockData.debtToEquity.toFixed(1)}</span>
+                  <span className={`text-sm font-medium ${getTextColor(stockData.debtToEquity, 1, true)}`}>{stockData.debtToEquity.toFixed(1)}</span>
                 </div>
                 <div className="h-2 bg-neutral-200 rounded-full">
                   <div 
-                    className="h-2 bg-green-500 rounded-full"
+                    className={`h-2 ${getIndicatorColor(stockData.debtToEquity, 1, true)} rounded-full`}
                     style={{ width: getProgressWidth(stockData.debtToEquity, 1, true) }}
                   ></div>
                 </div>
@@ -102,11 +142,11 @@ const QualityIndicators: React.FC<QualityIndicatorsProps> = ({
               <div>
                 <div className="flex justify-between mb-1">
                   <span className="text-sm text-neutral-600">Current Ratio</span>
-                  <span className="text-sm font-medium text-green-600">{stockData.currentRatio.toFixed(1)}</span>
+                  <span className={`text-sm font-medium ${getTextColor(stockData.currentRatio, 1.5)}`}>{stockData.currentRatio.toFixed(1)}</span>
                 </div>
                 <div className="h-2 bg-neutral-200 rounded-full">
                   <div 
-                    className="h-2 bg-green-500 rounded-full"
+                    className={`h-2 ${getIndicatorColor(stockData.currentRatio, 1.5)} rounded-full`}
                     style={{ width: getProgressWidth(stockData.currentRatio, 1.5) }}
                   ></div>
                 </div>
@@ -127,11 +167,11 @@ const QualityIndicators: React.FC<QualityIndicatorsProps> = ({
               <div>
                 <div className="flex justify-between mb-1">
                   <span className="text-sm text-neutral-600">Revenue Growth (5Y)</span>
-                  <span className="text-sm font-medium text-green-600">{stockData.revenueGrowth.toFixed(1)}%</span>
+                  <span className={`text-sm font-medium ${getTextColor(stockData.revenueGrowth, 10)}`}>{stockData.revenueGrowth.toFixed(1)}%</span>
                 </div>
                 <div className="h-2 bg-neutral-200 rounded-full">
                   <div 
-                    className="h-2 bg-green-500 rounded-full"
+                    className={`h-2 ${getIndicatorColor(stockData.revenueGrowth, 10)} rounded-full`}
                     style={{ width: getProgressWidth(stockData.revenueGrowth, 10) }}
                   ></div>
                 </div>
@@ -145,11 +185,15 @@ const QualityIndicators: React.FC<QualityIndicatorsProps> = ({
               <div>
                 <div className="flex justify-between mb-1">
                   <span className="text-sm text-neutral-600">Earnings Stability</span>
-                  <span className="text-sm font-medium text-green-600">{stockData.earningsStability}</span>
+                  <span className={`text-sm font-medium ${
+                    stockData.earningsStability === 'High' ? 'text-green-600' : 
+                    stockData.earningsStability === 'Medium' ? 'text-amber-600' : 
+                    'text-red-600'
+                  }`}>{stockData.earningsStability}</span>
                 </div>
                 <div className="h-2 bg-neutral-200 rounded-full">
                   <div 
-                    className="h-2 bg-green-500 rounded-full"
+                    className={`h-2 ${getStabilityColor(stockData.earningsStability)} rounded-full`}
                     style={{ width: stockData.earningsStability === 'High' ? '85%' : stockData.earningsStability === 'Medium' ? '60%' : '30%' }}
                   ></div>
                 </div>
@@ -160,11 +204,16 @@ const QualityIndicators: React.FC<QualityIndicatorsProps> = ({
               <div>
                 <div className="flex justify-between mb-1">
                   <span className="text-sm text-neutral-600">Competitive Position</span>
-                  <span className="text-sm font-medium text-green-600">{stockData.competitivePosition}</span>
+                  <span className={`text-sm font-medium ${
+                    stockData.competitivePosition === 'Strong' ? 'text-green-600' : 
+                    stockData.competitivePosition === 'Good' ? 'text-green-600' : 
+                    stockData.competitivePosition === 'Average' ? 'text-amber-600' : 
+                    'text-red-600'
+                  }`}>{stockData.competitivePosition}</span>
                 </div>
                 <div className="h-2 bg-neutral-200 rounded-full">
                   <div 
-                    className="h-2 bg-green-500 rounded-full"
+                    className={`h-2 ${getCompetitivePositionColor(stockData.competitivePosition)} rounded-full`}
                     style={{ width: stockData.competitivePosition === 'Strong' ? '90%' : stockData.competitivePosition === 'Good' ? '70%' : '40%' }}
                   ></div>
                 </div>
