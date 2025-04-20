@@ -100,48 +100,12 @@ const FeedbackAdmin: React.FC = () => {
     return 'text-red-600 font-bold'; // Under 25% needs improvement
   };
 
-  // Function to export feedback data to CSV
+  // Function to export feedback data to CSV using the server endpoint
   const exportToCsv = () => {
     if (!feedbackEntries || feedbackEntries.length === 0) return;
     
-    // Format satisfaction for CSV
-    const formatSatisfactionText = (sat: string) => {
-      switch (sat) {
-        case 'very_disappointed': return 'Very Disappointed';
-        case 'somewhat_disappointed': return 'Somewhat Disappointed';
-        case 'not_disappointed': return 'Not Disappointed';
-        default: return sat;
-      }
-    };
-    
-    // Prepare CSV header
-    const headers = ['Date', 'Satisfaction', 'Main Benefit', 'Improvements', 'Email'];
-    
-    // Prepare CSV data
-    const csvData = feedbackEntries.map(entry => [
-      formatDate(entry.created_at || entry.createdAt),
-      formatSatisfactionText(entry.satisfaction),
-      (entry.main_benefit || entry.mainBenefit || '').replace(/,/g, ';'),  // Replace commas to avoid CSV issues
-      (entry.improvements || '').replace(/,/g, ';'),
-      entry.email || ''
-    ]);
-    
-    // Convert to CSV format
-    const csvContent = [
-      headers.join(','),
-      ...csvData.map(row => row.join(','))
-    ].join('\n');
-    
-    // Create download link
-    const encodedUri = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `feedback-data-${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    
-    // Trigger download and cleanup
-    link.click();
-    document.body.removeChild(link);
+    // Open the export URL in a new tab/window, which works better on mobile devices
+    window.open('/api/feedback/export', '_blank');
   };
 
   return (
@@ -272,7 +236,7 @@ const FeedbackAdmin: React.FC = () => {
           <CardFooter>
             <Button 
               className="ml-auto"
-              variant="outline"
+              variant="default"
               onClick={exportToCsv}
               size="sm"
             >

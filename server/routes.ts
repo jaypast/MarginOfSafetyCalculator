@@ -131,6 +131,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
+  
+  app.get("/api/feedback/export", async (req, res) => {
+    try {
+      const allFeedback = await storage.getAllFeedback();
+      
+      if (allFeedback.length === 0) {
+        return res.status(404).send('No feedback data available for export');
+      }
+      
+      // Format satisfaction for CSV
+      const formatSatisfaction = (sat: string) => {
+        switch (sat) {
+          case 'very_disappointed': return 'Very Disappointed';
+          case 'somewhat_disappointed': return 'Somewhat Disappointed';
+          case 'not_disappointed': return 'Not Disappointed';
+          default: return sat;
+        }
+      };
+      
+      // Format date
+      const formatDate = (dateString: string) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      };
+      
+      // Prepare CSV header
+      const headers = ['Date', 'Satisfaction', 'Main Benefit', 'Improvements', 'Email'];
+      
+      // Prepare CSV data
+      const csvData = allFeedback.map(entry => [
+        formatDate(entry.createdAt?.toString() || ''),
+        formatSatisfaction(entry.satisfaction),
+        (entry.mainBenefit || '').replace(/,/g, ';'),  // Replace commas to avoid CSV issues
+        (entry.improvements || '').replace(/,/g, ';'),
+        entry.email || ''
+      ]);
+      
+      // Convert to CSV format
+      const csvContent = [
+        headers.join(','),
+        ...csvData.map(row => row.join(','))
+      ].join('\n');
+      
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename=feedback-data-${new Date().toISOString().split('T')[0]}.csv`);
+      return res.send(csvContent);
+    } catch (error) {
+      console.error("Error exporting feedback:", error);
+      return res.status(500).json({
+        message: error instanceof Error ? error.message : 'An unknown error occurred while exporting feedback'
+      });
+    }
+  });
 
   const httpServer = createServer(app);
 
