@@ -98,17 +98,17 @@ const MarginOfSafetyCalculator: React.FC = () => {
     // Calculate DCF valuation
     const dcfValue = calculateDCF(stockData, valuationParams);
     const dcfBuyBelow = calculateBuyBelow(dcfValue, marginOfSafetyParams.marginOfSafety);
-    const dcfDiscountPremium = calculateDiscountPremium(stockData.price, dcfBuyBelow);
+    const dcfDiscountPremium = calculateDiscountPremium(stockData.price, dcfValue);
     
     // Calculate P/E valuation
     const peValue = calculatePE(stockData, valuationParams);
     const peBuyBelow = calculateBuyBelow(peValue, marginOfSafetyParams.marginOfSafety);
-    const peDiscountPremium = calculateDiscountPremium(stockData.price, peBuyBelow);
+    const peDiscountPremium = calculateDiscountPremium(stockData.price, peValue);
     
     // Calculate Graham valuation
     const grahamValue = calculateGraham(stockData, valuationParams);
     const grahamBuyBelow = calculateBuyBelow(grahamValue, marginOfSafetyParams.marginOfSafety);
-    const grahamDiscountPremium = calculateDiscountPremium(stockData.price, grahamBuyBelow);
+    const grahamDiscountPremium = calculateDiscountPremium(stockData.price, grahamValue);
     
     // Store results
     const results: ValuationResult[] = [

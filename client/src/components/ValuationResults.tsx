@@ -232,7 +232,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                     : 'N/A'}
                 </p>
                 <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-amber-600' : 'text-red-600'}`}>
-                  From intrinsic value
+                  Current vs. intrinsic value
                 </p>
               </div>
             </div>
