@@ -192,10 +192,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                         </h3>
                       </div>
                       <p className={`text-sm ${style.text} text-center`}>
-                        {recommendation.rationale} 
-                        {averageResult.discountPremium < 0 
-                          ? ` (${Math.abs(averageResult.discountPremium).toFixed(1)}% below intrinsic value)` 
-                          : ` (${averageResult.discountPremium.toFixed(1)}% above intrinsic value)`}
+                        {recommendation.rationale}
                       </p>
                     </div>
                   );
