@@ -124,46 +124,46 @@ export const getStatusMessage = (
   }
 };
 
-// New function that provides a clear Buy/Hold/Sell recommendation
+// Function that provides a stock valuation assessment
 export const getInvestmentRecommendation = (
   discountPremium: number
-): { action: 'BUY' | 'HOLD' | 'SELL', rationale: string } => {
-  // Significant discount - BUY recommendation
+): { action: 'UNDERVALUED' | 'FAIRLY VALUED' | 'OVERVALUED', rationale: string } => {
+  // Significant discount
   if (discountPremium <= -20) {
     return { 
-      action: 'BUY', 
+      action: 'UNDERVALUED', 
       rationale: 'Significant margin of safety'
     };
   }
   
-  // Moderate discount - BUY recommendation but with caution
+  // Moderate discount
   if (discountPremium <= -10) {
     return { 
-      action: 'BUY', 
+      action: 'UNDERVALUED', 
       rationale: 'Adequate margin of safety'
     };
   }
   
-  // Small discount - HOLD recommendation
+  // Small discount
   if (discountPremium < 0) {
     return { 
-      action: 'HOLD', 
+      action: 'FAIRLY VALUED', 
       rationale: 'Limited margin of safety'
     };
   }
   
-  // Small premium - HOLD recommendation if already owned
+  // Small premium
   if (discountPremium < 10) {
     return { 
-      action: 'HOLD', 
-      rationale: 'Fair value, await better entry'
+      action: 'FAIRLY VALUED', 
+      rationale: 'Current price near intrinsic value'
     };
   }
   
-  // Significant premium - SELL recommendation
+  // Significant premium
   return { 
-    action: 'SELL', 
-    rationale: 'Potentially overvalued'
+    action: 'OVERVALUED', 
+    rationale: 'Price exceeds intrinsic value'
   };
 };
 

@@ -155,20 +155,25 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                   const recommendation = getInvestmentRecommendation(averageResult.discountPremium);
                   
                   // Determine styling based on recommendation
-                  const styles = {
-                    BUY: {
+                  const styles: Record<string, {
+                    background: string;
+                    border: string;
+                    text: string;
+                    icon: React.ReactNode;
+                  }> = {
+                    'UNDERVALUED': {
                       background: "bg-green-100", 
                       border: "border-green-300",
                       text: "text-green-800",
                       icon: <TrendingDown className="h-6 w-6 text-green-600 mr-2" />
                     },
-                    HOLD: {
+                    'FAIRLY VALUED': {
                       background: "bg-amber-100", 
                       border: "border-amber-300",
                       text: "text-amber-800",
                       icon: <Pause className="h-6 w-6 text-amber-600 mr-2" />
                     },
-                    SELL: {
+                    'OVERVALUED': {
                       background: "bg-red-100", 
                       border: "border-red-300",
                       text: "text-red-800",
@@ -189,8 +194,8 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                       <p className={`text-sm ${style.text} text-center`}>
                         {recommendation.rationale} 
                         {averageResult.discountPremium < 0 
-                          ? ` (${Math.abs(averageResult.discountPremium).toFixed(1)}% below fair value)` 
-                          : ` (${averageResult.discountPremium.toFixed(1)}% above fair value)`}
+                          ? ` (${Math.abs(averageResult.discountPremium).toFixed(1)}% below intrinsic value)` 
+                          : ` (${averageResult.discountPremium.toFixed(1)}% above intrinsic value)`}
                       </p>
                     </div>
                   );
@@ -227,7 +232,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                     : 'N/A'}
                 </p>
                 <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-amber-600' : 'text-red-600'}`}>
-                  From fair value
+                  From intrinsic value
                 </p>
               </div>
             </div>
