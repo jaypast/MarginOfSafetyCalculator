@@ -124,6 +124,49 @@ export const getStatusMessage = (
   }
 };
 
+// New function that provides a clear Buy/Hold/Sell recommendation
+export const getInvestmentRecommendation = (
+  discountPremium: number
+): { action: 'BUY' | 'HOLD' | 'SELL', rationale: string } => {
+  // Significant discount - BUY recommendation
+  if (discountPremium <= -20) {
+    return { 
+      action: 'BUY', 
+      rationale: 'Significant margin of safety'
+    };
+  }
+  
+  // Moderate discount - BUY recommendation but with caution
+  if (discountPremium <= -10) {
+    return { 
+      action: 'BUY', 
+      rationale: 'Adequate margin of safety'
+    };
+  }
+  
+  // Small discount - HOLD recommendation
+  if (discountPremium < 0) {
+    return { 
+      action: 'HOLD', 
+      rationale: 'Limited margin of safety'
+    };
+  }
+  
+  // Small premium - HOLD recommendation if already owned
+  if (discountPremium < 10) {
+    return { 
+      action: 'HOLD', 
+      rationale: 'Fair value, await better entry'
+    };
+  }
+  
+  // Significant premium - SELL recommendation
+  return { 
+    action: 'SELL', 
+    rationale: 'Potentially overvalued'
+  };
+};
+
 export const calculateDiscountPremium = (
   currentPrice: number,
   comparePrice: number

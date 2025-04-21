@@ -9,11 +9,11 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileText } from 'lucide-react';
+import { FileText, TrendingDown, TrendingUp, Pause } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { StockData, ValuationResult, CalculationMethod, ValuationParams, MarginOfSafetyParams } from '@/lib/types';
-import { formatCurrency, isETF } from '@/lib/utils';
+import { formatCurrency, isETF, getInvestmentRecommendation } from '@/lib/utils';
 import { generateCalculationsPDF } from '@/utils/pdfGenerator';
 
 interface ValuationResultsProps {
@@ -146,39 +146,92 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
             </p>
           </div>
         ) : (
-          // Normal valuation display for regular stocks
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
-            {/* Intrinsic Value */}
-            <div className="bg-[#E9ECF1] p-3 rounded-lg border border-[#C4CCD9]">
-              <p className="text-xs text-[#2A3E5C] mb-1">Intrinsic Value</p>
-              <p className="text-lg font-bold text-[#1A2942]">
-                {activeResult.intrinsicValue > 0 ? formatCurrency(activeResult.intrinsicValue) : 'N/A'}
-              </p>
-              <p className="text-xs text-[#415876]">{activeResult.method}</p>
+          <>
+            {/* Prominent action recommendation */}
+            {averageResult && (
+              <div className="mb-6">
+                {(() => {
+                  // Get recommendation based on average result
+                  const recommendation = getInvestmentRecommendation(averageResult.discountPremium);
+                  
+                  // Determine styling based on recommendation
+                  const styles = {
+                    BUY: {
+                      background: "bg-green-100", 
+                      border: "border-green-300",
+                      text: "text-green-800",
+                      icon: <TrendingDown className="h-6 w-6 text-green-600 mr-2" />
+                    },
+                    HOLD: {
+                      background: "bg-amber-100", 
+                      border: "border-amber-300",
+                      text: "text-amber-800",
+                      icon: <Pause className="h-6 w-6 text-amber-600 mr-2" />
+                    },
+                    SELL: {
+                      background: "bg-red-100", 
+                      border: "border-red-300",
+                      text: "text-red-800",
+                      icon: <TrendingUp className="h-6 w-6 text-red-600 mr-2" />
+                    }
+                  };
+                  
+                  const style = styles[recommendation.action];
+                  
+                  return (
+                    <div className={`${style.background} p-4 rounded-lg ${style.border} flex flex-col items-center justify-center`}>
+                      <div className="flex items-center justify-center mb-2">
+                        {style.icon}
+                        <h3 className={`text-2xl font-bold ${style.text}`}>
+                          {recommendation.action}
+                        </h3>
+                      </div>
+                      <p className={`text-sm ${style.text} text-center`}>
+                        {recommendation.rationale} 
+                        {averageResult.discountPremium < 0 
+                          ? ` (${Math.abs(averageResult.discountPremium).toFixed(1)}% below fair value)` 
+                          : ` (${averageResult.discountPremium.toFixed(1)}% above fair value)`}
+                      </p>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          
+            {/* Valuation metrics */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+              {/* Intrinsic Value */}
+              <div className="bg-[#E9ECF1] p-3 rounded-lg border border-[#C4CCD9]">
+                <p className="text-xs text-[#2A3E5C] mb-1">Intrinsic Value</p>
+                <p className="text-lg font-bold text-[#1A2942]">
+                  {activeResult.intrinsicValue > 0 ? formatCurrency(activeResult.intrinsicValue) : 'N/A'}
+                </p>
+                <p className="text-xs text-[#415876]">{activeResult.method}</p>
+              </div>
+              
+              {/* Buy Below Price */}
+              <div className="bg-green-50 p-3 rounded-lg border border-green-100">
+                <p className="text-xs text-green-700 mb-1">Buy Below</p>
+                <p className="text-lg font-bold text-green-800">
+                  {activeResult.buyBelow > 0 ? formatCurrency(activeResult.buyBelow) : 'N/A'}
+                </p>
+                <p className="text-xs text-green-600">With MoS</p>
+              </div>
+              
+              {/* Current Status */}
+              <div className={`${activeResult.discountPremium < 0 ? 'bg-amber-50 border-amber-100' : 'bg-red-50 border-red-100'} p-3 rounded-lg`}>
+                <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-amber-700' : 'text-red-700'} mb-1`}>Discount/Premium</p>
+                <p className={`text-lg font-bold ${getStatusColor(activeResult.discountPremium)}`}>
+                  {!hasExtremeDiscountPremium ? 
+                    `${activeResult.discountPremium > 0 ? '+' : ''}${activeResult.discountPremium.toFixed(1)}%` 
+                    : 'N/A'}
+                </p>
+                <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-amber-600' : 'text-red-600'}`}>
+                  From fair value
+                </p>
+              </div>
             </div>
-            
-            {/* Buy Below Price */}
-            <div className="bg-green-50 p-3 rounded-lg border border-green-100">
-              <p className="text-xs text-green-700 mb-1">Buy Below</p>
-              <p className="text-lg font-bold text-green-800">
-                {activeResult.buyBelow > 0 ? formatCurrency(activeResult.buyBelow) : 'N/A'}
-              </p>
-              <p className="text-xs text-green-600">With MoS</p>
-            </div>
-            
-            {/* Current Status */}
-            <div className={`${activeResult.discountPremium < 0 ? 'bg-amber-50 border-amber-100' : 'bg-red-50 border-red-100'} p-3 rounded-lg`}>
-              <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-amber-700' : 'text-red-700'} mb-1`}>Status</p>
-              <p className={`text-lg font-bold ${getStatusColor(activeResult.discountPremium)}`}>
-                {!hasExtremeDiscountPremium ? 
-                  `${activeResult.discountPremium > 0 ? '+' : ''}${activeResult.discountPremium.toFixed(1)}%` 
-                  : 'N/A'}
-              </p>
-              <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-amber-600' : 'text-red-600'}`}>
-                {activeResult.discountPremium < 0 ? 'Consider buying' : 'Wait'}
-              </p>
-            </div>
-          </div>
+          </>
         )}
         
         {/* Value Gap visualization has been removed */}
