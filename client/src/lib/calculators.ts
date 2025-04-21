@@ -285,14 +285,15 @@ export const calculateAverageValuation = (
   let currentPrice = 0;
   // First try to extract it from the discount/premium calculation
   if (validResults[0].discountPremium !== 0) {
-    currentPrice = validResults[0].buyBelow * (1 + validResults[0].discountPremium / 100);
+    currentPrice = validResults[0].intrinsicValue * (1 + validResults[0].discountPremium / 100);
   } 
   // If that fails, just use the first valid result's intrinsic value as an approximation
   else if (validResults.length > 0) {
     currentPrice = validResults[0].intrinsicValue;
   }
   
-  const avgDiscountPremium = calculateDiscountPremium(currentPrice, avgBuyBelow);
+  // Calculate the discount/premium based on intrinsic value (not buy below price)
+  const avgDiscountPremium = calculateDiscountPremium(currentPrice, avgIntrinsicValue);
   
   return {
     method: 'Average',
