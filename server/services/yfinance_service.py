@@ -468,8 +468,20 @@ if __name__ == "__main__":
     
     # Check if a command was provided
     if len(sys.argv) > 2 and sys.argv[2] == 'history':
-        # Get historical data
-        result = get_historical_data(symbol)
+        # Get historical data with optional period and interval parameters
+        period = '5y'  # Default period
+        interval = '1mo'  # Default interval
+        
+        # Check if period is provided
+        if len(sys.argv) > 3:
+            period = sys.argv[3]
+            
+        # Check if interval is provided
+        if len(sys.argv) > 4:
+            interval = sys.argv[4]
+            
+        # Get historical data with the specified parameters
+        result = get_historical_data(symbol, period, interval)
     else:
         # Get regular stock data
         result = get_stock_data(symbol)

@@ -65,9 +65,9 @@ export async function getHistoricalData(
   try {
     console.log(`Fetching historical data for ${symbol} (${period}, ${interval}) using yfinance`);
     
-    // Call the Python script with the stock symbol and history command
+    // Call the Python script with the stock symbol, history command, and period
     const { stdout, stderr } = await execAsync(
-      `python3 server/services/yfinance_service.py ${symbol} history`
+      `python3 server/services/yfinance_service.py ${symbol} history ${period} ${interval}`
     );
     
     if (stderr) {

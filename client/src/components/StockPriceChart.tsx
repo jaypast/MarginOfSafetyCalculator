@@ -92,6 +92,7 @@ const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartP
     setIsLoading(true);
     setError(null);
     
+    // Make sure we're passing the correct period parameter to the API
     fetch(`/api/stock/${symbol}/history?period=${period}&interval=1mo`)
       .then(response => {
         if (!response.ok) {
@@ -128,7 +129,7 @@ const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartP
         <CardTitle className="text-lg font-medium text-[#21324F] flex justify-between items-center">
           <div className="flex items-center">
             <BarChart2 className="mr-2 h-5 w-5 text-[#436280]" />
-            5-Year Price History
+            {period === '5y' ? '5-Year' : period === '2y' ? '2-Year' : '1-Year'} Price History
           </div>
           <div className="flex space-x-2 text-sm">
             <button 
