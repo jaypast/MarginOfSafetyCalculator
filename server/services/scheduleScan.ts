@@ -27,8 +27,10 @@ export function scheduleUndervaluedStockScan() {
       
       const newReport = await storage.createUndervaluedReport(reportData);
       
-      // Path to the Python script
-      const scriptPath = path.join(__dirname, 'stock_scanner.py');
+      // Use import.meta.url to determine file path
+      const currentModuleUrl = new URL(import.meta.url);
+      const currentDir = path.dirname(currentModuleUrl.pathname);
+      const scriptPath = path.join(currentDir, 'stock_scanner.py');
       
       // Execute the Python script with a limit of 80 stocks
       exec(`python3 ${scriptPath} scan 80`, async (error, stdout, stderr) => {

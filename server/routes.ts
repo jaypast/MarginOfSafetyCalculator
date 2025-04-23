@@ -315,8 +315,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Run the stock scanner on demand
   app.post("/api/undervalued/scan", async (req, res) => {
     try {
-      // Run the Python script
-      const scriptPath = path.join(__dirname, 'services', 'stock_scanner.py');
+      // Use import.meta.url to determine file path
+      const currentModuleUrl = new URL(import.meta.url);
+      const currentDir = path.dirname(currentModuleUrl.pathname);
+      const scriptPath = path.join(currentDir, 'services', 'stock_scanner.py');
       
       console.log(`Running stock scanner script: ${scriptPath}`);
       
