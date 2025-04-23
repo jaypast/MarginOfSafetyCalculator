@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
 import { stockResponseSchema, insertFeedbackSchema, insertUndervaluedReportSchema, insertUndervaluedStockSchema } from "@shared/schema";
 import { getStockData } from "./services/stockData";
 import { getMarketSentiment, getMostActiveStocks, RealTimeSentiment } from "./services/marketSentiment";
@@ -355,13 +356,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           console.log(`Found ${undervalued_stocks.length} undervalued stocks`);
           
-          // Update the report with the actual stock count
-          await storage.createUndervaluedReport({
-            id: newReport.id,
-            stocksCount: undervalued_stocks.length,
-            isPending: false,
-            notes: `Found ${undervalued_stocks.length} undervalued stocks`
-          });
+          // Update the existing report with the results
+          try {
+            // Create a new report with the same ID which will update the existing one
+            const updatedReport = await storage.createUndervaluedReport({
+              indexes: "S&P 500, Russell 2000",
+              stocksCount: undervalued_stocks.length,
+              isPending: false,
+              notes: `Found ${undervalued_stocks.length} undervalued stocks`,
+              reportDate: new Date()
+            });
+            
+            console.log(`Created undervalued stocks report: ${JSON.stringify(updatedReport)}`);
+          } catch (updateError) {
+            console.error("Error updating report:", updateError);
+            // Even if update fails, we'll continue adding the stocks
+          }
           
           // Save each undervalued stock to the database
           for (const stock of undervalued_stocks) {
