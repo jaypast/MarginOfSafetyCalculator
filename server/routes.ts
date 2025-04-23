@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { stockResponseSchema, insertFeedbackSchema } from "@shared/schema";
 import { getStockData } from "./services/stockData";
 import { getMarketSentiment, getMostActiveStocks, RealTimeSentiment } from "./services/marketSentiment";
+import { getHistoricalData } from "./services/yahooFinance";
 import { ZodError } from "zod";
 
 // Cache for sentiment data to prevent excessive API calls
@@ -16,6 +17,31 @@ let sentimentCache: {
 const CACHE_DURATION = 5 * 60 * 1000;
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Historical data route - must be defined before the general stock route
+  app.get('/api/stock/:symbol/history', async (req, res) => {
+    try {
+      const { symbol } = req.params;
+      const { period = '5y', interval = '1mo' } = req.query;
+      
+      if (!symbol || typeof symbol !== 'string') {
+        return res.status(400).json({ message: 'Invalid stock symbol' });
+      }
+      
+      const historicalData = await getHistoricalData(
+        symbol.toUpperCase(), 
+        typeof period === 'string' ? period : '5y',
+        typeof interval === 'string' ? interval : '1mo'
+      );
+      
+      return res.json(historicalData);
+    } catch (error) {
+      console.error('Error fetching historical data:', error);
+      return res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'An unknown error occurred while fetching historical data'
+      });
+    }
+  });
+
   // API Routes
   app.get('/api/stock/:symbol', async (req, res) => {
     try {

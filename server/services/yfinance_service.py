@@ -2,10 +2,13 @@
 import json
 import sys
 import re
+import datetime
+from datetime import date, timedelta
 try:
     import yfinance as yf
+    import pandas as pd
 except ImportError:
-    print("Warning: yfinance module not found. Please install it using 'pip install yfinance'", file=sys.stderr)
+    print("Warning: yfinance or pandas module not found. Please install them using 'pip install yfinance pandas'", file=sys.stderr)
 
 def get_stock_data(symbol):
     """
@@ -353,12 +356,122 @@ def search_company_name(company_name):
     # Return the best guess, the validation in the main function will check if it exists
     return possible_ticker
 
+# Get historical price data for a stock
+def get_historical_data(symbol, period='5y', interval='1mo'):
+    """
+    Fetch historical price data for a stock
+    
+    Args:
+        symbol (str): The stock symbol
+        period (str): The time period (default: '5y' for 5 years)
+        interval (str): The data interval (default: '1mo' for monthly)
+    
+    Returns:
+        str: JSON string with the historical data
+    """
+    try:
+        # For European stocks, add exchange suffix if not already there
+        if not re.search(r'\.[A-Z]{1,4}$', symbol) and len(symbol) <= 5:
+            pass
+        
+        # Get the ticker object
+        ticker = yf.Ticker(symbol)
+        
+        # Validate ticker exists by checking if we can get basic info
+        if not ticker.info or ticker.info.get('regularMarketPrice') is None:
+            # Try with common exchange suffixes (European, Asian, etc.)
+            exchanges = {
+                # European exchanges
+                '.L': 'London',
+                '.PA': 'Paris',
+                '.DE': 'Germany',
+                '.MI': 'Milan',
+                '.MC': 'Madrid',
+                '.AS': 'Amsterdam',
+                '.BR': 'Brussels',
+                '.CO': 'Copenhagen',
+                '.HE': 'Helsinki',
+                '.I': 'Ireland',
+                '.OL': 'Oslo',
+                '.ST': 'Stockholm',
+                '.SW': 'Switzerland',
+                '.VI': 'Vienna',
+                # Asian exchanges
+                '.T': 'Tokyo',
+                '.HK': 'Hong Kong',
+                '.SS': 'Shanghai',
+                '.SZ': 'Shenzhen',
+                '.KS': 'Seoul',
+                '.TW': 'Taiwan'
+            }
+            
+            for exchange_suffix, exchange_name in exchanges.items():
+                try:
+                    exchange_ticker = yf.Ticker(f"{symbol}{exchange_suffix}")
+                    if exchange_ticker.info and exchange_ticker.info.get('regularMarketPrice') is not None:
+                        ticker = exchange_ticker
+                        symbol = f"{symbol}{exchange_suffix}"
+                        print(f"Found {exchange_name} stock for historical data: {symbol}", file=sys.stderr)
+                        break
+                except:
+                    continue
+            
+            # If no valid ticker found after trying all exchanges, raise an exception
+            if not ticker.info or ticker.info.get('regularMarketPrice') is None:
+                raise Exception(f"Could not find valid stock with symbol '{symbol}'.")
+        
+        # Fetch historical data
+        df = ticker.history(period=period, interval=interval)
+        
+        if df.empty:
+            raise Exception(f"No historical data available for {symbol}")
+            
+        # Reset index to make date a column and convert to ISO format string
+        df = df.reset_index()
+        df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
+        
+        # Extract only the required columns
+        historical_data = []
+        for _, row in df.iterrows():
+            historical_data.append({
+                'date': row['Date'],
+                'open': float(row['Open']),
+                'high': float(row['High']),
+                'low': float(row['Low']),
+                'close': float(row['Close']),
+                'volume': float(row['Volume'])
+            })
+        
+        # Return the historical data as JSON
+        return json.dumps({
+            'symbol': symbol,
+            'period': period,
+            'interval': interval,
+            'data': historical_data
+        })
+        
+    except Exception as e:
+        # Return error information
+        return json.dumps({
+            'error': str(e),
+            'message': f'Failed to fetch historical data for {symbol}'
+        })
+
 # If the script is run directly
 if __name__ == "__main__":
     # Check if a symbol was provided as a command line argument
-    if len(sys.argv) > 1:
-        symbol = sys.argv[1]
-        result = get_stock_data(symbol)
-        print(result)
-    else:
+    if len(sys.argv) < 2:
         print(json.dumps({"error": "No symbol provided"}))
+        sys.exit(1)
+        
+    symbol = sys.argv[1]
+    
+    # Check if a command was provided
+    if len(sys.argv) > 2 and sys.argv[2] == 'history':
+        # Get historical data
+        result = get_historical_data(symbol)
+    else:
+        # Get regular stock data
+        result = get_stock_data(symbol)
+    
+    print(result)
