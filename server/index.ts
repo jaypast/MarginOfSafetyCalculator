@@ -67,5 +67,13 @@ app.use((req, res, next) => {
     reusePort: true,
   }, () => {
     log(`serving on port ${port}`);
+    
+    // Initialize the monthly undervalued stocks scan scheduler
+    try {
+      scheduleUndervaluedStockScan();
+      log('Monthly undervalued stocks scan scheduler initialized');
+    } catch (error) {
+      log(`Error initializing monthly scan scheduler: ${error instanceof Error ? error.message : String(error)}`);
+    }
   });
 })();
