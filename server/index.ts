@@ -1,8 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { scheduleUndervaluedStockScan } from "./services/scheduleScan";
-import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
@@ -68,31 +66,5 @@ app.use((req, res, next) => {
     reusePort: true,
   }, () => {
     log(`serving on port ${port}`);
-    
-    // Initialize the monthly undervalued stocks scan scheduler
-    try {
-      scheduleUndervaluedStockScan();
-      log('Monthly undervalued stocks scan scheduler initialized');
-      
-      // Run an initial scan automatically
-      log('Starting initial undervalued stocks scan...');
-      setTimeout(() => {
-        fetch('http://localhost:5000/api/undervalued/scan', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        })
-        .then(response => response.json())
-        .then(data => {
-          log(`Initial scan initiated, report ID: ${data.reportId}`);
-        })
-        .catch(error => {
-          log(`Error initiating initial scan: ${error.message}`);
-        });
-      }, 3000); // Wait 3 seconds for server to fully initialize
-    } catch (error) {
-      log(`Error initializing monthly scan scheduler: ${error instanceof Error ? error.message : String(error)}`);
-    }
   });
 })();
