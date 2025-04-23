@@ -15,6 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { StockData, ValuationResult, CalculationMethod, ValuationParams, MarginOfSafetyParams } from '@/lib/types';
 import { formatCurrency, isETF, getInvestmentRecommendation } from '@/lib/utils';
 import { generateCalculationsPDF } from '@/utils/pdfGenerator';
+import StockPriceChart from './StockPriceChart';
 
 interface ValuationResultsProps {
   valuationResults: ValuationResult[];
@@ -237,6 +238,15 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
         )}
         
         {/* Value Gap visualization has been removed */}
+        
+        {/* Stock Price Chart - Add historical price chart */}
+        {stockData && !isSpecialCase && !etfDetected && (
+          <StockPriceChart 
+            symbol={stockData.symbol} 
+            currentPrice={stockData.price}
+            companyName={stockData.name}
+          />
+        )}
         
         {/* Method Comparison */}
         <div>

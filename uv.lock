@@ -234,11 +234,15 @@ name = "repl-nix-workspace"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "pandas" },
     { name = "yfinance" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "yfinance", specifier = ">=0.2.55" }]
+requires-dist = [
+    { name = "pandas", specifier = ">=2.2.3" },
+    { name = "yfinance", specifier = ">=0.2.55" },
+]
 
 [[package]]
 name = "requests"
