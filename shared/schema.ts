@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, decimal, varchar, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, decimal, varchar, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -89,3 +89,73 @@ export const feedbackResponseSchema = z.object({
 
 export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
 export type Feedback = typeof feedback.$inferSelect;
+
+// Undervalued stocks report schema
+export const undervaluedStock = pgTable("undervalued_stock", {
+  id: serial("id").primaryKey(),
+  symbol: varchar("symbol", { length: 10 }).notNull(),
+  name: text("name").notNull(),
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  eps: decimal("eps", { precision: 10, scale: 2 }).notNull(),
+  fcfPerShare: decimal("fcf_per_share", { precision: 10, scale: 2 }).notNull(),
+  growthRate: decimal("growth_rate", { precision: 6, scale: 2 }).notNull(),
+  intrinsicValue: decimal("intrinsic_value", { precision: 10, scale: 2 }).notNull(),
+  buyBelowPrice: decimal("buy_below_price", { precision: 10, scale: 2 }).notNull(),
+  discountPremium: decimal("discount_premium", { precision: 6, scale: 2 }).notNull(),
+  quality: text("quality").notNull(), // "Exceptional", "Good", "Average", "Speculative"
+  qualityScore: integer("quality_score").notNull(),
+  dateEvaluated: timestamp("date_evaluated").defaultNow().notNull(),
+  reportId: integer("report_id").notNull(),
+});
+
+// Report that contains multiple undervalued stocks
+export const undervaluedReport = pgTable("undervalued_report", {
+  id: serial("id").primaryKey(),
+  reportDate: timestamp("report_date").defaultNow().notNull(),
+  stocksCount: integer("stocks_count").notNull(),
+  indexes: text("indexes").notNull(), // e.g., "S&P 500, Russell 2000"
+  isPending: boolean("is_pending").default(false).notNull(),
+  notes: text("notes"),
+});
+
+export const insertUndervaluedStockSchema = createInsertSchema(undervaluedStock).omit({
+  id: true,
+});
+
+export const insertUndervaluedReportSchema = createInsertSchema(undervaluedReport).omit({
+  id: true,
+});
+
+export type InsertUndervaluedStock = z.infer<typeof insertUndervaluedStockSchema>;
+export type UndervaluedStock = typeof undervaluedStock.$inferSelect;
+
+export type InsertUndervaluedReport = z.infer<typeof insertUndervaluedReportSchema>;
+export type UndervaluedReport = typeof undervaluedReport.$inferSelect;
+
+// Schema for individual undervalued stock response
+export const undervaluedStockSchema = z.object({
+  symbol: z.string(),
+  name: z.string(),
+  price: z.number(),
+  eps: z.number(),
+  fcf_per_share: z.number(),
+  growth_rate: z.number(),
+  intrinsic_value: z.number(),
+  buy_below_price: z.number(),
+  discount_premium: z.number(),
+  quality: z.string(),
+  quality_score: z.number(),
+  date_evaluated: z.string()
+});
+
+// Schema for undervalued stocks report response
+export const undervaluedStocksReportSchema = z.object({
+  id: z.number(),
+  reportDate: z.string(), 
+  stocksCount: z.number(),
+  indexes: z.string(),
+  stocks: z.array(undervaluedStockSchema),
+});
+
+export type UndervaluedStockResponse = z.infer<typeof undervaluedStockSchema>;
+export type UndervaluedStocksReportResponse = z.infer<typeof undervaluedStocksReportSchema>;

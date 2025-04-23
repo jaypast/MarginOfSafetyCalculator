@@ -1,6 +1,12 @@
-import { users, type User, type InsertUser, feedback, type Feedback, type InsertFeedback } from "@shared/schema";
+import { 
+  users, type User, type InsertUser, 
+  feedback, type Feedback, type InsertFeedback,
+  undervaluedReport, type UndervaluedReport, type InsertUndervaluedReport,
+  undervaluedStock, type UndervaluedStock, type InsertUndervaluedStock,
+  type UndervaluedStocksReportResponse
+} from "@shared/schema";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -18,14 +24,25 @@ export interface IStorage {
     notDisappointed: number;
     pmfScore: number;
   }>;
+  
+  // Undervalued stocks report methods
+  createUndervaluedReport(reportData: InsertUndervaluedReport): Promise<UndervaluedReport>;
+  createUndervaluedStock(stockData: InsertUndervaluedStock): Promise<UndervaluedStock>;
+  getLatestUndervaluedReport(): Promise<UndervaluedStocksReportResponse | null>;
+  getUndervaluedReportById(id: number): Promise<UndervaluedStocksReportResponse | null>;
+  getAllUndervaluedReports(): Promise<UndervaluedReport[]>;
 }
 
 // Memory storage for fallback when database is not available
 class MemStorage implements IStorage {
   private users: User[] = [];
   private feedbackEntries: Feedback[] = [];
+  private undervaluedReports: UndervaluedReport[] = [];
+  private undervaluedStocks: UndervaluedStock[] = [];
   private nextUserId = 1;
   private nextFeedbackId = 1;
+  private nextReportId = 1;
+  private nextStockId = 1;
   
   // User methods
   async getUser(id: number): Promise<User | undefined> {
@@ -106,6 +123,116 @@ class MemStorage implements IStorage {
       notDisappointed,
       pmfScore
     };
+  }
+  
+  // Undervalued stocks report methods
+  async createUndervaluedReport(reportData: InsertUndervaluedReport): Promise<UndervaluedReport> {
+    const now = new Date();
+    const newReport = {
+      ...reportData,
+      id: this.nextReportId++,
+      reportDate: reportData.reportDate || now
+    } as UndervaluedReport;
+    this.undervaluedReports.push(newReport);
+    console.log("Created undervalued stocks report:", newReport);
+    return newReport;
+  }
+
+  async createUndervaluedStock(stockData: InsertUndervaluedStock): Promise<UndervaluedStock> {
+    const now = new Date();
+    const newStock = {
+      ...stockData,
+      id: this.nextStockId++,
+      dateEvaluated: stockData.dateEvaluated || now
+    } as UndervaluedStock;
+    this.undervaluedStocks.push(newStock);
+    return newStock;
+  }
+
+  async getLatestUndervaluedReport(): Promise<UndervaluedStocksReportResponse | null> {
+    if (this.undervaluedReports.length === 0) {
+      return null;
+    }
+
+    // Sort reports by date in descending order
+    const sortedReports = [...this.undervaluedReports].sort((a, b) => {
+      const dateA = a.reportDate instanceof Date ? a.reportDate : new Date(a.reportDate || 0);
+      const dateB = b.reportDate instanceof Date ? b.reportDate : new Date(b.reportDate || 0);
+      return dateB.getTime() - dateA.getTime(); // Descending order
+    });
+
+    const latestReport = sortedReports[0];
+    
+    // Get all stocks for this report
+    const stocks = this.undervaluedStocks.filter(stock => stock.reportId === latestReport.id);
+    
+    return {
+      id: latestReport.id,
+      reportDate: latestReport.reportDate instanceof Date 
+        ? latestReport.reportDate.toISOString() 
+        : String(latestReport.reportDate),
+      stocksCount: stocks.length,
+      indexes: latestReport.indexes,
+      stocks: stocks.map(stock => ({
+        symbol: stock.symbol,
+        name: stock.name,
+        price: Number(stock.price),
+        eps: Number(stock.eps),
+        fcf_per_share: Number(stock.fcfPerShare),
+        growth_rate: Number(stock.growthRate),
+        intrinsic_value: Number(stock.intrinsicValue),
+        buy_below_price: Number(stock.buyBelowPrice),
+        discount_premium: Number(stock.discountPremium),
+        quality: stock.quality,
+        quality_score: stock.qualityScore,
+        date_evaluated: stock.dateEvaluated instanceof Date 
+          ? stock.dateEvaluated.toISOString() 
+          : String(stock.dateEvaluated)
+      }))
+    };
+  }
+
+  async getUndervaluedReportById(id: number): Promise<UndervaluedStocksReportResponse | null> {
+    const report = this.undervaluedReports.find(r => r.id === id);
+    if (!report) {
+      return null;
+    }
+    
+    // Get all stocks for this report
+    const stocks = this.undervaluedStocks.filter(stock => stock.reportId === report.id);
+    
+    return {
+      id: report.id,
+      reportDate: report.reportDate instanceof Date 
+        ? report.reportDate.toISOString() 
+        : String(report.reportDate),
+      stocksCount: stocks.length,
+      indexes: report.indexes,
+      stocks: stocks.map(stock => ({
+        symbol: stock.symbol,
+        name: stock.name,
+        price: Number(stock.price),
+        eps: Number(stock.eps),
+        fcf_per_share: Number(stock.fcfPerShare),
+        growth_rate: Number(stock.growthRate),
+        intrinsic_value: Number(stock.intrinsicValue),
+        buy_below_price: Number(stock.buyBelowPrice),
+        discount_premium: Number(stock.discountPremium),
+        quality: stock.quality,
+        quality_score: stock.qualityScore,
+        date_evaluated: stock.dateEvaluated instanceof Date 
+          ? stock.dateEvaluated.toISOString() 
+          : String(stock.dateEvaluated)
+      }))
+    };
+  }
+
+  async getAllUndervaluedReports(): Promise<UndervaluedReport[]> {
+    return [...this.undervaluedReports].sort((a, b) => {
+      const dateA = a.reportDate instanceof Date ? a.reportDate : new Date(a.reportDate || 0);
+      const dateB = b.reportDate instanceof Date ? b.reportDate : new Date(b.reportDate || 0);
+      return dateB.getTime() - dateA.getTime(); // Descending order (newest first)
+    });
   }
 }
 
