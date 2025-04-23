@@ -318,9 +318,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Use import.meta.url to determine file path
       const currentModuleUrl = new URL(import.meta.url);
       const currentDir = path.dirname(currentModuleUrl.pathname);
-      const scriptPath = path.join(currentDir, 'services', 'stock_scanner.py');
+      const scriptPath = path.join(currentDir, 'services', 'stock_scanner_improved.py');
       
-      console.log(`Running stock scanner script: ${scriptPath}`);
+      console.log(`Running improved stock scanner script: ${scriptPath}`);
       
       // Create a report entry first
       const reportData = {
@@ -356,12 +356,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`Found ${undervalued_stocks.length} undervalued stocks`);
           
           // Update the report with the actual stock count
-          const updatedReport = {
-            ...newReport,
+          await storage.createUndervaluedReport({
+            id: newReport.id,
             stocksCount: undervalued_stocks.length,
             isPending: false,
             notes: `Found ${undervalued_stocks.length} undervalued stocks`
-          };
+          });
           
           // Save each undervalued stock to the database
           for (const stock of undervalued_stocks) {
@@ -384,7 +384,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await storage.createUndervaluedStock(stockData);
           }
           
-          console.log("Undervalued stocks saved to database");
+          console.log(`Undervalued stocks (${undervalued_stocks.length}) saved to database for report ID: ${newReport.id}`);
         } catch (err) {
           console.error("Error processing scanner results:", err);
         }

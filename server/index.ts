@@ -76,19 +76,21 @@ app.use((req, res, next) => {
       
       // Run an initial scan automatically
       log('Starting initial undervalued stocks scan...');
-      fetch('http://localhost:5000/api/undervalued/scan', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      })
-      .then(response => response.json())
-      .then(data => {
-        log(`Initial scan initiated, report ID: ${data.reportId}`);
-      })
-      .catch(error => {
-        log(`Error initiating initial scan: ${error.message}`);
-      });
+      setTimeout(() => {
+        fetch('http://localhost:5000/api/undervalued/scan', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        })
+        .then(response => response.json())
+        .then(data => {
+          log(`Initial scan initiated, report ID: ${data.reportId}`);
+        })
+        .catch(error => {
+          log(`Error initiating initial scan: ${error.message}`);
+        });
+      }, 3000); // Wait 3 seconds for server to fully initialize
     } catch (error) {
       log(`Error initializing monthly scan scheduler: ${error instanceof Error ? error.message : String(error)}`);
     }
