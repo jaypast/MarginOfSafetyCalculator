@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import Feedback from "@/pages/Feedback";
+import UndervaluedStocks from "@/pages/UndervaluedStocks";
 
 function Router() {
   return (
@@ -18,6 +19,9 @@ function Router() {
             <Link href="/" className="hover:underline">
               Home
             </Link>
+            <Link href="/undervalued" className="hover:underline">
+              Undervalued Stocks
+            </Link>
             <Link href="/feedback" className="hover:underline">
               Feedback
             </Link>
@@ -27,6 +31,7 @@ function Router() {
     
       <Switch>
         <Route path="/" component={Home} />
+        <Route path="/undervalued" component={UndervaluedStocks} />
         <Route path="/feedback" component={Feedback} />
         <Route component={NotFound} />
       </Switch>
