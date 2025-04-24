@@ -199,19 +199,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
           </div>
         )}
         
-        {/* Stock Price Chart Section */}
-        {stockData && !stockData.error && (
-          <SimpleStockChart
-            companyName={stockData.name}
-            symbol={stockData.symbol}
-            currentPrice={stockData.price}
-            historicalData={historicalData}
-            isLoading={isHistoricalLoading}
-            error={historicalError}
-            period={chartPeriod}
-            onPeriodChange={setChartPeriod}
-          />
-        )}
+{/* Chart is now integrated with Valuation Results */}
         
         {/* Detailed Calculations Section */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

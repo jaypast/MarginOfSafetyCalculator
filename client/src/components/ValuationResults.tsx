@@ -15,7 +15,32 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { StockData, ValuationResult, CalculationMethod, ValuationParams, MarginOfSafetyParams } from '@/lib/types';
 import { formatCurrency, isETF, getInvestmentRecommendation } from '@/lib/utils';
 import { generateCalculationsPDF } from '@/utils/pdfGenerator';
-import StockPriceChart from './StockPriceChart';
+import SimpleStockChart from './SimpleStockChart';
+import { useHistoricalData } from '@/hooks/useHistoricalData';
+
+// Internal component to handle the stock chart section with period controls
+function StockChartSection({ symbol, companyName, currentPrice }: { 
+  symbol: string; 
+  companyName: string; 
+  currentPrice: number;
+}) {
+  // Use the same period state and data fetching hooks as in the parent component
+  const [chartPeriod, setChartPeriod] = useState<'5y' | '2y' | '1y'>('5y');
+  const { data: historicalData, isLoading, error } = useHistoricalData(symbol, chartPeriod);
+  
+  return (
+    <SimpleStockChart
+      companyName={companyName}
+      symbol={symbol}
+      currentPrice={currentPrice}
+      historicalData={historicalData || []}
+      isLoading={isLoading}
+      error={error}
+      period={chartPeriod}
+      onPeriodChange={setChartPeriod}
+    />
+  );
+}
 
 interface ValuationResultsProps {
   valuationResults: ValuationResult[];
@@ -107,8 +132,6 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
   const hasExtremeDiscountPremium = Math.abs(activeResult.discountPremium) > 5000;
   const isSpecialCase = hasNegativeIntrinsicValue || hasExtremeDiscountPremium;
   
-  // Value Gap visualization calculations have been removed
-
   // Determine status color
   const getStatusColor = (discountPremium: number): string => {
     if (discountPremium <= -10) return 'text-green-800';
@@ -238,17 +261,13 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
           </>
         )}
         
-        {/* Value Gap visualization has been removed */}
-        
-        {/* Stock Price Chart - Add historical price chart */}
+        {/* Stock Price Chart - with improved SimpleStockChart */}
         {stockData && !isSpecialCase && !etfDetected && (
-          <div className="mt-4">
-            <StockPriceChart 
-              symbol={stockData.symbol} 
-              currentPrice={stockData.price}
-              companyName={stockData.name}
-            />
-          </div>
+          <StockChartSection 
+            symbol={stockData.symbol} 
+            currentPrice={stockData.price}
+            companyName={stockData.name}
+          />
         )}
         
         {/* Method Comparison */}
