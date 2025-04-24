@@ -1,8 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { StyledInput } from '@/components/ui/styled-input';
 import { Button } from '@/components/ui/button';
 import { StockData } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
+import { useQueryClient } from '@tanstack/react-query';
+import { Search, RefreshCcw } from 'lucide-react';
 
 interface StockInformationProps {
   stockData: StockData | undefined;
@@ -12,6 +14,9 @@ interface StockInformationProps {
   errorMessage?: string;
 }
 
+// Popular stocks for prefetching
+const POPULAR_STOCKS = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META'];
+
 const StockInformation: React.FC<StockInformationProps> = ({ 
   stockData,
   isLoading, 
@@ -20,7 +25,35 @@ const StockInformation: React.FC<StockInformationProps> = ({
   errorMessage
 }) => {
   const [inputValue, setInputValue] = useState('');
+  const [isCached, setIsCached] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
+
+  // Prefetch popular stock data when component loads
+  useEffect(() => {
+    // Prefetch popular stocks data in the background for common symbols
+    POPULAR_STOCKS.forEach((symbol) => {
+      queryClient.prefetchQuery({
+        queryKey: ['/api/stock', symbol],
+        queryFn: async () => {
+          const res = await fetch(`/api/stock/${symbol}`);
+          if (!res.ok) throw new Error('Network response was not ok');
+          return res.json();
+        },
+        staleTime: 5 * 60 * 1000, // 5 minutes
+      });
+    });
+  }, [queryClient]);
+
+  // Check if the stock data is cached
+  useEffect(() => {
+    if (inputValue) {
+      const cachedData = queryClient.getQueryData(['/api/stock', inputValue]);
+      setIsCached(!!cachedData);
+    } else {
+      setIsCached(false);
+    }
+  }, [inputValue, queryClient]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.toUpperCase();
@@ -38,6 +71,16 @@ const StockInformation: React.FC<StockInformationProps> = ({
   const handleFetchData = () => {
     if (inputValue) {
       onFetchData(inputValue);
+    }
+  };
+  
+  // Force a fresh data fetch, bypassing cache
+  const handleRefreshData = () => {
+    if (stockData && stockData.symbol) {
+      // Invalidate the current data to force a fresh fetch
+      queryClient.invalidateQueries({ queryKey: ['/api/stock', stockData.symbol] });
+      queryClient.invalidateQueries({ queryKey: [`/api/stock/${stockData.symbol}/history`] });
+      onFetchData(stockData.symbol);
     }
   };
 
@@ -70,13 +113,28 @@ const StockInformation: React.FC<StockInformationProps> = ({
               <span className="flex items-center">Loading...</span>
             ) : (
               <span className="flex items-center">
-                <i className="ri-search-line mr-1"></i> Find
+                <Search className="w-4 h-4 mr-1" /> Find {isCached && "(Cached)"}
               </span>
             )}
           </Button>
+          
+          {stockData && !stockData.error && (
+            <Button
+              onClick={handleRefreshData}
+              disabled={isLoading}
+              variant="outline"
+              className="ml-2"
+              title="Refresh data from server"
+            >
+              <RefreshCcw className="w-4 h-4" />
+            </Button>
+          )}
         </div>
         <p className="mt-2 text-sm text-neutral-500">
           Enter US ticker (AAPL) or international: BP.L, 7203.T, 0700.HK.
+          {isCached && !stockData && (
+            <span className="ml-2 text-blue-600 text-xs">(Data is cached - will load instantly)</span>
+          )}
         </p>
         
         {/* Error Message */}
