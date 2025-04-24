@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { HistoricalDataPoint } from '@/hooks/useHistoricalData';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle } from 'lucide-react';
 
 interface SimpleStockChartProps {
@@ -64,12 +63,12 @@ const SimpleStockChart: React.FC<SimpleStockChartProps> = ({
     historicalData.length >= 3; // Require at least 3 data points for a meaningful chart
 
   return (
-    <Card className="w-full mb-6">
-      <CardHeader className="pb-2">
+    <div className="w-full mb-4 mt-4">
+      <div className="mb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-medium text-gray-800">
-            {period === '5y' ? '5-Year' : period === '2y' ? '2-Year' : '1-Year'} Price History - {companyName} ({symbol})
-          </CardTitle>
+          <h3 className="text-base font-medium text-[#21324F]">
+            {period === '5y' ? '5-Year' : period === '2y' ? '2-Year' : '1-Year'} Price History
+          </h3>
           <div className="flex space-x-1">
             <button 
               onClick={() => onPeriodChange('1y')}
@@ -91,8 +90,8 @@ const SimpleStockChart: React.FC<SimpleStockChartProps> = ({
             </button>
           </div>
         </div>
-      </CardHeader>
-      <CardContent>
+      </div>
+      <div className="bg-white rounded-lg p-3 border border-neutral-200">
         {isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-[200px] w-full rounded-md" />
@@ -102,6 +101,8 @@ const SimpleStockChart: React.FC<SimpleStockChartProps> = ({
             <div className="text-center text-gray-500">
               <AlertCircle className="mx-auto h-10 w-10 text-gray-400 mb-2" />
               <p>Failed to load historical data</p>
+              <p className="text-xs mt-1">Please try another stock symbol or check your connection</p>
+              <p className="text-xs mt-2 text-red-500">{error?.message}</p>
             </div>
           </div>
         ) : !hasValidData ? (
@@ -177,8 +178,8 @@ const SimpleStockChart: React.FC<SimpleStockChartProps> = ({
             </ResponsiveContainer>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };
 
