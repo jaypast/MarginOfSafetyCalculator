@@ -19,7 +19,7 @@ const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartP
     data: historicalData = [], 
     isLoading, 
     error: queryError,
-    isError
+    isError 
   } = useHistoricalData(symbol, period, '1mo');
   
   // Format the price for display
@@ -110,11 +110,11 @@ const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartP
           <div className="space-y-2">
             <Skeleton className="h-[250px] w-full rounded-md" />
           </div>
-        ) : error ? (
+        ) : isError ? (
           <div className="flex items-center justify-center h-[250px] bg-gray-50 rounded-md">
             <div className="text-center text-gray-500">
               <AlertCircle className="mx-auto h-10 w-10 text-gray-400 mb-2" />
-              <p>{error}</p>
+              <p>{queryError instanceof Error ? queryError.message : 'Failed to load historical data'}</p>
               <p className="text-sm mt-1">Historical data may not be available for this stock.</p>
             </div>
           </div>

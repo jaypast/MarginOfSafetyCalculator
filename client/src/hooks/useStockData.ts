@@ -28,12 +28,12 @@ export const useStockData = () => {
     mutationFn: async (newSymbol: string) => {
       const uppercaseSymbol = newSymbol.toUpperCase();
       
-      // Check if data is already in the cache and not stale
+      // Check if data is already in the cache
       const existingData = queryClient.getQueryData<StockData>(['/api/stock', uppercaseSymbol]);
       const queryState = queryClient.getQueryState<StockData>(['/api/stock', uppercaseSymbol]);
       
-      // Only fetch new data if not in cache or if data is stale
-      if (!existingData || (queryState && queryState.dataUpdateCount === 0) || (queryState && queryState.isStale)) {
+      // Only fetch new data if not in cache or if data hasn't been updated yet
+      if (!existingData || (queryState && queryState.dataUpdateCount === 0)) {
         // Set symbol before the fetch to trigger the query
         setSymbol(uppercaseSymbol);
         const res = await apiRequest('GET', `/api/stock/${uppercaseSymbol}`, undefined);
