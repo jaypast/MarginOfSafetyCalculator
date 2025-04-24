@@ -21,6 +21,7 @@ interface ValuationMethodProps {
   valuationParams: ValuationParams;
   setValuationParams: React.Dispatch<React.SetStateAction<ValuationParams>>;
   stockData: StockData | undefined;
+  onCalculate: () => void; // Add callback to trigger calculations
 }
 
 const ValuationMethod: React.FC<ValuationMethodProps> = ({
@@ -28,7 +29,8 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
   setActiveMethod,
   valuationParams,
   setValuationParams,
-  stockData
+  stockData,
+  onCalculate
 }) => {
   const handleParamChange = (
     paramName: keyof ValuationParams,
@@ -40,6 +42,9 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
         ? parseFloat(value) 
         : value
     }));
+    
+    // Trigger calculation after parameter change
+    setTimeout(() => onCalculate(), 100);
   };
 
   return (
@@ -49,19 +54,28 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
       <div className="flex border border-neutral-300 rounded-md overflow-hidden">
         <button 
           className={`flex-1 py-2.5 text-center text-sm font-medium transition-all duration-200 ${activeMethod === 'dcf' ? 'bg-[#1A2942] text-white' : ''}`}
-          onClick={() => setActiveMethod('dcf')}
+          onClick={() => {
+            setActiveMethod('dcf');
+            setTimeout(() => onCalculate(), 100);
+          }}
         >
           DCF Analysis
         </button>
         <button 
           className={`flex-1 py-2.5 text-center text-sm font-medium transition-all duration-200 ${activeMethod === 'pe' ? 'bg-[#1A2942] text-white' : ''}`}
-          onClick={() => setActiveMethod('pe')}
+          onClick={() => {
+            setActiveMethod('pe');
+            setTimeout(() => onCalculate(), 100);
+          }}
         >
           P/E Based
         </button>
         <button 
           className={`flex-1 py-2.5 text-center text-sm font-medium transition-all duration-200 ${activeMethod === 'graham' ? 'bg-[#1A2942] text-white' : ''}`}
-          onClick={() => setActiveMethod('graham')}
+          onClick={() => {
+            setActiveMethod('graham');
+            setTimeout(() => onCalculate(), 100);
+          }}
         >
           Graham Formula
         </button>

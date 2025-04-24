@@ -28,6 +28,9 @@ const MarginOfSafetyParams: React.FC<MarginOfSafetyParamsProps> = ({
     setMarginOfSafetyParams({
       marginOfSafety: values[0]
     });
+    
+    // Trigger calculation automatically on slider change
+    onCalculate();
   };
 
   return (
@@ -96,13 +99,7 @@ const MarginOfSafetyParams: React.FC<MarginOfSafetyParamsProps> = ({
           </table>
         </div>
         
-        <Button
-          className="w-full bg-[#21324F] hover:bg-[#1A2942] text-white font-medium py-3 px-4"
-          disabled={!stockData}
-          onClick={onCalculate}
-        >
-          Calculate Intrinsic Value
-        </Button>
+        {/* Calculate button removed - calculations now happen automatically */}
       </div>
     </div>
   );
