@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { Download, Lock, Unlock } from 'lucide-react';
+import { Download, Lock, Unlock, LogOut } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -44,8 +44,12 @@ interface Feedback {
 }
 
 const FeedbackAdmin: React.FC = () => {
-  const [adminKey, setAdminKey] = useState<string>('');
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  // Check localStorage for saved admin key and authentication status
+  const savedKey = localStorage.getItem('adminKey') || '';
+  const savedAuth = localStorage.getItem('isAuthenticated') === 'true';
+  
+  const [adminKey, setAdminKey] = useState<string>(savedKey);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(savedAuth);
   const [authError, setAuthError] = useState<string | null>(null);
   
   // Create headers with admin key when authenticated
@@ -71,12 +75,21 @@ const FeedbackAdmin: React.FC = () => {
       });
       
       if (response.ok) {
+        // Save authentication state to localStorage
+        localStorage.setItem('adminKey', adminKey);
+        localStorage.setItem('isAuthenticated', 'true');
+        
         setIsAuthenticated(true);
         setAuthError(null);
+        
         // Force refetch of queries now that we have authentication
         window.location.reload();
       } else {
         setAuthError('Invalid admin key');
+        
+        // Clear localStorage in case of failure
+        localStorage.removeItem('adminKey');
+        localStorage.removeItem('isAuthenticated');
       }
     } catch (error) {
       setAuthError('Authentication failed');
@@ -231,9 +244,23 @@ const FeedbackAdmin: React.FC = () => {
               Based on the Sean Ellis test: "How would you feel if you could no longer use this product?"
             </CardDescription>
           </div>
-          <Badge variant="outline" className="flex items-center gap-1">
-            <Unlock className="h-3 w-3" /> Admin Access
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="flex items-center gap-1">
+              <Unlock className="h-3 w-3" /> Admin Access
+            </Badge>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => {
+                localStorage.removeItem('adminKey');
+                localStorage.removeItem('isAuthenticated');
+                window.location.reload();
+              }}
+            >
+              <LogOut className="h-4 w-4 mr-1" />
+              Sign Out
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {statsLoading ? (
