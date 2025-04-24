@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { stockResponseSchema, insertFeedbackSchema } from "@shared/schema";
@@ -6,6 +6,20 @@ import { getStockData } from "./services/stockData";
 import { getMarketSentiment, getMostActiveStocks, RealTimeSentiment } from "./services/marketSentiment";
 import { getHistoricalData } from "./services/yahooFinance";
 import { ZodError } from "zod";
+
+// Simple admin authentication middleware
+// In a production environment, you would use a more robust auth system
+// This implementation uses a secret ADMIN_KEY environment variable for authentication
+const adminAuth = (req: Request, res: Response, next: NextFunction) => {
+  const adminKey = process.env.ADMIN_KEY || "margin-of-safety-admin";
+  const providedKey = req.headers['x-admin-key'] as string;
+  
+  if (!providedKey || providedKey !== adminKey) {
+    return res.status(401).json({ message: "Unauthorized: Admin access required" });
+  }
+  
+  next();
+};
 
 // Cache for sentiment data to prevent excessive API calls
 let sentimentCache: {
@@ -134,7 +148,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.get("/api/feedback/stats", async (req, res) => {
+  // Admin-only endpoints
+  app.get("/api/feedback/stats", adminAuth, async (req, res) => {
     try {
       const stats = await storage.getFeedbackStats();
       return res.json(stats);
@@ -146,7 +161,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.get("/api/feedback", async (req, res) => {
+  app.get("/api/feedback", adminAuth, async (req, res) => {
     try {
       const allFeedback = await storage.getAllFeedback();
       return res.json(allFeedback);
@@ -158,7 +173,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.get("/api/feedback/export", async (req, res) => {
+  app.get("/api/feedback/export", adminAuth, async (req, res) => {
     try {
       const allFeedback = await storage.getAllFeedback();
       

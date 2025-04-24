@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Card,
@@ -19,8 +19,11 @@ import {
 } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { Download } from 'lucide-react';
+import { Download, Lock, Unlock } from 'lucide-react';
 import { apiRequest } from '@/lib/queryClient';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface FeedbackStats {
   totalResponses: number;
@@ -42,28 +45,80 @@ interface Feedback {
 }
 
 const FeedbackAdmin: React.FC = () => {
+  const [adminKey, setAdminKey] = useState<string>('');
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  
+  // Create headers with admin key when authenticated
+  const createHeaders = () => {
+    const headers: Record<string, string> = {};
+    if (isAuthenticated) {
+      headers['x-admin-key'] = adminKey;
+    }
+    return headers;
+  };
+  
+  // Handle admin authentication
+  const handleAuthenticate = async () => {
+    if (!adminKey.trim()) {
+      setAuthError('Please enter an admin key');
+      return;
+    }
+    
+    try {
+      // Test authentication by making a request to the stats endpoint
+      const response = await fetch('/api/feedback/stats', {
+        headers: { 'x-admin-key': adminKey }
+      });
+      
+      if (response.ok) {
+        setIsAuthenticated(true);
+        setAuthError(null);
+        // Force refetch of queries now that we have authentication
+        window.location.reload();
+      } else {
+        setAuthError('Invalid admin key');
+      }
+    } catch (error) {
+      setAuthError('Authentication failed');
+      console.error('Auth error:', error);
+    }
+  };
+  
   // Fetch feedback statistics
   const { data: stats, isLoading: statsLoading } = useQuery<FeedbackStats>({
     queryKey: ['/api/feedback/stats'],
     queryFn: async () => {
-      const response = await fetch('/api/feedback/stats');
+      const response = await fetch('/api/feedback/stats', {
+        headers: createHeaders()
+      });
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Unauthorized: Admin access required');
+        }
         throw new Error('Failed to fetch feedback stats');
       }
       return response.json();
-    }
+    },
+    enabled: isAuthenticated // Only run query if authenticated
   });
 
   // Fetch all feedback entries
   const { data: feedbackEntries, isLoading: entriesLoading } = useQuery<Feedback[]>({
     queryKey: ['/api/feedback'],
     queryFn: async () => {
-      const response = await fetch('/api/feedback');
+      const response = await fetch('/api/feedback', {
+        headers: createHeaders()
+      });
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Unauthorized: Admin access required');
+        }
         throw new Error('Failed to fetch feedback entries');
       }
       return response.json();
-    }
+    },
+    enabled: isAuthenticated // Only run query if authenticated
   });
 
   // Helper function to format the satisfaction level
@@ -108,21 +163,97 @@ const FeedbackAdmin: React.FC = () => {
     window.open('/api/feedback/export', '_blank');
   };
 
+  // Add authentication header to the export URL
+  const exportWithAuth = () => {
+    if (!feedbackEntries || feedbackEntries.length === 0) return;
+    
+    // Open the export URL in a new tab/window with admin key in URL for authentication
+    const exportUrl = `/api/feedback/export`;
+    const win = window.open(exportUrl, '_blank');
+    
+    // If we can access the opened window, set the admin key header
+    if (win) {
+      // For security reasons, browsers restrict modifying headers in window.open
+      // This is a workaround where we create a form and submit it
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = exportUrl;
+      form.target = '_blank';
+      
+      const header = document.createElement('input');
+      header.type = 'hidden';
+      header.name = 'x-admin-key';
+      header.value = adminKey;
+      
+      form.appendChild(header);
+      document.body.appendChild(form);
+      form.submit();
+      document.body.removeChild(form);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Product-Market Fit Score</CardTitle>
-          <CardDescription>
-            Based on the Sean Ellis test: "How would you feel if you could no longer use this product?"
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {statsLoading ? (
-            <div className="h-40 flex items-center justify-center">
-              <p>Loading stats...</p>
+      {!isAuthenticated ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Admin Authentication Required</CardTitle>
+            <CardDescription>
+              Please enter your admin key to view feedback data
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {authError && (
+                <Alert variant="destructive">
+                  <AlertTitle>Authentication Failed</AlertTitle>
+                  <AlertDescription>{authError}</AlertDescription>
+                </Alert>
+              )}
+              
+              <div className="grid w-full items-center gap-1.5">
+                <Label htmlFor="adminKey">Admin Key</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="adminKey"
+                    type="password"
+                    value={adminKey}
+                    onChange={(e) => setAdminKey(e.target.value)}
+                    className="flex-1"
+                    placeholder="Enter your admin key"
+                  />
+                  <Button
+                    onClick={handleAuthenticate}
+                    className="whitespace-nowrap"
+                  >
+                    <Lock className="mr-2 h-4 w-4" />
+                    Authenticate
+                  </Button>
+                </div>
+              </div>
             </div>
-          ) : stats && stats.totalResponses > 0 ? (
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <div>
+                <CardTitle>Product-Market Fit Score</CardTitle>
+                <CardDescription>
+                  Based on the Sean Ellis test: "How would you feel if you could no longer use this product?"
+                </CardDescription>
+              </div>
+              <Badge variant="outline" className="flex items-center gap-1">
+                <Unlock className="h-3 w-3" /> Admin Access
+              </Badge>
+            </CardHeader>
+            <CardContent>
+              {statsLoading ? (
+                <div className="h-40 flex items-center justify-center">
+                  <p>Loading stats...</p>
+                </div>
+              ) : stats && stats.totalResponses > 0 ? (
             <div className="space-y-6">
               <div className="space-y-2">
                 <div className="flex justify-between items-end">
@@ -237,7 +368,7 @@ const FeedbackAdmin: React.FC = () => {
             <Button 
               className="ml-auto"
               variant="default"
-              onClick={exportToCsv}
+              onClick={exportWithAuth}
               size="sm"
             >
               <Download className="mr-2 h-4 w-4" />
@@ -246,6 +377,8 @@ const FeedbackAdmin: React.FC = () => {
           </CardFooter>
         )}
       </Card>
+        </>
+      )}
     </div>
   );
 };
