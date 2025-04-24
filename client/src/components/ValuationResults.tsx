@@ -15,32 +15,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { StockData, ValuationResult, CalculationMethod, ValuationParams, MarginOfSafetyParams } from '@/lib/types';
 import { formatCurrency, isETF, getInvestmentRecommendation } from '@/lib/utils';
 import { generateCalculationsPDF } from '@/utils/pdfGenerator';
-import SimpleStockChart from './SimpleStockChart';
-import { useHistoricalData } from '@/hooks/useHistoricalData';
-
-// Internal component to handle the stock chart section with period controls
-function StockChartSection({ symbol, companyName, currentPrice }: { 
-  symbol: string; 
-  companyName: string; 
-  currentPrice: number;
-}) {
-  // Use the same period state and data fetching hooks as in the parent component
-  const [chartPeriod, setChartPeriod] = useState<'5y' | '2y' | '1y'>('5y');
-  const { data: historicalData, isLoading, error } = useHistoricalData(symbol, chartPeriod);
-  
-  return (
-    <SimpleStockChart
-      companyName={companyName}
-      symbol={symbol}
-      currentPrice={currentPrice}
-      historicalData={historicalData || []}
-      isLoading={isLoading}
-      error={error}
-      period={chartPeriod}
-      onPeriodChange={setChartPeriod}
-    />
-  );
-}
 
 interface ValuationResultsProps {
   valuationResults: ValuationResult[];
@@ -261,14 +235,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
           </>
         )}
         
-        {/* Stock Price Chart - with improved SimpleStockChart */}
-        {stockData && !isSpecialCase && !etfDetected && (
-          <StockChartSection 
-            symbol={stockData.symbol} 
-            currentPrice={stockData.price}
-            companyName={stockData.name}
-          />
-        )}
+        {/* Chart section removed for better performance and reliability */}
         
         {/* Method Comparison */}
         <div>

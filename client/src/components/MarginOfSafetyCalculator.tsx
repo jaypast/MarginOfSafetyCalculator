@@ -5,9 +5,6 @@ import ValuationMethod from './ValuationMethod';
 import MarginOfSafetyParams from './MarginOfSafetyParams';
 import ValuationResults from './ValuationResults';
 import QualityIndicators from './QualityIndicators';
-import SimpleStockChart from './SimpleStockChart';
-import { useHistoricalData } from '@/hooks/useHistoricalData';
-
 import EducationalResources from './EducationalResources';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronUp } from 'lucide-react';
@@ -33,15 +30,6 @@ import { getCompanyQuality, getRecommendedMarginOfSafety, getDefaultMarginOfSafe
 const MarginOfSafetyCalculator: React.FC = () => {
   // Stock data state from API
   const { stockData, isLoading, isError, error, fetchStockData } = useStockData();
-  
-  // Get historical data for the chart (5y by default as required)
-  const [chartPeriod, setChartPeriod] = useState<'5y' | '2y' | '1y'>('5y');
-  
-  const {
-    data: historicalData = [],
-    isLoading: isHistoricalLoading,
-    error: historicalError
-  } = useHistoricalData(stockData?.symbol || '', chartPeriod, '1mo');
 
   // Calculation method state
   const [activeMethod, setActiveMethod] = useState<CalculationMethod>('dcf');
