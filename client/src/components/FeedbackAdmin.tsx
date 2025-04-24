@@ -244,23 +244,9 @@ const FeedbackAdmin: React.FC = () => {
               Based on the Sean Ellis test: "How would you feel if you could no longer use this product?"
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="flex items-center gap-1">
-              <Unlock className="h-3 w-3" /> Admin Access
-            </Badge>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => {
-                localStorage.removeItem('adminKey');
-                localStorage.removeItem('isAuthenticated');
-                window.location.reload();
-              }}
-            >
-              <LogOut className="h-4 w-4 mr-1" />
-              Sign Out
-            </Button>
-          </div>
+          <Badge variant="outline" className="flex items-center gap-1">
+            <Unlock className="h-3 w-3" /> Admin Access
+          </Badge>
         </CardHeader>
         <CardContent>
           {statsLoading ? (
