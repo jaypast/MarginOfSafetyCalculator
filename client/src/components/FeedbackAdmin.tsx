@@ -20,7 +20,6 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Download, Lock, Unlock } from 'lucide-react';
-import { apiRequest } from '@/lib/queryClient';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -155,46 +154,23 @@ const FeedbackAdmin: React.FC = () => {
     return 'text-red-600 font-bold'; // Under 25% needs improvement
   };
 
-  // Function to export feedback data to CSV using the server endpoint
-  const exportToCsv = () => {
-    if (!feedbackEntries || feedbackEntries.length === 0) return;
+  // Function to export feedback data with admin key
+  const exportFeedbackData = () => {
+    if (!feedbackEntries || feedbackEntries.length === 0 || !isAuthenticated) return;
     
-    // Open the export URL in a new tab/window, which works better on mobile devices
-    window.open('/api/feedback/export', '_blank');
-  };
-
-  // Add authentication header to the export URL
-  const exportWithAuth = () => {
-    if (!feedbackEntries || feedbackEntries.length === 0) return;
-    
-    // Open the export URL in a new tab/window with admin key in URL for authentication
+    // Create a URL with the admin key as a query parameter
     const exportUrl = `/api/feedback/export`;
-    const win = window.open(exportUrl, '_blank');
+    const win = window.open(`${exportUrl}?key=${encodeURIComponent(adminKey)}`, '_blank');
     
-    // If we can access the opened window, set the admin key header
-    if (win) {
-      // For security reasons, browsers restrict modifying headers in window.open
-      // This is a workaround where we create a form and submit it
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action = exportUrl;
-      form.target = '_blank';
-      
-      const header = document.createElement('input');
-      header.type = 'hidden';
-      header.name = 'x-admin-key';
-      header.value = adminKey;
-      
-      form.appendChild(header);
-      document.body.appendChild(form);
-      form.submit();
-      document.body.removeChild(form);
+    if (!win) {
+      console.error('Failed to open export window. Pop-up might be blocked.');
     }
   };
 
-  return (
-    <div className="space-y-6">
-      {!isAuthenticated ? (
+  // If not authenticated, show login form
+  if (!isAuthenticated) {
+    return (
+      <div className="space-y-6">
         <Card>
           <CardHeader>
             <CardTitle>Admin Authentication Required</CardTitle>
@@ -221,6 +197,11 @@ const FeedbackAdmin: React.FC = () => {
                     onChange={(e) => setAdminKey(e.target.value)}
                     className="flex-1"
                     placeholder="Enter your admin key"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleAuthenticate();
+                      }
+                    }}
                   />
                   <Button
                     onClick={handleAuthenticate}
@@ -234,26 +215,31 @@ const FeedbackAdmin: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-      ) : (
-        <>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <div>
-                <CardTitle>Product-Market Fit Score</CardTitle>
-                <CardDescription>
-                  Based on the Sean Ellis test: "How would you feel if you could no longer use this product?"
-                </CardDescription>
-              </div>
-              <Badge variant="outline" className="flex items-center gap-1">
-                <Unlock className="h-3 w-3" /> Admin Access
-              </Badge>
-            </CardHeader>
-            <CardContent>
-              {statsLoading ? (
-                <div className="h-40 flex items-center justify-center">
-                  <p>Loading stats...</p>
-                </div>
-              ) : stats && stats.totalResponses > 0 ? (
+      </div>
+    );
+  }
+
+  // Authenticated view
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <div>
+            <CardTitle>Product-Market Fit Score</CardTitle>
+            <CardDescription>
+              Based on the Sean Ellis test: "How would you feel if you could no longer use this product?"
+            </CardDescription>
+          </div>
+          <Badge variant="outline" className="flex items-center gap-1">
+            <Unlock className="h-3 w-3" /> Admin Access
+          </Badge>
+        </CardHeader>
+        <CardContent>
+          {statsLoading ? (
+            <div className="h-40 flex items-center justify-center">
+              <p>Loading stats...</p>
+            </div>
+          ) : stats && stats.totalResponses > 0 ? (
             <div className="space-y-6">
               <div className="space-y-2">
                 <div className="flex justify-between items-end">
@@ -368,7 +354,7 @@ const FeedbackAdmin: React.FC = () => {
             <Button 
               className="ml-auto"
               variant="default"
-              onClick={exportWithAuth}
+              onClick={exportFeedbackData}
               size="sm"
             >
               <Download className="mr-2 h-4 w-4" />
@@ -377,8 +363,6 @@ const FeedbackAdmin: React.FC = () => {
           </CardFooter>
         )}
       </Card>
-        </>
-      )}
     </div>
   );
 };

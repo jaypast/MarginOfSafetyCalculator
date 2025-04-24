@@ -12,9 +12,19 @@ import { ZodError } from "zod";
 // This implementation uses a secret ADMIN_KEY environment variable for authentication
 const adminAuth = (req: Request, res: Response, next: NextFunction) => {
   const adminKey = process.env.ADMIN_KEY || "margin-of-safety-admin";
-  const providedKey = req.headers['x-admin-key'] as string;
+  
+  // Check for key in headers (API requests) or query parameters (export URL)
+  const headerKey = req.headers['x-admin-key'] as string;
+  const queryKey = req.query.key as string;
+  const providedKey = headerKey || queryKey;
   
   if (!providedKey || providedKey !== adminKey) {
+    // For HTML responses (export page), redirect to admin page
+    if (req.path === '/api/feedback/export' && req.accepts('html')) {
+      return res.redirect('/admin');
+    }
+    
+    // For API requests, return unauthorized status
     return res.status(401).json({ message: "Unauthorized: Admin access required" });
   }
   
