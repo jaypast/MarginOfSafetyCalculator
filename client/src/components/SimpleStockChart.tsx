@@ -58,10 +58,10 @@ const SimpleStockChart: React.FC<SimpleStockChartProps> = ({
     return null;
   };
 
-  // Validate the data before rendering
+  // Make sure we have enough data points to display a meaningful chart
   const hasValidData = historicalData && 
     Array.isArray(historicalData) && 
-    historicalData.length >= 2;
+    historicalData.length >= 3; // Require at least 3 data points for a meaningful chart
 
   return (
     <Card className="w-full mb-6">
@@ -107,7 +107,34 @@ const SimpleStockChart: React.FC<SimpleStockChartProps> = ({
         ) : !hasValidData ? (
           <div className="flex items-center justify-center h-[200px] bg-gray-50 rounded-md">
             <div className="text-center text-gray-500">
-              <p>Insufficient historical data available</p>
+              <p className="font-medium mb-1">Insufficient historical data available</p>
+              <p className="text-xs">Try selecting a different time period or stock</p>
+              <div className="mt-3 flex justify-center space-x-2">
+                {period !== '1y' && (
+                  <button 
+                    onClick={() => onPeriodChange('1y')}
+                    className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100"
+                  >
+                    Try 1-Year
+                  </button>
+                )}
+                {period !== '2y' && (
+                  <button 
+                    onClick={() => onPeriodChange('2y')}
+                    className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100"
+                  >
+                    Try 2-Year
+                  </button>
+                )}
+                {period !== '5y' && (
+                  <button 
+                    onClick={() => onPeriodChange('5y')}
+                    className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100"
+                  >
+                    Try 5-Year
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ) : (

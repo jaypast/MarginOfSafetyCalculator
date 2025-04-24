@@ -49,33 +49,56 @@ export function useHistoricalData(symbol: string, period: '5y' | '2y' | '1y' = '
       
       console.log(`Raw historical data for ${symbol} (${period}):`, data.data.slice(0, 3), `... [${data.data.length} total points]`);
       
-      // Filter out any invalid data points
-      const validData = data.data.filter(point => {
-        const isValid = point && 
-          typeof point.date === 'string' && 
-          typeof point.close === 'number' && 
-          !isNaN(point.close);
-        
-        if (!isValid) {
-          console.warn('Invalid data point:', point);
+      // Ensure we have a valid array to work with
+      const rawData = Array.isArray(data.data) ? data.data : [];
+      console.log(`Raw data length for ${symbol}: ${rawData.length} points`);
+      
+      // Step 1: Filter out undefined or null points
+      const nonNullPoints = rawData.filter(point => point !== null && point !== undefined);
+      
+      // Step 2: Filter points with valid date and close price
+      const validData = nonNullPoints.filter(point => {
+        if (!point || typeof point !== 'object') {
+          console.warn('Invalid point (not an object):', point);
+          return false;
         }
         
-        return isValid;
+        // Check if date is valid
+        const hasValidDate = typeof point.date === 'string' && point.date.trim() !== '';
+        
+        // Check if close price is valid
+        const hasValidClose = typeof point.close === 'number' && !isNaN(point.close);
+        
+        if (!hasValidDate) console.warn('Point missing valid date:', point);
+        if (!hasValidClose) console.warn('Point missing valid close price:', point);
+        
+        return hasValidDate && hasValidClose;
       });
       
-      if (validData.length < data.data.length) {
-        console.warn(`Filtered out ${data.data.length - validData.length} invalid data points`);
+      if (validData.length < rawData.length) {
+        console.warn(`Filtered out ${rawData.length - validData.length} invalid data points for ${symbol}`);
       }
       
-      // Fix any future dates by ensuring they are not after today
+      // Step 3: Fix any future dates by ensuring they are not after today
       const today = new Date();
       const fixedDates = validData.filter(point => {
-        const pointDate = new Date(point.date);
-        const isValid = pointDate <= today;
-        if (!isValid) {
-          console.warn(`Removed future date: ${point.date}`);
+        try {
+          const pointDate = new Date(point.date);
+          if (isNaN(pointDate.getTime())) {
+            console.warn(`Invalid date format: ${point.date}`);
+            return false;
+          }
+          
+          // Check if date is in the future
+          const isValid = pointDate <= today;
+          if (!isValid) {
+            console.warn(`Removed future date for ${symbol}: ${point.date}`);
+          }
+          return isValid;
+        } catch (e) {
+          console.warn(`Error processing date: ${point.date}`, e);
+          return false;
         }
-        return isValid;
       });
       
       // Sort data chronologically
@@ -107,11 +130,14 @@ export function useHistoricalData(symbol: string, period: '5y' | '2y' | '1y' = '
     enabled: !!symbol,
     staleTime: 5 * 60 * 1000, // 5 minutes - data stays fresh longer
     gcTime: 30 * 60 * 1000,   // 30 minutes - keep in cache longer
-    retry: 1,
+    retry: 2, // Increased retries to handle occasional API failures
     select: (data) => {
-      console.log(`Processed historical data for ${symbol} (${period}):`, data);
       if (data.length === 0) {
-        console.warn(`No data points available for ${symbol}`);
+        console.warn(`No data points available for ${symbol} (${period})`);
+      } else if (data.length < 5) {
+        console.warn(`Limited data points (${data.length}) available for ${symbol} (${period})`);
+      } else {
+        console.log(`Successfully processed ${data.length} data points for ${symbol} (${period}): ${data[0].date} to ${data[data.length-1].date}`);
       }
       return data;
     }
