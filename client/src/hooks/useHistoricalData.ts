@@ -20,24 +20,52 @@ export interface HistoricalDataResponse {
 
 export function useHistoricalData(symbol: string, period: '5y' | '2y' | '1y' = '5y', interval: string = '1mo') {
   const fetchHistoricalData = async (): Promise<HistoricalDataPoint[]> => {
-    if (!symbol) return [];
-    
-    const response = await fetch(`/api/stock/${symbol}/history?period=${period}&interval=${interval}`);
-    
-    if (!response.ok) {
-      throw new Error('Failed to fetch historical data');
+    try {
+      if (!symbol) return [];
+      
+      const response = await fetch(`/api/stock/${symbol}/history?period=${period}&interval=${interval}`);
+      
+      if (!response.ok) {
+        console.error(`Failed to fetch historical data: ${response.statusText}`);
+        return [];
+      }
+      
+      const data: HistoricalDataResponse = await response.json();
+      
+      if (data.error) {
+        console.error(`Error in historical data response: ${data.message || 'Unknown error'}`);
+        return [];
+      }
+      
+      if (!data.data || !Array.isArray(data.data)) {
+        console.warn(`No historical data available for ${symbol}`);
+        return [];
+      }
+      
+      // Filter out any invalid data points
+      const validData = data.data.filter(point => 
+        point && 
+        typeof point.date === 'string' && 
+        typeof point.close === 'number' && 
+        !isNaN(point.close)
+      );
+      
+      // Sort data chronologically
+      const sortedData = [...validData].sort((a, b) => 
+        new Date(a.date).getTime() - new Date(b.date).getTime()
+      );
+      
+      console.log(`Historical data for ${symbol} (${period}):`, sortedData);
+      
+      if (sortedData.length === 0) {
+        console.warn(`Historical data for ${symbol} (${period}) is empty after validation`);
+      }
+      
+      return sortedData;
+    } catch (error) {
+      console.error('Error in fetchHistoricalData:', error);
+      return [];
     }
-    
-    const data: HistoricalDataResponse = await response.json();
-    
-    if (data.error) {
-      throw new Error(data.message || 'Error fetching historical data');
-    }
-    
-    // Sort data chronologically
-    return [...data.data].sort((a, b) => 
-      new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
   };
 
   return useQuery({

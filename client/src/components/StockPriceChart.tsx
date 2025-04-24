@@ -148,40 +148,49 @@ const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartP
               )}
             </div>
             
-            <div className="h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={historicalData}
-                  margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E9ECF1" />
-                  <XAxis 
-                    dataKey="date" 
-                    tickFormatter={(tick) => {
-                      const date = new Date(tick);
-                      return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-                    }}
-                    stroke="#9AA5B8"
-                    fontSize={12}
-                  />
-                  <YAxis 
-                    domain={['auto', 'auto']}
-                    tickFormatter={(tick) => formatPrice(tick)}
-                    stroke="#9AA5B8"
-                    fontSize={12}
-                    width={80}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Area 
-                    type="monotone" 
-                    dataKey="close" 
-                    stroke={priceChange.isPositive ? "#22C55E" : "#EF4444"} 
-                    fill={priceChange.isPositive ? "rgba(34, 197, 94, 0.1)" : "rgba(239, 68, 68, 0.1)"} 
-                    activeDot={{ r: 6 }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            {historicalData.length > 0 ? (
+              <div className="h-[250px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={historicalData}
+                    margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E9ECF1" />
+                    <XAxis 
+                      dataKey="date" 
+                      tickFormatter={(tick) => {
+                        if (!tick) return '';
+                        const date = new Date(tick);
+                        return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                      }}
+                      stroke="#9AA5B8"
+                      fontSize={12}
+                    />
+                    <YAxis 
+                      domain={['auto', 'auto']}
+                      tickFormatter={(tick) => formatPrice(tick)}
+                      stroke="#9AA5B8"
+                      fontSize={12}
+                      width={80}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Area 
+                      type="monotone" 
+                      dataKey="close" 
+                      stroke={priceChange.isPositive ? "#22C55E" : "#EF4444"} 
+                      fill={priceChange.isPositive ? "rgba(34, 197, 94, 0.1)" : "rgba(239, 68, 68, 0.1)"} 
+                      activeDot={{ r: 6 }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-[250px] bg-gray-50 rounded-md">
+                <div className="text-center text-gray-500">
+                  <p>No historical data available to display</p>
+                </div>
+              </div>
+            )}
           </>
         )}
       </CardContent>
