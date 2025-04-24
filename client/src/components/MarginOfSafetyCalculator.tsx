@@ -5,6 +5,8 @@ import ValuationMethod from './ValuationMethod';
 import MarginOfSafetyParams from './MarginOfSafetyParams';
 import ValuationResults from './ValuationResults';
 import QualityIndicators from './QualityIndicators';
+import SimpleStockChart from './SimpleStockChart';
+import { useHistoricalData } from '@/hooks/useHistoricalData';
 
 import EducationalResources from './EducationalResources';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -31,6 +33,13 @@ import { getCompanyQuality, getRecommendedMarginOfSafety, getDefaultMarginOfSafe
 const MarginOfSafetyCalculator: React.FC = () => {
   // Stock data state from API
   const { stockData, isLoading, isError, error, fetchStockData } = useStockData();
+  
+  // Get historical data for the chart (using 1y period for more reliable data)
+  const {
+    data: historicalData = [],
+    isLoading: isHistoricalLoading,
+    error: historicalError
+  } = useHistoricalData(stockData?.symbol || '', '1y', '1mo');
 
   // Calculation method state
   const [activeMethod, setActiveMethod] = useState<CalculationMethod>('dcf');
@@ -186,6 +195,18 @@ const MarginOfSafetyCalculator: React.FC = () => {
               marginOfSafetyParams={marginOfSafetyParams}
             />
           </div>
+        )}
+        
+        {/* Stock Price Chart Section */}
+        {stockData && !stockData.error && (
+          <SimpleStockChart
+            companyName={stockData.name}
+            symbol={stockData.symbol}
+            currentPrice={stockData.price}
+            historicalData={historicalData}
+            isLoading={isHistoricalLoading}
+            error={historicalError}
+          />
         )}
         
         {/* Detailed Calculations Section */}
