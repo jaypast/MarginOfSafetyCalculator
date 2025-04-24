@@ -48,19 +48,19 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
       
       <div className="flex border border-neutral-300 rounded-md overflow-hidden">
         <button 
-          className={`tab-button flex-1 py-2.5 text-center text-sm font-medium ${activeMethod === 'dcf' ? 'active' : ''}`}
+          className={`flex-1 py-2.5 text-center text-sm font-medium transition-all duration-200 ${activeMethod === 'dcf' ? 'bg-[#1A2942] text-white' : ''}`}
           onClick={() => setActiveMethod('dcf')}
         >
           DCF Analysis
         </button>
         <button 
-          className={`tab-button flex-1 py-2.5 text-center text-sm font-medium ${activeMethod === 'pe' ? 'active' : ''}`}
+          className={`flex-1 py-2.5 text-center text-sm font-medium transition-all duration-200 ${activeMethod === 'pe' ? 'bg-[#1A2942] text-white' : ''}`}
           onClick={() => setActiveMethod('pe')}
         >
           P/E Based
         </button>
         <button 
-          className={`tab-button flex-1 py-2.5 text-center text-sm font-medium ${activeMethod === 'graham' ? 'active' : ''}`}
+          className={`flex-1 py-2.5 text-center text-sm font-medium transition-all duration-200 ${activeMethod === 'graham' ? 'bg-[#1A2942] text-white' : ''}`}
           onClick={() => setActiveMethod('graham')}
         >
           Graham Formula
@@ -84,11 +84,10 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
                 </Tooltip>
               </TooltipProvider>
             </label>
-            <Input
+            <StyledInput
               type="number"
-              className="transition-all duration-300 border border-neutral-300 focus:border-[#1A2942] focus:ring-2 focus:ring-[#1A2942]/10"
               value={valuationParams.dcfGrowthRate}
-              onChange={(e) => handleParamChange('dcfGrowthRate', e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleParamChange('dcfGrowthRate', e.target.value)}
               min={0}
               max={100}
               step={0.1}
@@ -112,11 +111,10 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
                 </Tooltip>
               </TooltipProvider>
             </label>
-            <Input
+            <StyledInput
               type="number"
-              className="transition-all duration-300 border border-neutral-300 focus:border-[#1A2942] focus:ring-2 focus:ring-[#1A2942]/10"
               value={valuationParams.dcfDiscountRate}
-              onChange={(e) => handleParamChange('dcfDiscountRate', e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleParamChange('dcfDiscountRate', e.target.value)}
               min={0}
               max={50}
               step={0.1}
@@ -137,11 +135,10 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
                 </Tooltip>
               </TooltipProvider>
             </label>
-            <Input
+            <StyledInput
               type="number"
-              className="custom-input"
               value={valuationParams.dcfTerminalMultiple}
-              onChange={(e) => handleParamChange('dcfTerminalMultiple', e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleParamChange('dcfTerminalMultiple', e.target.value)}
               min={0}
               max={50}
               step={0.1}
@@ -150,19 +147,19 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
           
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">Forecast Period (Years)</label>
-            <Select
+            <StyledSelect
               value={valuationParams.dcfForecastPeriod.toString()}
-              onValueChange={(value) => handleParamChange('dcfForecastPeriod', parseInt(value))}
+              onValueChange={(value: string) => handleParamChange('dcfForecastPeriod', parseInt(value))}
             >
-              <SelectTrigger className="custom-input">
+              <StyledSelect.Trigger>
                 <SelectValue placeholder="Select forecast period" />
-              </SelectTrigger>
+              </StyledSelect.Trigger>
               <SelectContent>
                 <SelectItem value="5">5 Years</SelectItem>
                 <SelectItem value="7">7 Years</SelectItem>
                 <SelectItem value="10">10 Years</SelectItem>
               </SelectContent>
-            </Select>
+            </StyledSelect>
           </div>
         </div>
       </div>
@@ -184,13 +181,13 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
                 </Tooltip>
               </TooltipProvider>
             </label>
-            <Select
+            <StyledSelect
               value={valuationParams.peType}
-              onValueChange={(value) => handleParamChange('peType', value)}
+              onValueChange={(value: string) => handleParamChange('peType', value)}
             >
-              <SelectTrigger className="custom-input">
+              <StyledSelect.Trigger>
                 <SelectValue placeholder="Select P/E type" />
-              </SelectTrigger>
+              </StyledSelect.Trigger>
               <SelectContent>
                 <SelectItem value="current">Current P/E ({stockData ? stockData.peRatio.toFixed(1) : '-'})</SelectItem>
                 <SelectItem value="5year">5-Year Average (18.6)</SelectItem>
@@ -198,17 +195,16 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
                 <SelectItem value="industry">Industry Average (22.5)</SelectItem>
                 <SelectItem value="custom">Custom P/E...</SelectItem>
               </SelectContent>
-            </Select>
+            </StyledSelect>
           </div>
           
           {valuationParams.peType === 'custom' && (
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-1">Custom P/E Ratio</label>
-              <Input
+              <StyledInput
                 type="number"
-                className="custom-input"
                 value={valuationParams.peCustomValue}
-                onChange={(e) => handleParamChange('peCustomValue', e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleParamChange('peCustomValue', e.target.value)}
                 min={1}
                 max={100}
                 step={0.1}
@@ -269,11 +265,10 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
                 </Tooltip>
               </TooltipProvider>
             </label>
-            <Input
+            <StyledInput
               type="number"
-              className="custom-input"
               value={valuationParams.grahamGrowthRate}
-              onChange={(e) => handleParamChange('grahamGrowthRate', e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleParamChange('grahamGrowthRate', e.target.value)}
               min={0}
               max={20}
               step={0.1}
@@ -295,11 +290,10 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
                 </Tooltip>
               </TooltipProvider>
             </label>
-            <Input
+            <StyledInput
               type="number"
-              className="custom-input"
               value={valuationParams.grahamBaseValue}
-              onChange={(e) => handleParamChange('grahamBaseValue', e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleParamChange('grahamBaseValue', e.target.value)}
               min={0}
               max={20}
               step={0.1}

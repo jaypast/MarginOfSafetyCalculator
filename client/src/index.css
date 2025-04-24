@@ -20,13 +20,6 @@
 
 /* Tooltip styles removed - now using shadcn Tooltip component */
 
-/* Custom input styles moved to tailwind utilities */
+/* Custom input and select styles now provided through StyledInput and StyledSelect components */
 
-.tab-button {
-  transition: all 0.2s ease;
-}
-
-.tab-button.active {
-  background-color: #1A2942;
-  color: white;
-}
+/* Tab button styles moved to inline Tailwind classes */
