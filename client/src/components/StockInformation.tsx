@@ -113,28 +113,13 @@ const StockInformation: React.FC<StockInformationProps> = ({
               <span className="flex items-center">Loading...</span>
             ) : (
               <span className="flex items-center">
-                <Search className="w-4 h-4 mr-1" /> Find {isCached && "(Cached)"}
+                <Search className="w-4 h-4 mr-1" /> Find
               </span>
             )}
           </Button>
-          
-          {stockData && !stockData.error && (
-            <Button
-              onClick={handleRefreshData}
-              disabled={isLoading}
-              variant="outline"
-              className="ml-2"
-              title="Refresh data from server"
-            >
-              <RefreshCcw className="w-4 h-4" />
-            </Button>
-          )}
         </div>
         <p className="mt-2 text-sm text-neutral-500">
           Enter US ticker (AAPL) or international: BP.L, 7203.T, 0700.HK.
-          {isCached && !stockData && (
-            <span className="ml-2 text-blue-600 text-xs">(Data is cached - will load instantly)</span>
-          )}
         </p>
         
         {/* Error Message */}

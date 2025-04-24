@@ -34,7 +34,15 @@ const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartP
 
   // Calculate the percentage change from the first data point to current price
   const calculateChange = () => {
-    if (!historicalData || historicalData.length === 0) return { value: 0, percentage: 0, isPositive: true };
+    // Make absolutely sure we have valid data before attempting calculations
+    if (!historicalData || !Array.isArray(historicalData) || historicalData.length === 0 || 
+        typeof historicalData[0]?.close !== 'number') {
+      return { 
+        value: 0, 
+        percentage: 0, 
+        isPositive: true 
+      };
+    }
     
     const firstPrice = historicalData[0].close;
     const change = currentPrice - firstPrice;
