@@ -8,6 +8,12 @@ import {
 } from "@/components/ui/select";
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { StockData, ValuationParams, CalculationMethod } from '@/lib/types';
 
 interface ValuationMethodProps {
@@ -66,14 +72,18 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
       <div className={`tab-content mt-5 ${activeMethod !== 'dcf' ? 'hidden' : ''}`}>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">
-              Growth Rate (%) 
-              <span className="tooltip text-neutral-400 ml-1">
-                <i className="ri-question-line"></i>
-                <span className="tooltip-text">
-                  Projected annual growth rate of free cash flow over the forecast period. Historical growth rate is provided as reference.
-                </span>
-              </span>
+            <label className="block text-sm font-medium text-neutral-700 mb-1 flex items-center">
+              Growth Rate (%)
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger className="text-neutral-400 ml-1">
+                    <i className="ri-question-line"></i>
+                  </TooltipTrigger>
+                  <TooltipContent className="w-64">
+                    <p>Projected annual growth rate of free cash flow over the forecast period. Historical growth rate is provided as reference.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </label>
             <Input
               type="number"
@@ -90,14 +100,18 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">
-              Discount Rate (%) 
-              <span className="tooltip text-neutral-400 ml-1">
-                <i className="ri-question-line"></i>
-                <span className="tooltip-text">
-                  Required rate of return used to discount future cash flows to present value. Higher rates result in lower valuations and reflect higher risk.
-                </span>
-              </span>
+            <label className="block text-sm font-medium text-neutral-700 mb-1 flex items-center">
+              Discount Rate (%)
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger className="text-neutral-400 ml-1">
+                    <i className="ri-question-line"></i>
+                  </TooltipTrigger>
+                  <TooltipContent className="w-64">
+                    <p>Required rate of return used to discount future cash flows to present value. Higher rates result in lower valuations and reflect higher risk.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </label>
             <Input
               type="number"
@@ -111,14 +125,18 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">
-              Terminal Multiple 
-              <span className="tooltip text-neutral-400 ml-1">
-                <i className="ri-question-line"></i>
-                <span className="tooltip-text">
-                  Multiple applied to the final year's cash flow to determine terminal value. Represents the business value beyond the explicit forecast period.
-                </span>
-              </span>
+            <label className="block text-sm font-medium text-neutral-700 mb-1 flex items-center">
+              Terminal Multiple
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger className="text-neutral-400 ml-1">
+                    <i className="ri-question-line"></i>
+                  </TooltipTrigger>
+                  <TooltipContent className="w-64">
+                    <p>Multiple applied to the final year's cash flow to determine terminal value. Represents the business value beyond the explicit forecast period.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </label>
             <Input
               type="number"
@@ -154,14 +172,18 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
       <div className={`tab-content mt-5 ${activeMethod !== 'pe' ? 'hidden' : ''}`}>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">
-              Historical P/E to Use 
-              <span className="tooltip text-neutral-400 ml-1">
-                <i className="ri-question-line"></i>
-                <span className="tooltip-text">
-                  P/E ratio used for valuation. Conservative investors often use lower historical P/E ratios to build in additional safety.
-                </span>
-              </span>
+            <label className="block text-sm font-medium text-neutral-700 mb-1 flex items-center">
+              Historical P/E to Use
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger className="text-neutral-400 ml-1">
+                    <i className="ri-question-line"></i>
+                  </TooltipTrigger>
+                  <TooltipContent className="w-64">
+                    <p>P/E ratio used for valuation. Conservative investors often use lower historical P/E ratios to build in additional safety.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </label>
             <Select
               value={valuationParams.peType}
@@ -196,14 +218,18 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
           )}
           
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">
-              EPS Adjustment 
-              <span className="tooltip text-neutral-400 ml-1">
-                <i className="ri-question-line"></i>
-                <span className="tooltip-text">
-                  Optional adjustment to EPS for temporary factors or expected changes. Use 100% for current EPS with no adjustments.
-                </span>
-              </span>
+            <label className="block text-sm font-medium text-neutral-700 mb-1 flex items-center">
+              EPS Adjustment
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger className="text-neutral-400 ml-1">
+                    <i className="ri-question-line"></i>
+                  </TooltipTrigger>
+                  <TooltipContent className="w-64">
+                    <p>Optional adjustment to EPS for temporary factors or expected changes. Use 100% for current EPS with no adjustments.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </label>
             <div className="flex items-center">
               <Slider
@@ -231,14 +257,18 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">
-              Expected Growth Rate (%) 
-              <span className="tooltip text-neutral-400 ml-1">
-                <i className="ri-question-line"></i>
-                <span className="tooltip-text">
-                  Expected annual growth rate for the company. Graham capped this at 20% to maintain conservatism.
-                </span>
-              </span>
+            <label className="block text-sm font-medium text-neutral-700 mb-1 flex items-center">
+              Expected Growth Rate (%)
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger className="text-neutral-400 ml-1">
+                    <i className="ri-question-line"></i>
+                  </TooltipTrigger>
+                  <TooltipContent className="w-64">
+                    <p>Expected annual growth rate for the company. Graham capped this at 20% to maintain conservatism.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </label>
             <Input
               type="number"
