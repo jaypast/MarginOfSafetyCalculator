@@ -1,27 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { ChevronDown, ChevronUp, BarChart2, AlertCircle } from 'lucide-react';
 import { Skeleton } from "@/components/ui/skeleton";
-
-// Define interfaces for the historical data
-interface HistoricalDataPoint {
-  date: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
-
-interface HistoricalDataResponse {
-  symbol: string;
-  period: string;
-  interval: string;
-  data: HistoricalDataPoint[];
-  error?: string;
-  message?: string;
-}
+import { useHistoricalData, type HistoricalDataPoint } from '@/hooks/useHistoricalData';
 
 interface StockPriceChartProps {
   symbol: string;
@@ -30,10 +12,15 @@ interface StockPriceChartProps {
 }
 
 const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartProps) => {
-  const [historicalData, setHistoricalData] = useState<HistoricalDataPoint[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<'5y' | '2y' | '1y'>('5y');
+  
+  // Use our custom hook for fetching and caching historical data
+  const { 
+    data: historicalData = [], 
+    isLoading, 
+    error: queryError,
+    isError
+  } = useHistoricalData(symbol, period, '1mo');
   
   // Format the price for display
   const formatPrice = (price: number) => {
@@ -47,7 +34,7 @@ const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartP
 
   // Calculate the percentage change from the first data point to current price
   const calculateChange = () => {
-    if (historicalData.length === 0) return { value: 0, percentage: 0 };
+    if (!historicalData || historicalData.length === 0) return { value: 0, percentage: 0, isPositive: true };
     
     const firstPrice = historicalData[0].close;
     const change = currentPrice - firstPrice;
@@ -84,41 +71,6 @@ const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartP
     }
     return null;
   };
-
-  // Fetch historical data based on the selected period
-  useEffect(() => {
-    if (!symbol) return;
-    
-    setIsLoading(true);
-    setError(null);
-    
-    // Make sure we're passing the correct period parameter to the API
-    fetch(`/api/stock/${symbol}/history?period=${period}&interval=1mo`)
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('Failed to fetch historical data');
-        }
-        return response.json();
-      })
-      .then((data: HistoricalDataResponse) => {
-        if (data.error) {
-          throw new Error(data.message || 'Error fetching historical data');
-        }
-        
-        // Sort data chronologically
-        const sortedData = [...data.data].sort((a, b) => 
-          new Date(a.date).getTime() - new Date(b.date).getTime()
-        );
-        
-        setHistoricalData(sortedData);
-        setIsLoading(false);
-      })
-      .catch(err => {
-        console.error('Error fetching historical data:', err);
-        setError(err.message || 'Failed to load historical data');
-        setIsLoading(false);
-      });
-  }, [symbol, period]);
 
   // Calculate price change
   const priceChange = calculateChange();
