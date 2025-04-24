@@ -19,7 +19,7 @@ import {
   FormMessage 
 } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { StyledInput } from '@/components/ui/styled-input';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { apiRequest } from '@/lib/queryClient';
@@ -204,7 +204,7 @@ const FeedbackForm: React.FC = () => {
                 <FormItem>
                   <FormLabel>Your email (optional)</FormLabel>
                   <FormControl>
-                    <Input placeholder="email@example.com" {...field} />
+                    <StyledInput placeholder="email@example.com" {...field} />
                   </FormControl>
                   <FormDescription>
                     We'll only use this to follow up on your feedback.

@@ -20,7 +20,7 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Download, Lock, Unlock, LogOut } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { StyledInput } from '@/components/ui/styled-input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
@@ -204,7 +204,7 @@ const FeedbackAdmin: React.FC = () => {
               <div className="grid w-full items-center gap-1.5">
                 <Label htmlFor="adminKey">Admin Key</Label>
                 <div className="flex gap-2">
-                  <Input
+                  <StyledInput
                     id="adminKey"
                     type="password"
                     value={adminKey}
