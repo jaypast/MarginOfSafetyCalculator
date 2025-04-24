@@ -34,12 +34,14 @@ const MarginOfSafetyCalculator: React.FC = () => {
   // Stock data state from API
   const { stockData, isLoading, isError, error, fetchStockData } = useStockData();
   
-  // Get historical data for the chart (using 1y period for more reliable data)
+  // Get historical data for the chart (5y by default as required)
+  const [chartPeriod, setChartPeriod] = useState<'5y' | '2y' | '1y'>('5y');
+  
   const {
     data: historicalData = [],
     isLoading: isHistoricalLoading,
     error: historicalError
-  } = useHistoricalData(stockData?.symbol || '', '1y', '1mo');
+  } = useHistoricalData(stockData?.symbol || '', chartPeriod, '1mo');
 
   // Calculation method state
   const [activeMethod, setActiveMethod] = useState<CalculationMethod>('dcf');
@@ -206,6 +208,8 @@ const MarginOfSafetyCalculator: React.FC = () => {
             historicalData={historicalData}
             isLoading={isHistoricalLoading}
             error={historicalError}
+            period={chartPeriod}
+            onPeriodChange={setChartPeriod}
           />
         )}
         

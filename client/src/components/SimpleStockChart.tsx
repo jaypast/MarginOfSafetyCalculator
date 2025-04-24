@@ -12,6 +12,8 @@ interface SimpleStockChartProps {
   historicalData: HistoricalDataPoint[];
   isLoading: boolean;
   error: any;
+  period?: '5y' | '2y' | '1y';
+  onPeriodChange?: (period: '5y' | '2y' | '1y') => void;
 }
 
 /**
@@ -23,7 +25,9 @@ const SimpleStockChart: React.FC<SimpleStockChartProps> = ({
   currentPrice,
   historicalData,
   isLoading,
-  error
+  error,
+  period = '5y',
+  onPeriodChange = () => {}
 }) => {
   // Format currency for display
   const formatCurrency = (value: number) => {
@@ -62,9 +66,31 @@ const SimpleStockChart: React.FC<SimpleStockChartProps> = ({
   return (
     <Card className="w-full mb-6">
       <CardHeader className="pb-2">
-        <CardTitle className="text-lg font-medium text-gray-800">
-          Price History - {companyName} ({symbol})
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg font-medium text-gray-800">
+            {period === '5y' ? '5-Year' : period === '2y' ? '2-Year' : '1-Year'} Price History - {companyName} ({symbol})
+          </CardTitle>
+          <div className="flex space-x-1">
+            <button 
+              onClick={() => onPeriodChange('1y')}
+              className={`px-2 py-1 text-xs rounded ${period === '1y' ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}
+            >
+              1Y
+            </button>
+            <button 
+              onClick={() => onPeriodChange('2y')}
+              className={`px-2 py-1 text-xs rounded ${period === '2y' ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}
+            >
+              2Y
+            </button>
+            <button 
+              onClick={() => onPeriodChange('5y')}
+              className={`px-2 py-1 text-xs rounded ${period === '5y' ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}
+            >
+              5Y
+            </button>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         {isLoading ? (
