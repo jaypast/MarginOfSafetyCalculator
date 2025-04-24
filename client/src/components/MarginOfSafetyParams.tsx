@@ -1,6 +1,12 @@
 import React from 'react';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { MarginOfSafetyParams as MoSParams, CompanyQualityResult, StockData } from '@/lib/types';
 
 interface MarginOfSafetyParamsProps {
@@ -28,12 +34,16 @@ const MarginOfSafetyParams: React.FC<MarginOfSafetyParamsProps> = ({
     <div className="bg-white rounded-lg shadow-sm p-6 border border-neutral-200">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold text-[#1A2942]">Margin of Safety</h2>
-        <span className="tooltip text-neutral-400">
-          <i className="ri-question-line"></i>
-          <span className="tooltip-text">
-            Margin of Safety is the difference between intrinsic value and market price that protects investors from estimation errors, market volatility, and unforeseen business challenges.
-          </span>
-        </span>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger className="text-neutral-400">
+              <i className="ri-question-line"></i>
+            </TooltipTrigger>
+            <TooltipContent className="w-64">
+              <p>Margin of Safety is the difference between intrinsic value and market price that protects investors from estimation errors, market volatility, and unforeseen business challenges.</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
       
       <div className="space-y-6">

@@ -1,13 +1,12 @@
 import React from 'react';
+import { Slider } from '@/components/ui/slider';
+import { StyledInput } from '@/components/ui/styled-input';
 import { 
-  Select,
+  StyledSelect,
   SelectContent,
   SelectItem,
-  SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Input } from '@/components/ui/input';
-import { Slider } from '@/components/ui/slider';
+} from '@/components/ui/styled-select';
 import {
   Tooltip,
   TooltipContent,
@@ -87,7 +86,7 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
             </label>
             <Input
               type="number"
-              className="custom-input"
+              className="transition-all duration-300 border border-neutral-300 focus:border-[#1A2942] focus:ring-2 focus:ring-[#1A2942]/10"
               value={valuationParams.dcfGrowthRate}
               onChange={(e) => handleParamChange('dcfGrowthRate', e.target.value)}
               min={0}
@@ -115,7 +114,7 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
             </label>
             <Input
               type="number"
-              className="custom-input"
+              className="transition-all duration-300 border border-neutral-300 focus:border-[#1A2942] focus:ring-2 focus:ring-[#1A2942]/10"
               value={valuationParams.dcfDiscountRate}
               onChange={(e) => handleParamChange('dcfDiscountRate', e.target.value)}
               min={0}
@@ -283,14 +282,18 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">
-              Modified Base (Optional) 
-              <span className="tooltip text-neutral-400 ml-1">
-                <i className="ri-question-line"></i>
-                <span className="tooltip-text">
-                  Graham's original formula used 8.5 as the base value. Some investors modify this based on interest rates.
-                </span>
-              </span>
+            <label className="block text-sm font-medium text-neutral-700 mb-1 flex items-center">
+              Modified Base (Optional)
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger className="text-neutral-400 ml-1">
+                    <i className="ri-question-line"></i>
+                  </TooltipTrigger>
+                  <TooltipContent className="w-64">
+                    <p>Graham's original formula used 8.5 as the base value. Some investors modify this based on interest rates.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </label>
             <Input
               type="number"

@@ -18,45 +18,9 @@
   }
 }
 
-.tooltip {
-  position: relative;
-  display: inline-block;
-  cursor: pointer;
-}
+/* Tooltip styles removed - now using shadcn Tooltip component */
 
-.tooltip .tooltip-text {
-  visibility: hidden;
-  width: 280px;
-  background-color: #1A2942;
-  color: #fff;
-  text-align: left;
-  border-radius: 6px;
-  padding: 12px;
-  position: absolute;
-  z-index: 50;
-  bottom: 125%;
-  left: 50%;
-  margin-left: -140px;
-  opacity: 0;
-  transition: opacity 0.3s;
-  font-size: 0.875rem;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-}
-
-.tooltip:hover .tooltip-text {
-  visibility: visible;
-  opacity: 1;
-}
-
-.custom-input {
-  transition: all 0.3s ease;
-  border-width: 1px;
-}
-
-.custom-input:focus {
-  border-color: #1A2942;
-  box-shadow: 0 0 0 3px rgba(26, 41, 66, 0.1);
-}
+/* Custom input styles moved to tailwind utilities */
 
 .tab-button {
   transition: all 0.2s ease;
