@@ -12,7 +12,8 @@ interface StockPriceChartProps {
 }
 
 const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartProps) => {
-  const [period, setPeriod] = useState<'5y' | '2y' | '1y'>('2y');
+  // Default to 1 year period which should have more reliable data
+  const [period, setPeriod] = useState<'5y' | '2y' | '1y'>('1y');
   
   // Use our custom hook for fetching and caching historical data
   const { 
@@ -35,8 +36,7 @@ const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartP
   // Calculate the percentage change from the first data point to current price
   const calculateChange = () => {
     // Make absolutely sure we have valid data before attempting calculations
-    if (!historicalData || !Array.isArray(historicalData) || historicalData.length === 0 || 
-        typeof historicalData[0]?.close !== 'number') {
+    if (!historicalData || !Array.isArray(historicalData) || historicalData.length === 0) {
       return { 
         value: 0, 
         percentage: 0, 
@@ -44,7 +44,20 @@ const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartP
       };
     }
     
-    const firstPrice = historicalData[0].close;
+    // Find the oldest valid data point with a close value
+    const firstValidPoint = historicalData.find(point => 
+      point && typeof point.close === 'number' && !isNaN(point.close)
+    );
+    
+    if (!firstValidPoint) {
+      return { 
+        value: 0, 
+        percentage: 0, 
+        isPositive: true 
+      };
+    }
+    
+    const firstPrice = firstValidPoint.close;
     const change = currentPrice - firstPrice;
     const percentageChange = (change / firstPrice) * 100;
     
@@ -148,7 +161,7 @@ const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartP
               )}
             </div>
             
-            {historicalData.length > 0 ? (
+            {historicalData.length >= 2 ? (
               <div className="h-[250px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
@@ -160,8 +173,13 @@ const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartP
                       dataKey="date" 
                       tickFormatter={(tick) => {
                         if (!tick) return '';
-                        const date = new Date(tick);
-                        return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                        try {
+                          const date = new Date(tick);
+                          return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                        } catch (e) {
+                          console.error('Error formatting date:', e);
+                          return '';
+                        }
                       }}
                       stroke="#9AA5B8"
                       fontSize={12}
@@ -180,6 +198,7 @@ const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartP
                       stroke={priceChange.isPositive ? "#22C55E" : "#EF4444"} 
                       fill={priceChange.isPositive ? "rgba(34, 197, 94, 0.1)" : "rgba(239, 68, 68, 0.1)"} 
                       activeDot={{ r: 6 }}
+                      isAnimationActive={false} // Disable animation to prevent rendering issues
                     />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -187,7 +206,8 @@ const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartP
             ) : (
               <div className="flex items-center justify-center h-[250px] bg-gray-50 rounded-md">
                 <div className="text-center text-gray-500">
-                  <p>No historical data available to display</p>
+                  <p>Insufficient historical data available</p>
+                  <p className="text-xs mt-1">Try selecting a different time period</p>
                 </div>
               </div>
             )}

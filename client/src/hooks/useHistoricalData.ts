@@ -21,7 +21,12 @@ export interface HistoricalDataResponse {
 export function useHistoricalData(symbol: string, period: '5y' | '2y' | '1y' = '5y', interval: string = '1mo') {
   const fetchHistoricalData = async (): Promise<HistoricalDataPoint[]> => {
     try {
-      if (!symbol) return [];
+      if (!symbol) {
+        console.warn('Cannot fetch historical data: symbol is empty');
+        return [];
+      }
+      
+      console.log(`Fetching historical data for ${symbol} (${period})...`);
       
       const response = await fetch(`/api/stock/${symbol}/history?period=${period}&interval=${interval}`);
       
@@ -38,24 +43,51 @@ export function useHistoricalData(symbol: string, period: '5y' | '2y' | '1y' = '
       }
       
       if (!data.data || !Array.isArray(data.data)) {
-        console.warn(`No historical data available for ${symbol}`);
+        console.warn(`No historical data array available for ${symbol}`);
         return [];
       }
       
+      console.log(`Raw historical data for ${symbol} (${period}):`, data.data.slice(0, 3), `... [${data.data.length} total points]`);
+      
       // Filter out any invalid data points
-      const validData = data.data.filter(point => 
-        point && 
-        typeof point.date === 'string' && 
-        typeof point.close === 'number' && 
-        !isNaN(point.close)
-      );
+      const validData = data.data.filter(point => {
+        const isValid = point && 
+          typeof point.date === 'string' && 
+          typeof point.close === 'number' && 
+          !isNaN(point.close);
+        
+        if (!isValid) {
+          console.warn('Invalid data point:', point);
+        }
+        
+        return isValid;
+      });
+      
+      if (validData.length < data.data.length) {
+        console.warn(`Filtered out ${data.data.length - validData.length} invalid data points`);
+      }
+      
+      // Fix any future dates by ensuring they are not after today
+      const today = new Date();
+      const fixedDates = validData.filter(point => {
+        const pointDate = new Date(point.date);
+        const isValid = pointDate <= today;
+        if (!isValid) {
+          console.warn(`Removed future date: ${point.date}`);
+        }
+        return isValid;
+      });
       
       // Sort data chronologically
-      const sortedData = [...validData].sort((a, b) => 
+      const sortedData = [...fixedDates].sort((a, b) => 
         new Date(a.date).getTime() - new Date(b.date).getTime()
       );
       
-      console.log(`Historical data for ${symbol} (${period}):`, sortedData);
+      console.log(`Processed historical data for ${symbol} (${period}):`, 
+        sortedData.length > 0 ? 
+          `${sortedData.length} points from ${sortedData[0].date} to ${sortedData[sortedData.length-1].date}` : 
+          'No data points available'
+      );
       
       if (sortedData.length === 0) {
         console.warn(`Historical data for ${symbol} (${period}) is empty after validation`);
