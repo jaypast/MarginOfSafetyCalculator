@@ -91,15 +91,16 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
     );
   }
 
-  // Find active method result
-  const activeResult = valuationResults.find(
-    result => result.method.toLowerCase().includes(activeMethod)
-  ) || valuationResults[0];
-  
-  // Find average result
+  // Find average result (we'll prioritize this for display)
   const averageResult = valuationResults.find(
     result => result.method === 'Average'
   );
+  
+  // Find active method result - use average if available, otherwise fallback to selected method
+  // This ensures our main valuation metrics align with the recommendation
+  const activeResult = averageResult || valuationResults.find(
+    result => result.method.toLowerCase().includes(activeMethod)
+  ) || valuationResults[0];
   
   // Check for special cases like MicroStrategy with negative or extreme values
   const hasNegativeIntrinsicValue = activeResult.intrinsicValue <= 0;
