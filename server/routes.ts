@@ -174,7 +174,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/feedback", adminAuth, async (req, res) => {
     try {
       const allFeedback = await storage.getAllFeedback();
-      return res.json(allFeedback);
+      
+      // Sort by date (most recent first)
+      const sortedFeedback = allFeedback.sort((a, b) => {
+        const dateA = new Date(a.createdAt instanceof Date ? a.createdAt.toISOString() : a.createdAt || '');
+        const dateB = new Date(b.createdAt instanceof Date ? b.createdAt.toISOString() : b.createdAt || '');
+        return dateB.getTime() - dateA.getTime();
+      });
+      
+      return res.json(sortedFeedback);
     } catch (error) {
       console.error("Error getting feedback:", error);
       return res.status(500).json({
@@ -190,6 +198,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (allFeedback.length === 0) {
         return res.status(404).send('No feedback data available for export');
       }
+      
+      // Sort by date (most recent first)
+      allFeedback.sort((a, b) => {
+        const dateA = new Date(a.createdAt instanceof Date ? a.createdAt.toISOString() : a.createdAt || '');
+        const dateB = new Date(b.createdAt instanceof Date ? b.createdAt.toISOString() : b.createdAt || '');
+        return dateB.getTime() - dateA.getTime();
+      });
       
       // Format satisfaction for display
       const formatSatisfaction = (sat: string) => {

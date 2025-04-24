@@ -339,21 +339,28 @@ const FeedbackAdmin: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {feedbackEntries.map((entry) => (
-                    <TableRow key={entry.id}>
-                      <TableCell className="whitespace-nowrap">
-                        {formatDate(entry.created_at || entry.createdAt)}
-                      </TableCell>
-                      <TableCell>{formatSatisfaction(entry.satisfaction)}</TableCell>
-                      <TableCell className="max-w-xs truncate">
-                        {entry.main_benefit || entry.mainBenefit || '-'}
-                      </TableCell>
-                      <TableCell className="max-w-xs truncate">
-                        {entry.improvements || '-'}
-                      </TableCell>
-                      <TableCell>{entry.email || '-'}</TableCell>
-                    </TableRow>
-                  ))}
+                  {[...feedbackEntries]
+                    .sort((a, b) => {
+                      // Sort by date, most recent first
+                      const dateA = new Date(a.createdAt || '');
+                      const dateB = new Date(b.createdAt || '');
+                      return dateB.getTime() - dateA.getTime();
+                    })
+                    .map((entry) => (
+                      <TableRow key={entry.id}>
+                        <TableCell className="whitespace-nowrap">
+                          {formatDate(entry.createdAt)}
+                        </TableCell>
+                        <TableCell>{formatSatisfaction(entry.satisfaction)}</TableCell>
+                        <TableCell className="max-w-xs truncate">
+                          {entry.main_benefit || entry.mainBenefit || '-'}
+                        </TableCell>
+                        <TableCell className="max-w-xs truncate">
+                          {entry.improvements || '-'}
+                        </TableCell>
+                        <TableCell>{entry.email || '-'}</TableCell>
+                      </TableRow>
+                    ))}
                 </TableBody>
               </Table>
             </div>
