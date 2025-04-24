@@ -12,7 +12,7 @@ interface StockPriceChartProps {
 }
 
 const StockPriceChart = ({ symbol, currentPrice, companyName }: StockPriceChartProps) => {
-  const [period, setPeriod] = useState<'5y' | '2y' | '1y'>('5y');
+  const [period, setPeriod] = useState<'5y' | '2y' | '1y'>('2y');
   
   // Use our custom hook for fetching and caching historical data
   const { 

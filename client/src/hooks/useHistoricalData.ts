@@ -68,6 +68,7 @@ export function useHistoricalData(symbol: string, period: '5y' | '2y' | '1y' = '
     }
   };
 
+  // Add logging for the entire query lifecycle
   return useQuery({
     queryKey: [`/api/stock/${symbol}/history`, period, interval],
     queryFn: fetchHistoricalData,
@@ -75,5 +76,12 @@ export function useHistoricalData(symbol: string, period: '5y' | '2y' | '1y' = '
     staleTime: 5 * 60 * 1000, // 5 minutes - data stays fresh longer
     gcTime: 30 * 60 * 1000,   // 30 minutes - keep in cache longer
     retry: 1,
+    select: (data) => {
+      console.log(`Processed historical data for ${symbol} (${period}):`, data);
+      if (data.length === 0) {
+        console.warn(`No data points available for ${symbol}`);
+      }
+      return data;
+    }
   });
 }

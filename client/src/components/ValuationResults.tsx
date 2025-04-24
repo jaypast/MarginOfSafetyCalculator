@@ -242,11 +242,13 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
         
         {/* Stock Price Chart - Add historical price chart */}
         {stockData && !isSpecialCase && !etfDetected && (
-          <StockPriceChart 
-            symbol={stockData.symbol} 
-            currentPrice={stockData.price}
-            companyName={stockData.name}
-          />
+          <div className="mt-4">
+            <StockPriceChart 
+              symbol={stockData.symbol} 
+              currentPrice={stockData.price}
+              companyName={stockData.name}
+            />
+          </div>
         )}
         
         {/* Method Comparison */}
