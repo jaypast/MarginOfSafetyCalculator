@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Input } from '@/components/ui/input';
+import { StyledInput } from '@/components/ui/styled-input';
 import { Button } from '@/components/ui/button';
 import { StockData } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
@@ -50,7 +50,7 @@ const StockInformation: React.FC<StockInformationProps> = ({
         <label htmlFor="stockSymbol" className="block text-sm font-medium text-neutral-700 mb-2">Stock Symbol</label>
         <div className="relative flex">
           <div className="relative flex-grow">
-            <Input
+            <StyledInput
               ref={inputRef}
               id="stockSymbol"
               value={inputValue}

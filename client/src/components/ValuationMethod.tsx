@@ -68,7 +68,7 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
       </div>
       
       {/* DCF Inputs */}
-      <div className={`tab-content mt-5 ${activeMethod !== 'dcf' ? 'hidden' : ''}`}>
+      <div className={`mt-5 ${activeMethod !== 'dcf' ? 'hidden' : ''}`}>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1 flex items-center">
@@ -165,7 +165,7 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
       </div>
       
       {/* P/E Based Inputs */}
-      <div className={`tab-content mt-5 ${activeMethod !== 'pe' ? 'hidden' : ''}`}>
+      <div className={`mt-5 ${activeMethod !== 'pe' ? 'hidden' : ''}`}>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1 flex items-center">
@@ -244,7 +244,7 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
       </div>
       
       {/* Graham Formula Inputs */}
-      <div className={`tab-content mt-5 ${activeMethod !== 'graham' ? 'hidden' : ''}`}>
+      <div className={`mt-5 ${activeMethod !== 'graham' ? 'hidden' : ''}`}>
         <div className="space-y-4">
           <div>
             <p className="block text-sm text-neutral-700 mb-1 italic">Graham Formula: Intrinsic Value = EPS × (8.5 + 2g)</p>
