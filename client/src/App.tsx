@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import Feedback from "@/pages/Feedback";
+import Admin from "@/pages/Admin";
 
 function Router() {
   return (
@@ -28,6 +29,7 @@ function Router() {
       <Switch>
         <Route path="/" component={Home} />
         <Route path="/feedback" component={Feedback} />
+        <Route path="/admin" component={Admin} />
         <Route component={NotFound} />
       </Switch>
     </>

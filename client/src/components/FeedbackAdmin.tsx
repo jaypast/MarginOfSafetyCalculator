@@ -158,7 +158,8 @@ const FeedbackAdmin: React.FC = () => {
   const exportFeedbackData = () => {
     if (!feedbackEntries || feedbackEntries.length === 0 || !isAuthenticated) return;
     
-    // Create a URL with the admin key as a query parameter
+    // Create a URL with the admin key as a header
+    // Open the export URL directly with the admin key in the URL
     const exportUrl = `/api/feedback/export`;
     const win = window.open(`${exportUrl}?key=${encodeURIComponent(adminKey)}`, '_blank');
     
