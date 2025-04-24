@@ -241,6 +241,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
                       valuationParams={valuationParams}
                       setValuationParams={setValuationParams}
                       stockData={stockData}
+                      onCalculate={calculateIntrinsicValue}
                     />
                   </div>
                 </CollapsibleContent>
