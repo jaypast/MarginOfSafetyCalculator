@@ -95,11 +95,34 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
     result => result.method === 'Average'
   );
   
-  // Find active method result - use average if available, otherwise fallback to selected method
   // This ensures our main valuation metrics align with the recommendation
   const activeResult = averageResult || valuationResults.find(
     result => result.method.toLowerCase().includes(activeMethod)
   ) || valuationResults[0];
+  
+  // Calculate the discount/premium directly using the current stock price for guaranteed accuracy
+  // This ensures it's always up-to-date regardless of how the values were calculated
+  if (stockData) {
+    // Update the average result's discount/premium
+    if (averageResult && averageResult.intrinsicValue > 0) {
+      const avgDiscountPremium = ((stockData.price - averageResult.intrinsicValue) / averageResult.intrinsicValue) * 100;
+      averageResult.discountPremium = parseFloat(avgDiscountPremium.toFixed(1));
+    }
+    
+    // Update the active result's discount/premium
+    if (activeResult && activeResult.intrinsicValue > 0 && activeResult !== averageResult) {
+      const activeDiscountPremium = ((stockData.price - activeResult.intrinsicValue) / activeResult.intrinsicValue) * 100;
+      activeResult.discountPremium = parseFloat(activeDiscountPremium.toFixed(1));
+    }
+    
+    // Update all individual method results too
+    valuationResults
+      .filter(result => result.method !== 'Average' && result.intrinsicValue > 0)
+      .forEach(result => {
+        const methodDiscountPremium = ((stockData.price - result.intrinsicValue) / result.intrinsicValue) * 100;
+        result.discountPremium = parseFloat(methodDiscountPremium.toFixed(1));
+      });
+  }
   
   // Check for special cases like MicroStrategy with negative or extreme values
   const hasNegativeIntrinsicValue = activeResult.intrinsicValue <= 0;
