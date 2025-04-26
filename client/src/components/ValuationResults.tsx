@@ -203,7 +203,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
             )}
           
             {/* Valuation metrics */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
               {/* Intrinsic Value */}
               <div className="bg-[#E9ECF1] p-3 rounded-lg border border-[#C4CCD9]">
                 <p className="text-xs text-[#2A3E5C] mb-1">Intrinsic Value</p>
@@ -222,18 +222,31 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                 <p className="text-xs text-green-600">With MoS</p>
               </div>
               
-              {/* Current Status */}
+              {/* Current Status vs Intrinsic Value (FIXED VALUE) */}
               <div className={`${activeResult.discountPremium < 0 ? 'bg-amber-50 border-amber-100' : 'bg-red-50 border-red-100'} p-3 rounded-lg`}>
-                <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-amber-700' : 'text-red-700'} mb-1`}>Discount/Premium</p>
+                <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-amber-700' : 'text-red-700'} mb-1`}>Vs Intrinsic Value</p>
                 <p className={`text-lg font-bold ${getStatusColor(activeResult.discountPremium)}`}>
                   {!hasExtremeDiscountPremium ? 
                     `${activeResult.discountPremium > 0 ? '+' : ''}${activeResult.discountPremium.toFixed(1)}%` 
                     : 'N/A'}
                 </p>
                 <p className={`text-xs ${activeResult.discountPremium < 0 ? 'text-amber-600' : 'text-red-600'}`}>
-                  Current vs. intrinsic value
+                  Market vs Fair Value
                 </p>
               </div>
+              
+              {/* Current Status vs Buy Below Price (CHANGES WITH MARGIN OF SAFETY) */}
+              {activeResult.buyBelowStatus !== undefined && (
+                <div className={`${activeResult.buyBelowStatus < 0 ? 'bg-green-100 border-green-200' : 'bg-red-50 border-red-100'} p-3 rounded-lg`}>
+                  <p className={`text-xs ${activeResult.buyBelowStatus < 0 ? 'text-green-700' : 'text-red-700'} mb-1`}>Vs Buy Below Price</p>
+                  <p className={`text-lg font-bold ${activeResult.buyBelowStatus < 0 ? 'text-green-700' : 'text-red-700'}`}>
+                    {activeResult.buyBelowStatus > 0 ? `+${activeResult.buyBelowStatus.toFixed(1)}%` : `${activeResult.buyBelowStatus.toFixed(1)}%`}
+                  </p>
+                  <p className={`text-xs ${activeResult.buyBelowStatus < 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    With Margin of Safety
+                  </p>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -250,7 +263,8 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                   <TableHead className="text-left">Method</TableHead>
                   <TableHead className="text-right">Intrinsic Value</TableHead>
                   <TableHead className="text-right">Buy Below</TableHead>
-                  <TableHead className="text-right">Discount/Premium</TableHead>
+                  <TableHead className="text-right">Vs Intrinsic</TableHead>
+                  <TableHead className="text-right">Vs Buy Below</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -267,6 +281,10 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                       {result.intrinsicValue <= 0 ? 'N/A' : 
                         `${result.discountPremium > 0 ? '+' : ''}${result.discountPremium.toFixed(1)}%`}
                     </TableCell>
+                    <TableCell className={`${result.buyBelowStatus && result.buyBelowStatus < 0 ? 'text-green-600' : 'text-red-600'} text-right`}>
+                      {result.buyBelowStatus !== undefined && result.buyBelow > 0 ? 
+                        `${result.buyBelowStatus > 0 ? '+' : ''}${result.buyBelowStatus.toFixed(1)}%` : 'N/A'}
+                    </TableCell>
                   </TableRow>
                 ))}
                 {averageResult && (
@@ -276,6 +294,10 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                     <TableCell className="font-medium text-[#21324F] text-right">{formatCurrency(averageResult.buyBelow)}</TableCell>
                     <TableCell className={`font-medium ${averageResult.discountPremium < 0 ? 'text-green-600' : 'text-red-600'} text-right`}>
                       {averageResult.discountPremium > 0 ? '+' : ''}{averageResult.discountPremium.toFixed(1)}%
+                    </TableCell>
+                    <TableCell className={`font-medium ${averageResult.buyBelowStatus && averageResult.buyBelowStatus < 0 ? 'text-green-600' : 'text-red-600'} text-right`}>
+                      {averageResult.buyBelowStatus !== undefined ? 
+                        `${averageResult.buyBelowStatus > 0 ? '+' : ''}${averageResult.buyBelowStatus.toFixed(1)}%` : 'N/A'}
                     </TableCell>
                   </TableRow>
                 )}
