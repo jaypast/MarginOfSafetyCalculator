@@ -131,8 +131,8 @@ const MarginOfSafetyCalculator: React.FC = () => {
       }
     ];
     
-    // Calculate average, passing the stock price for accurate discount/premium calculation
-    const avgResult = calculateAverageValuation(results, stockData.price);
+    // Calculate average
+    const avgResult = calculateAverageValuation(results);
     
     setValuationResults([...results, avgResult]);
   };

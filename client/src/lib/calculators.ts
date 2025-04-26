@@ -250,8 +250,7 @@ export const calculateDiscountPremium = (
 
 // Calculate average valuation
 export const calculateAverageValuation = (
-  valuationResults: ValuationResult[],
-  stockPrice?: number
+  valuationResults: ValuationResult[]
 ): ValuationResult => {
   if (valuationResults.length === 0) {
     return {
@@ -282,24 +281,19 @@ export const calculateAverageValuation = (
   const avgIntrinsicValue = parseFloat((sumIntrinsicValue / validResults.length).toFixed(2));
   const avgBuyBelow = parseFloat((sumBuyBelow / validResults.length).toFixed(2));
   
-  // Determine the price to use for calculations
-  let price = 0;
-  
-  // If a price was explicitly provided, use that
-  if (stockPrice !== undefined) {
-    price = stockPrice;
-  }
-  // Otherwise, try to extract it from the discount/premium calculation
-  else if (validResults[0].discountPremium !== 0) {
-    price = validResults[0].intrinsicValue * (1 + validResults[0].discountPremium / 100);
-  }
+  // Get current price from the stockData
+  let currentPrice = 0;
+  // First try to extract it from the discount/premium calculation
+  if (validResults[0].discountPremium !== 0) {
+    currentPrice = validResults[0].intrinsicValue * (1 + validResults[0].discountPremium / 100);
+  } 
   // If that fails, just use the first valid result's intrinsic value as an approximation
   else if (validResults.length > 0) {
-    price = validResults[0].intrinsicValue;
+    currentPrice = validResults[0].intrinsicValue;
   }
   
-  // Calculate discount/premium using the determined price
-  const avgDiscountPremium = calculateDiscountPremium(price, avgIntrinsicValue);
+  // Calculate the discount/premium based on intrinsic value (not buy below price)
+  const avgDiscountPremium = calculateDiscountPremium(currentPrice, avgIntrinsicValue);
   
   return {
     method: 'Average',

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Table, 
   TableBody, 
@@ -15,6 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { StockData, ValuationResult, CalculationMethod, ValuationParams, MarginOfSafetyParams } from '@/lib/types';
 import { formatCurrency, isETF, getInvestmentRecommendation } from '@/lib/utils';
 import { generateCalculationsPDF } from '@/utils/pdfGenerator';
+import { calculateDiscountPremium } from '@/lib/calculators';
 
 interface ValuationResultsProps {
   valuationResults: ValuationResult[];
@@ -37,6 +38,19 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
   
   // Check if the stock is an ETF
   const etfDetected = stockData && isETF(stockData);
+  
+  // Recalculate discount/premium percentages whenever component updates
+  useEffect(() => {
+    if (stockData && valuationResults.length > 0) {
+      // Update each valuation result's discount/premium based on current price
+      valuationResults.forEach(result => {
+        if (result.intrinsicValue > 0) {
+          // Directly calculate new discount/premium using current stock price
+          result.discountPremium = calculateDiscountPremium(stockData.price, result.intrinsicValue);
+        }
+      });
+    }
+  }, [stockData, valuationResults, marginOfSafetyParams]);
   
   if (!valuationResults.length) {
     return (
@@ -95,34 +109,11 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
     result => result.method === 'Average'
   );
   
+  // Find active method result - use average if available, otherwise fallback to selected method
   // This ensures our main valuation metrics align with the recommendation
   const activeResult = averageResult || valuationResults.find(
     result => result.method.toLowerCase().includes(activeMethod)
   ) || valuationResults[0];
-  
-  // Calculate the discount/premium directly using the current stock price for guaranteed accuracy
-  // This ensures it's always up-to-date regardless of how the values were calculated
-  if (stockData) {
-    // Update the average result's discount/premium
-    if (averageResult && averageResult.intrinsicValue > 0) {
-      const avgDiscountPremium = ((stockData.price - averageResult.intrinsicValue) / averageResult.intrinsicValue) * 100;
-      averageResult.discountPremium = parseFloat(avgDiscountPremium.toFixed(1));
-    }
-    
-    // Update the active result's discount/premium
-    if (activeResult && activeResult.intrinsicValue > 0 && activeResult !== averageResult) {
-      const activeDiscountPremium = ((stockData.price - activeResult.intrinsicValue) / activeResult.intrinsicValue) * 100;
-      activeResult.discountPremium = parseFloat(activeDiscountPremium.toFixed(1));
-    }
-    
-    // Update all individual method results too
-    valuationResults
-      .filter(result => result.method !== 'Average' && result.intrinsicValue > 0)
-      .forEach(result => {
-        const methodDiscountPremium = ((stockData.price - result.intrinsicValue) / result.intrinsicValue) * 100;
-        result.discountPremium = parseFloat(methodDiscountPremium.toFixed(1));
-      });
-  }
   
   // Check for special cases like MicroStrategy with negative or extreme values
   const hasNegativeIntrinsicValue = activeResult.intrinsicValue <= 0;
