@@ -248,7 +248,20 @@ export const calculateDiscountPremium = (
   return parseFloat(discountPremium.toFixed(1));
 };
 
-// Calculate average valuation
+// Calculate discount/premium relative to buy below price (with margin of safety)
+export const calculateBuyBelowStatus = (
+  currentPrice: number,
+  buyBelowPrice: number
+): number => {
+  // Handle cases where buyBelowPrice is negative or zero
+  if (buyBelowPrice <= 0) {
+    return 100; // Return a high premium to indicate overvaluation
+  }
+  
+  const discountPremium = ((currentPrice - buyBelowPrice) / buyBelowPrice) * 100;
+  return parseFloat(discountPremium.toFixed(1));
+};
+
 export const calculateAverageValuation = (
   valuationResults: ValuationResult[]
 ): ValuationResult => {
@@ -295,10 +308,14 @@ export const calculateAverageValuation = (
   // Calculate the discount/premium based on intrinsic value (not buy below price)
   const avgDiscountPremium = calculateDiscountPremium(currentPrice, avgIntrinsicValue);
   
+  // Calculate buy below status for average
+  const avgBuyBelowStatus = calculateBuyBelowStatus(currentPrice, avgBuyBelow);
+  
   return {
     method: 'Average',
     intrinsicValue: avgIntrinsicValue,
     buyBelow: avgBuyBelow,
-    discountPremium: avgDiscountPremium
+    discountPremium: avgDiscountPremium,
+    buyBelowStatus: avgBuyBelowStatus
   };
 };

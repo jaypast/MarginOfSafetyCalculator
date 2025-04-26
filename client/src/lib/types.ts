@@ -42,6 +42,7 @@ export interface ValuationResult {
   intrinsicValue: number;
   buyBelow: number;
   discountPremium: number;
+  buyBelowStatus?: number; // Added to track status relative to buy below price with MoS applied
 }
 
 export interface CompanyQualityResult {

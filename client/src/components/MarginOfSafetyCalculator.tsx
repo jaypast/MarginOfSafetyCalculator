@@ -23,7 +23,8 @@ import {
   calculateGraham, 
   calculateBuyBelow, 
   calculateDiscountPremium,
-  calculateAverageValuation
+  calculateAverageValuation,
+  calculateBuyBelowStatus
 } from '@/lib/calculators';
 import { getCompanyQuality, getRecommendedMarginOfSafety, getDefaultMarginOfSafety } from '@/lib/utils';
 
@@ -101,16 +102,19 @@ const MarginOfSafetyCalculator: React.FC = () => {
     const dcfValue = calculateDCF(stockData, valuationParams);
     const dcfBuyBelow = calculateBuyBelow(dcfValue, marginOfSafetyParams.marginOfSafety);
     const dcfDiscountPremium = calculateDiscountPremium(price, dcfValue);
+    const dcfBuyBelowStatus = calculateBuyBelowStatus(price, dcfBuyBelow);
     
     // Calculate P/E valuation
     const peValue = calculatePE(stockData, valuationParams);
     const peBuyBelow = calculateBuyBelow(peValue, marginOfSafetyParams.marginOfSafety);
     const peDiscountPremium = calculateDiscountPremium(price, peValue);
+    const peBuyBelowStatus = calculateBuyBelowStatus(price, peBuyBelow);
     
     // Calculate Graham valuation
     const grahamValue = calculateGraham(stockData, valuationParams);
     const grahamBuyBelow = calculateBuyBelow(grahamValue, marginOfSafetyParams.marginOfSafety);
     const grahamDiscountPremium = calculateDiscountPremium(price, grahamValue);
+    const grahamBuyBelowStatus = calculateBuyBelowStatus(price, grahamBuyBelow);
     
     // Store results
     const results: ValuationResult[] = [
@@ -118,19 +122,22 @@ const MarginOfSafetyCalculator: React.FC = () => {
         method: 'DCF Analysis',
         intrinsicValue: dcfValue,
         buyBelow: dcfBuyBelow,
-        discountPremium: dcfDiscountPremium
+        discountPremium: dcfDiscountPremium,
+        buyBelowStatus: dcfBuyBelowStatus
       },
       {
         method: 'P/E Based',
         intrinsicValue: peValue,
         buyBelow: peBuyBelow,
-        discountPremium: peDiscountPremium
+        discountPremium: peDiscountPremium,
+        buyBelowStatus: peBuyBelowStatus
       },
       {
         method: 'Graham Formula',
         intrinsicValue: grahamValue,
         buyBelow: grahamBuyBelow,
-        discountPremium: grahamDiscountPremium
+        discountPremium: grahamDiscountPremium,
+        buyBelowStatus: grahamBuyBelowStatus
       }
     ];
     
