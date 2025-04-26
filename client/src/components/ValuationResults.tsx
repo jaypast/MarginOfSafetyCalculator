@@ -39,18 +39,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
   // Check if the stock is an ETF
   const etfDetected = stockData && isETF(stockData);
   
-  // Recalculate discount/premium percentages whenever component updates
-  useEffect(() => {
-    if (stockData && valuationResults.length > 0) {
-      // Update each valuation result's discount/premium based on current price
-      valuationResults.forEach(result => {
-        if (result.intrinsicValue > 0) {
-          // Directly calculate new discount/premium using current stock price
-          result.discountPremium = calculateDiscountPremium(stockData.price, result.intrinsicValue);
-        }
-      });
-    }
-  }, [stockData, valuationResults, marginOfSafetyParams]);
+  // We've removed the useEffect as the parent component now handles all the recalculations
   
   if (!valuationResults.length) {
     return (

@@ -94,20 +94,23 @@ const MarginOfSafetyCalculator: React.FC = () => {
   const calculateIntrinsicValue = () => {
     if (!stockData || stockData.error) return;
     
+    // Calculate values - always use current price for discount calculation
+    const price = stockData.price;
+    
     // Calculate DCF valuation
     const dcfValue = calculateDCF(stockData, valuationParams);
     const dcfBuyBelow = calculateBuyBelow(dcfValue, marginOfSafetyParams.marginOfSafety);
-    const dcfDiscountPremium = calculateDiscountPremium(stockData.price, dcfValue);
+    const dcfDiscountPremium = calculateDiscountPremium(price, dcfValue);
     
     // Calculate P/E valuation
     const peValue = calculatePE(stockData, valuationParams);
     const peBuyBelow = calculateBuyBelow(peValue, marginOfSafetyParams.marginOfSafety);
-    const peDiscountPremium = calculateDiscountPremium(stockData.price, peValue);
+    const peDiscountPremium = calculateDiscountPremium(price, peValue);
     
     // Calculate Graham valuation
     const grahamValue = calculateGraham(stockData, valuationParams);
     const grahamBuyBelow = calculateBuyBelow(grahamValue, marginOfSafetyParams.marginOfSafety);
-    const grahamDiscountPremium = calculateDiscountPremium(stockData.price, grahamValue);
+    const grahamDiscountPremium = calculateDiscountPremium(price, grahamValue);
     
     // Store results
     const results: ValuationResult[] = [
@@ -136,6 +139,13 @@ const MarginOfSafetyCalculator: React.FC = () => {
     
     setValuationResults([...results, avgResult]);
   };
+  
+  // Recalculate when margin of safety or valuation parameters change
+  useEffect(() => {
+    if (stockData && !stockData.error) {
+      calculateIntrinsicValue();
+    }
+  }, [marginOfSafetyParams, valuationParams]);
   
   return (
     <>
