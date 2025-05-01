@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Link } from 'wouter';
 import { formatCurrency } from '@/lib/utils';
 import { AlertTriangle } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 // Define the stock research entry type
 interface ResearchStock {
@@ -17,33 +18,61 @@ interface ResearchStock {
   quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative';
 }
 
+// Symbols we want to analyze
+const STOCK_SYMBOLS = [
+  'MSFT', 'GOOGL', 'AMZN', 'META', 'AAPL', 
+  'INTC', 'CSCO', 'PFE', 'ORCL', 'WMT'
+];
+
 const ResearchPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [stocks, setStocks] = useState<ResearchStock[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<string>('');
 
-  // Sample research data (for prototype purposes)
-  // In a production environment, this would come from an API
+  // Fetch real stock data from our API
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       
       try {
-        // In a real implementation, we would fetch this data from an API
-        // For this prototype, let's use a sample dataset
-        const sampleStocks: ResearchStock[] = [
-          { symbol: 'MSFT', name: 'Microsoft Corporation', price: 402.75, intrinsicValue: 450.50, discount: 10.6, quality: 'Exceptional' },
-          { symbol: 'GOOGL', name: 'Alphabet Inc.', price: 174.50, intrinsicValue: 205.75, discount: 15.2, quality: 'Exceptional' },
-          { symbol: 'AMZN', name: 'Amazon.com Inc.', price: 178.75, intrinsicValue: 215.25, discount: 17.0, quality: 'Good' },
-          { symbol: 'META', name: 'Meta Platforms Inc.', price: 510.00, intrinsicValue: 575.80, discount: 11.4, quality: 'Good' },
-          { symbol: 'AAPL', name: 'Apple Inc.', price: 170.50, intrinsicValue: 185.25, discount: 8.0, quality: 'Exceptional' },
-          { symbol: 'INTC', name: 'Intel Corporation', price: 31.25, intrinsicValue: 42.50, discount: 26.5, quality: 'Average' },
-          { symbol: 'CSCO', name: 'Cisco Systems Inc.', price: 48.75, intrinsicValue: 57.00, discount: 14.5, quality: 'Good' },
-          { symbol: 'PFE', name: 'Pfizer Inc.', price: 28.25, intrinsicValue: 38.50, discount: 26.6, quality: 'Good' },
-          { symbol: 'ORCL', name: 'Oracle Corporation', price: 122.50, intrinsicValue: 135.75, discount: 9.8, quality: 'Good' },
-          { symbol: 'WMT', name: 'Walmart Inc.', price: 62.75, intrinsicValue: 72.25, discount: 13.1, quality: 'Exceptional' },
-        ];
+        const stockPromises = STOCK_SYMBOLS.map(async (symbol) => {
+          const response = await fetch(`/api/stock/${symbol}`);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch data for ${symbol}`);
+          }
+          const stockData = await response.json();
+          
+          // Calculate intrinsic value (using simplified DCF calculation)
+          // In a real app, we'd use more sophisticated valuation methods
+          const growthRate = stockData.growthRate;
+          const eps = stockData.eps;
+          const peRatio = Math.min(stockData.peRatio * 0.9, 20); // Cap P/E for conservative estimate
+          
+          let intrinsicValue = eps * (1 + growthRate / 100) * peRatio;
+          intrinsicValue = Math.max(stockData.price * 0.8, intrinsicValue); // Prevent extreme undervaluation
+          
+          const discount = ((intrinsicValue - stockData.price) / intrinsicValue) * 100;
+          
+          return {
+            symbol: stockData.symbol,
+            name: stockData.name,
+            price: stockData.price,
+            intrinsicValue: intrinsicValue,
+            discount: Math.max(0, discount), // Only show positive discounts (undervalued)
+            quality: stockData.companyQuality || 'Average'
+          };
+        });
         
-        setStocks(sampleStocks);
+        const stockResults = await Promise.all(stockPromises);
+        
+        // Sort by discount (highest first)
+        const sortedStocks = stockResults
+          .filter(stock => stock.discount > 0) // Only show undervalued stocks
+          .sort((a, b) => b.discount - a.discount)
+          .slice(0, 10); // Limit to top 10
+        
+        setStocks(sortedStocks);
+        setLastUpdated(new Date().toLocaleString());
       } catch (error) {
         console.error('Error fetching research data:', error);
       } finally {
@@ -71,28 +100,21 @@ const ResearchPage: React.FC = () => {
         <p className="text-neutral-600">Potential undervalued companies based on fundamental analysis</p>
       </header>
 
-      {/* Disclaimer Card */}
-      <Card className="mb-8 border-amber-200 bg-amber-50">
-        <CardContent className="pt-6">
-          <div className="flex items-start gap-4">
-            <AlertTriangle className="h-6 w-6 text-amber-500 flex-shrink-0 mt-1" />
-            <div>
-              <h3 className="font-medium text-amber-800 mb-2">Research Disclaimer</h3>
-              <p className="text-sm text-amber-700">
-                This information is provided for research and educational purposes only. It is not intended as investment advice. 
-                All stock valuations are estimates based on public data and our proprietary valuation methods. 
-                Always conduct your own research and consult with a financial advisor before making investment decisions.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Research Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Potentially Undervalued Stocks</CardTitle>
-          <CardDescription>Stocks currently trading below their estimated intrinsic value</CardDescription>
+          <div className="flex justify-between items-center">
+            <div>
+              <CardTitle>Potentially Undervalued Stocks</CardTitle>
+              <CardDescription>Stocks currently trading below their estimated intrinsic value</CardDescription>
+            </div>
+            {loading && (
+              <div className="flex items-center gap-2 text-sm text-neutral-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Fetching real-time data...</span>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -148,9 +170,26 @@ const ResearchPage: React.FC = () => {
           </div>
           
           <div className="mt-6 text-xs text-neutral-500">
-            <p>Last updated: {new Date().toLocaleString()}</p>
+            <p>Last updated: {lastUpdated}</p>
             <p>Discount percentages represent the difference between current market price and estimated intrinsic value.</p>
             <p>Quality ratings are based on financial stability, competitive position, and historical performance.</p>
+          </div>
+        </CardContent>
+      </Card>
+      
+      {/* Disclaimer at the bottom */}
+      <Card className="mt-8 border-amber-200 bg-amber-50">
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-4">
+            <AlertTriangle className="h-6 w-6 text-amber-500 flex-shrink-0 mt-1" />
+            <div>
+              <h3 className="font-medium text-amber-800 mb-2">Research Disclaimer</h3>
+              <p className="text-sm text-amber-700">
+                This information is provided for research and educational purposes only. It is not intended as investment advice. 
+                All stock valuations are estimates based on public data and our proprietary valuation methods. 
+                Always conduct your own research and consult with a financial advisor before making investment decisions.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
