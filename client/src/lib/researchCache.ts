@@ -1,4 +1,12 @@
-import { ResearchStock } from '@/types/research';
+// Import type from directly from ResearchPage to avoid circular imports
+export interface ResearchStock {
+  symbol: string;
+  name: string;
+  price: number;
+  intrinsicValue: number;
+  discount: number;
+  quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative';
+}
 
 // Cache key for the research data
 const RESEARCH_CACHE_KEY = 'research_data_cache';

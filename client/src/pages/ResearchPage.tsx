@@ -6,8 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatCurrency } from '@/lib/utils';
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ResearchStock } from '@/types/research';
-import { getCachedResearchData, saveResearchDataToCache, getCacheExpirationDate, getCacheLastUpdated } from '@/lib/researchCache';
+import { ResearchStock, getCachedResearchData, saveResearchDataToCache, getCacheExpirationDate, getCacheLastUpdated } from '@/lib/researchCache';
 import { calculateIntrinsicValue, calculateDiscount } from '@/lib/researchCalculations';
 
 // Symbols we want to analyze
@@ -118,12 +117,25 @@ const ResearchPage: React.FC = () => {
               <CardTitle>Potentially Undervalued Stocks</CardTitle>
               <CardDescription>Stocks currently trading below their estimated intrinsic value</CardDescription>
             </div>
-            {loading && (
-              <div className="flex items-center gap-2 text-sm text-neutral-500">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Fetching real-time data...</span>
-              </div>
-            )}
+            <div className="flex items-center gap-4">
+              {loading ? (
+                <div className="flex items-center gap-2 text-sm text-neutral-500">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Fetching real-time data...</span>
+                </div>
+              ) : (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex items-center gap-1"
+                  onClick={() => setForceRefresh(true)}
+                  disabled={loading}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span>Refresh</span>
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -137,7 +149,6 @@ const ResearchPage: React.FC = () => {
                   <TableHead className="text-right">Intrinsic Value</TableHead>
                   <TableHead className="text-right">Discount</TableHead>
                   <TableHead>Quality</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -151,7 +162,6 @@ const ResearchPage: React.FC = () => {
                       <TableCell className="text-right"><Skeleton className="h-6 w-20 ml-auto" /></TableCell>
                       <TableCell className="text-right"><Skeleton className="h-6 w-16 ml-auto" /></TableCell>
                       <TableCell><Skeleton className="h-6 w-24" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-6 w-20 ml-auto" /></TableCell>
                     </TableRow>
                   ))
                 ) : (
@@ -167,11 +177,6 @@ const ResearchPage: React.FC = () => {
                           {stock.quality}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Link href={`/?symbol=${stock.symbol}`} className="text-[#2A3E5C] hover:text-[#1A2942] hover:underline">
-                          Analyze
-                        </Link>
-                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -181,8 +186,10 @@ const ResearchPage: React.FC = () => {
           
           <div className="mt-6 text-xs text-neutral-500">
             <p>Last updated: {lastUpdated}</p>
+            {cacheExpiration && <p>Data refreshes automatically: {cacheExpiration}</p>}
             <p>Discount percentages represent the difference between current market price and estimated intrinsic value.</p>
             <p>Quality ratings are based on financial stability, competitive position, and historical performance.</p>
+            <p className="mt-2 font-medium">Data is updated weekly to minimize API usage. Use the refresh button for latest values.</p>
           </div>
         </CardContent>
       </Card>
