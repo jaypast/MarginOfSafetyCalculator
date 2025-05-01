@@ -3,20 +3,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Link } from 'wouter';
 import { formatCurrency } from '@/lib/utils';
-import { AlertTriangle } from 'lucide-react';
-import { Loader2 } from 'lucide-react';
-
-// Define the stock research entry type
-interface ResearchStock {
-  symbol: string;
-  name: string;
-  price: number;
-  intrinsicValue: number;
-  discount: number;
-  quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative';
-}
+import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ResearchStock } from '@/types/research';
+import { getCachedResearchData, saveResearchDataToCache, getCacheExpirationDate, getCacheLastUpdated } from '@/lib/researchCache';
+import { calculateIntrinsicValue, calculateDiscount } from '@/lib/researchCalculations';
 
 // Symbols we want to analyze
 const STOCK_SYMBOLS = [
@@ -28,13 +20,28 @@ const ResearchPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [stocks, setStocks] = useState<ResearchStock[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [cacheExpiration, setCacheExpiration] = useState<string>('');
+  const [forceRefresh, setForceRefresh] = useState(false);
 
-  // Fetch real stock data from our API
+  // Fetch stock data, using cache when available
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       
       try {
+        // Check if we have valid cached data
+        const { data: cachedData, needsRefresh } = getCachedResearchData();
+        
+        // Use cached data if available and not forcing refresh
+        if (cachedData && !needsRefresh && !forceRefresh) {
+          setStocks(cachedData);
+          setLastUpdated(getCacheLastUpdated());
+          setCacheExpiration(getCacheExpirationDate());
+          setLoading(false);
+          return;
+        }
+        
+        // If we need to fetch fresh data
         const stockPromises = STOCK_SYMBOLS.map(async (symbol) => {
           const response = await fetch(`/api/stock/${symbol}`);
           if (!response.ok) {
@@ -42,23 +49,18 @@ const ResearchPage: React.FC = () => {
           }
           const stockData = await response.json();
           
-          // Calculate intrinsic value (using simplified DCF calculation)
-          // In a real app, we'd use more sophisticated valuation methods
-          const growthRate = stockData.growthRate;
-          const eps = stockData.eps;
-          const peRatio = Math.min(stockData.peRatio * 0.9, 20); // Cap P/E for conservative estimate
+          // Calculate intrinsic value using the same methods as the home page
+          const intrinsicValue = calculateIntrinsicValue(stockData);
           
-          let intrinsicValue = eps * (1 + growthRate / 100) * peRatio;
-          intrinsicValue = Math.max(stockData.price * 0.8, intrinsicValue); // Prevent extreme undervaluation
-          
-          const discount = ((intrinsicValue - stockData.price) / intrinsicValue) * 100;
+          // Calculate discount percentage
+          const discount = calculateDiscount(stockData.price, intrinsicValue);
           
           return {
             symbol: stockData.symbol,
             name: stockData.name,
             price: stockData.price,
             intrinsicValue: intrinsicValue,
-            discount: Math.max(0, discount), // Only show positive discounts (undervalued)
+            discount: discount,
             quality: stockData.companyQuality || 'Average'
           };
         });
@@ -71,8 +73,16 @@ const ResearchPage: React.FC = () => {
           .sort((a, b) => b.discount - a.discount)
           .slice(0, 10); // Limit to top 10
         
+        // Save to cache and update state
+        saveResearchDataToCache(sortedStocks);
         setStocks(sortedStocks);
-        setLastUpdated(new Date().toLocaleString());
+        setLastUpdated(getCacheLastUpdated());
+        setCacheExpiration(getCacheExpirationDate());
+        
+        // Reset force refresh flag
+        if (forceRefresh) {
+          setForceRefresh(false);
+        }
       } catch (error) {
         console.error('Error fetching research data:', error);
       } finally {
@@ -81,7 +91,7 @@ const ResearchPage: React.FC = () => {
     };
 
     fetchData();
-  }, []);
+  }, [forceRefresh]);
 
   const getQualityBadgeColor = (quality: string) => {
     switch (quality) {
