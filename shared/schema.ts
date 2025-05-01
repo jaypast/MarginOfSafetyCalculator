@@ -57,6 +57,7 @@ export const stockResponseSchema = z.object({
   revenueGrowth: z.number(),
   earningsStability: z.string(),
   competitivePosition: z.string(),
+  lastUpdated: z.string().optional(), // Date when the financial data was last updated
   error: z.boolean().optional(),
   errorMessage: z.string().optional(),
 });

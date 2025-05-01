@@ -12,6 +12,7 @@ export interface StockData {
   revenueGrowth: number;
   earningsStability: string;
   competitivePosition: string;
+  lastUpdated?: string; // Date when the data was last updated
   error?: boolean;
   errorMessage?: string;
 }
