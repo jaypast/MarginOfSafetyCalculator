@@ -6,6 +6,7 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import Feedback from "@/pages/Feedback";
 import Admin from "@/pages/Admin";
+import ResearchPage from "@/pages/ResearchPage";
 
 function Router() {
   return (
@@ -19,6 +20,9 @@ function Router() {
             <Link href="/" className="hover:underline">
               Home
             </Link>
+            <Link href="/research" className="hover:underline">
+              Research
+            </Link>
             <Link href="/feedback" className="hover:underline">
               Feedback
             </Link>
@@ -29,6 +33,7 @@ function Router() {
       <div className="min-h-screen">
         <Switch>
           <Route path="/" component={Home} />
+          <Route path="/research" component={ResearchPage} />
           <Route path="/feedback" component={Feedback} />
           <Route path="/admin" component={Admin} />
           <Route component={NotFound} />
