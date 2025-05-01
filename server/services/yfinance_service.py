@@ -243,6 +243,9 @@ def get_stock_data(symbol):
                 except Exception as e:
                     print(f"Failed to adjust Toyota calculations: {str(e)}", file=sys.stderr)
             
+        # Add current timestamp to indicate when the data was last fetched
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
         response = {
             "symbol": symbol.upper(),
             "name": name,
@@ -256,7 +259,8 @@ def get_stock_data(symbol):
             "currentRatio": current_ratio,
             "revenueGrowth": revenue_growth,
             "earningsStability": earnings_stability,
-            "competitivePosition": competitive_position
+            "competitivePosition": competitive_position,
+            "lastUpdated": current_time
         }
         
         # Return as JSON string

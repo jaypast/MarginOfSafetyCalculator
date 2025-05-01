@@ -33,10 +33,15 @@ const KeyMetrics: React.FC<KeyMetricsProps> = ({
   
   return (
     <div className="bg-white rounded-lg shadow-sm p-6 border border-neutral-200">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col mb-4">
         <h2 className="text-xl font-semibold text-[#1A2942]">
           Key Metrics {stockData && <span className="text-sm font-normal">- {stockData.name}</span>}
         </h2>
+        {stockData?.lastUpdated && (
+          <div className="text-xs text-neutral-500 mt-1">
+            Data as of: {stockData.lastUpdated}
+          </div>
+        )}
       </div>
       
       <div className="grid grid-cols-2 gap-4">
