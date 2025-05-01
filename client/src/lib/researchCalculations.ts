@@ -71,6 +71,17 @@ export function calculateIntrinsicValue(stockData: StockData): number {
   // Use the exact same averaging function as the calculator
   const avgResult = calculateAverageValuation(results);
   
+  // Add debugging for GOOGL
+  if (stockData.symbol === 'GOOGL') {
+    console.log('GOOGL Calculation Details:', {
+      symbol: stockData.symbol,
+      dcfValue,
+      peValue,
+      grahamValue,
+      avgValue: avgResult.intrinsicValue
+    });
+  }
+  
   // Return the average intrinsic value, which is what's shown at the top of the calculator
   return avgResult.intrinsicValue;
 }
