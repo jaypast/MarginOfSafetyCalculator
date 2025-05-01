@@ -43,41 +43,52 @@ export function calculateIntrinsicValue(stockData: StockData): number {
   const grahamDiscountPremium = calculateDiscountPremium(stockData.price, grahamValue);
   const grahamBuyBelowStatus = calculateBuyBelowStatus(stockData.price, grahamBuyBelow);
   
-  // Create the same ValuationResult[] array used in the calculator
-  const results: ValuationResult[] = [
-    {
-      method: 'DCF Analysis',
-      intrinsicValue: dcfValue,
-      buyBelow: dcfBuyBelow,
-      discountPremium: dcfDiscountPremium,
-      buyBelowStatus: dcfBuyBelowStatus
-    },
-    {
-      method: 'P/E Based',
-      intrinsicValue: peValue,
-      buyBelow: peBuyBelow,
-      discountPremium: peDiscountPremium,
-      buyBelowStatus: peBuyBelowStatus
-    },
-    {
-      method: 'Graham Formula',
-      intrinsicValue: grahamValue,
-      buyBelow: grahamBuyBelow,
-      discountPremium: grahamDiscountPremium,
-      buyBelowStatus: grahamBuyBelowStatus
-    }
-  ];
+  // Create filtered results array with only valid valuations (positive values)
+  // This is the key fix - we must exclude any 0 values as well, not just negative ones
+  const validValues = [];
+  if (dcfValue > 0) validValues.push({
+    method: 'DCF Analysis',
+    intrinsicValue: dcfValue,
+    buyBelow: dcfBuyBelow,
+    discountPremium: dcfDiscountPremium,
+    buyBelowStatus: dcfBuyBelowStatus
+  });
+  
+  if (peValue > 0) validValues.push({
+    method: 'P/E Based',
+    intrinsicValue: peValue,
+    buyBelow: peBuyBelow,
+    discountPremium: peDiscountPremium,
+    buyBelowStatus: peBuyBelowStatus
+  });
+  
+  if (grahamValue > 0) validValues.push({
+    method: 'Graham Formula',
+    intrinsicValue: grahamValue,
+    buyBelow: grahamBuyBelow,
+    discountPremium: grahamDiscountPremium,
+    buyBelowStatus: grahamBuyBelowStatus
+  });
+  
+  // Manual calculation for debugging
+  let manualAverage = 0;
+  if (validValues.length > 0) {
+    const sum = validValues.reduce((total, val) => total + val.intrinsicValue, 0);
+    manualAverage = sum / validValues.length;
+  }
   
   // Use the exact same averaging function as the calculator
-  const avgResult = calculateAverageValuation(results);
+  const avgResult = calculateAverageValuation(validValues);
   
   // Add debugging for GOOGL
   if (stockData.symbol === 'GOOGL') {
-    console.log('GOOGL Calculation Details:', {
+    console.log('GOOGL Calculation Details Fixed:', {
       symbol: stockData.symbol,
       dcfValue,
       peValue,
       grahamValue,
+      validMethods: validValues.length,
+      manualAverage: manualAverage.toFixed(2),
       avgValue: avgResult.intrinsicValue
     });
   }
