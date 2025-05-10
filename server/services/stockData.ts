@@ -1,15 +1,52 @@
 import { StockResponse } from '@shared/schema';
 import { getYahooFinanceData } from './yahooFinance';
+import { getRapidApiStockData } from './rapidApiFinance';
+
+// Simple in-memory cache to reduce API calls
+const stockDataCache: { [symbol: string]: { data: StockResponse, timestamp: number } } = {};
+const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes cache
 
 export async function getStockData(symbol: string): Promise<StockResponse> {
   try {
-    // Use yfinance Python integration to fetch stock data
+    // Check if we have valid cached data
+    const now = Date.now();
+    if (stockDataCache[symbol] && (now - stockDataCache[symbol].timestamp < CACHE_DURATION)) {
+      console.log(`Returning cached data for ${symbol}`);
+      return stockDataCache[symbol].data;
+    }
+    
+    // Try RapidAPI first (premium API with higher rate limits)
+    console.log(`Using RapidAPI to fetch data for ${symbol}`);
+    try {
+      const rapidApiData = await getRapidApiStockData(symbol);
+      
+      // Cache the successful response
+      stockDataCache[symbol] = {
+        data: rapidApiData,
+        timestamp: now
+      };
+      
+      return rapidApiData;
+    } catch (rapidApiError) {
+      console.log(`RapidAPI fetch failed: ${rapidApiError}`);
+      console.log(`Falling back to Yahoo Finance...`);
+    }
+    
+    // Fall back to yfinance Python integration
     console.log(`Using yfinance Python integration to fetch data for ${symbol}`);
     try {
-      return await getYahooFinanceData(symbol);
+      const yahooData = await getYahooFinanceData(symbol);
+      
+      // Cache the successful response
+      stockDataCache[symbol] = {
+        data: yahooData,
+        timestamp: now
+      };
+      
+      return yahooData;
     } catch (yfinanceError) {
       console.log(`yfinance Python integration failed: ${yfinanceError}`);
-      console.log(`Falling back to other methods...`);
+      console.log(`All data sources failed for ${symbol}`);
     }
     
     // Return an error for invalid symbols
@@ -56,18 +93,4 @@ export async function getStockData(symbol: string): Promise<StockResponse> {
       errorMessage: `Could not find stock with symbol "${symbol}". Please check if the symbol is correct.`
     } as StockResponse;
   }
-}
-
-// Function to evaluate earnings stability
-function evaluateEarningsStability(annualReports: any[]): 'High' | 'Medium' | 'Low' {
-  // In a real app, this would analyze the consistency of earnings over time
-  // For demo, we'll return 'High' stability
-  return 'High';
-}
-
-// Function to evaluate competitive position
-function evaluateCompetitivePosition(overview: any): 'Strong' | 'Good' | 'Average' {
-  // In a real app, this would analyze market share, barriers to entry, etc.
-  // For demo, we'll return 'Strong' position
-  return 'Strong';
 }
