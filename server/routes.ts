@@ -5,6 +5,7 @@ import { stockResponseSchema, insertFeedbackSchema } from "@shared/schema";
 import { getStockData } from "./services/stockData";
 import { getMarketSentiment, getMostActiveStocks, RealTimeSentiment } from "./services/marketSentiment";
 import { getHistoricalData } from "./services/yahooFinance";
+import { getRapidApiHistoricalData } from "./services/rapidApiFinance";
 import { ZodError } from "zod";
 
 // Simple admin authentication middleware
@@ -41,6 +42,15 @@ let sentimentCache: {
 const CACHE_DURATION = 5 * 60 * 1000;
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Simple in-memory cache for historical data
+  const historicalDataCache: { 
+    [key: string]: { 
+      data: any, 
+      timestamp: number 
+    } 
+  } = {};
+  const HISTORICAL_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours cache for historical data
+
   // Historical data route - must be defined before the general stock route
   app.get('/api/stock/:symbol/history', async (req, res) => {
     try {
@@ -51,13 +61,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid stock symbol' });
       }
       
-      const historicalData = await getHistoricalData(
+      // Convert parameters to strings
+      const periodStr = typeof period === 'string' ? period : '5y';
+      const intervalStr = typeof interval === 'string' ? interval : '1mo';
+      
+      // Create a cache key
+      const cacheKey = `${symbol.toUpperCase()}_${periodStr}_${intervalStr}`;
+      
+      // Check if we have valid cached data
+      const now = Date.now();
+      if (historicalDataCache[cacheKey] && (now - historicalDataCache[cacheKey].timestamp < HISTORICAL_CACHE_DURATION)) {
+        console.log(`Returning cached historical data for ${symbol}`);
+        return res.json(historicalDataCache[cacheKey].data);
+      }
+      
+      // Try RapidAPI first
+      console.log(`Trying RapidAPI for historical data of ${symbol}`);
+      try {
+        const rapidApiData = await getRapidApiHistoricalData(
+          symbol.toUpperCase(), 
+          periodStr,
+          intervalStr
+        );
+        
+        // Cache the successful response
+        historicalDataCache[cacheKey] = {
+          data: rapidApiData,
+          timestamp: now
+        };
+        
+        return res.json(rapidApiData);
+      } catch (rapidApiError) {
+        console.log(`RapidAPI historical data failed: ${rapidApiError}`);
+        console.log(`Falling back to Yahoo Finance for historical data...`);
+      }
+      
+      // Fall back to Yahoo Finance if RapidAPI fails
+      const yahooData = await getHistoricalData(
         symbol.toUpperCase(), 
-        typeof period === 'string' ? period : '5y',
-        typeof interval === 'string' ? interval : '1mo'
+        periodStr,
+        intervalStr
       );
       
-      return res.json(historicalData);
+      // Cache the successful response
+      historicalDataCache[cacheKey] = {
+        data: yahooData,
+        timestamp: now
+      };
+      
+      return res.json(yahooData);
     } catch (error) {
       console.error('Error fetching historical data:', error);
       return res.status(500).json({ 

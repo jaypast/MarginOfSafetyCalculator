@@ -8,70 +8,28 @@ if (!RAPIDAPI_KEY) {
   console.warn('RAPIDAPI_KEY is not defined. RapidAPI features will not work properly.');
 }
 
-// This API has a very high rate limit (500 requests per day) and good stock data coverage
-// It returns data very similar to Yahoo Finance
-const TWELVE_DATA_HOST = 'twelve-data1.p.rapidapi.com';
+// Yahoo Finance API via RapidAPI - higher rate limits than Twelve Data
+const YAHOO_FINANCE_HOST = 'apidojo-yahoo-finance-v1.p.rapidapi.com';
+
+// Simpler API that has more basic data but higher rate limits
+const STOCK_DATA_HOST = 'stock-data-yahoo-finance-alternative.p.rapidapi.com';
 
 /**
- * Get real-time stock data using Twelve Data API via RapidAPI
+ * Get real-time stock data using Yahoo Finance API via RapidAPI
  */
 export async function getRapidApiStockData(symbol: string): Promise<StockResponse> {
   console.log(`Fetching stock data for ${symbol} using RapidAPI`);
   
   try {
-    // Get basic quote information
-    const quoteResponse = await axios.get(`https://${TWELVE_DATA_HOST}/quote`, {
-      params: { symbol },
-      headers: {
-        'X-RapidAPI-Key': RAPIDAPI_KEY,
-        'X-RapidAPI-Host': TWELVE_DATA_HOST
-      }
-    });
-    
-    const quoteData = quoteResponse.data;
-    
-    if (!quoteData || quoteData.error) {
-      throw new Error(quoteData?.message || `Failed to fetch quote data for ${symbol}`);
+    // First try the Stock Data API (has higher rate limits)
+    try {
+      return await getStockDataApiInfo(symbol);
+    } catch (error) {
+      console.log(`Stock Data API failed, trying Yahoo Finance API: ${error}`);
     }
     
-    // Get financial ratios for more detailed analysis
-    const ratiosResponse = await axios.get(`https://${TWELVE_DATA_HOST}/financial_ratios`, {
-      params: { symbol },
-      headers: {
-        'X-RapidAPI-Key': RAPIDAPI_KEY,
-        'X-RapidAPI-Host': TWELVE_DATA_HOST
-      }
-    });
-    
-    const ratiosData = ratiosResponse.data;
-    
-    // Combine and transform the data to match our StockResponse schema
-    const stockData: StockResponse = {
-      symbol: symbol,
-      name: quoteData.name || 'Unknown',
-      price: parseFloat(quoteData.close) || 0,
-      
-      // Financial metrics - extract from different API responses
-      eps: parseFloat(ratiosData?.eps?.quarterly || 0) || 0,
-      peRatio: parseFloat(quoteData.pe_ratio) || 0,
-      fcfPerShare: calculateFcfPerShare(ratiosData),
-      growthRate: calculateGrowthRate(ratiosData),
-      roe: parseFloat(ratiosData?.roe?.quarterly || 0) || 0,
-      debtToEquity: parseFloat(ratiosData?.debt_to_equity?.quarterly || 0) || 0,
-      currentRatio: parseFloat(ratiosData?.current_ratio?.quarterly || 0) || 0,
-      revenueGrowth: parseFloat(ratiosData?.revenue_growth?.quarterly || 0) || 0,
-      
-      // Quality metrics - calculate based on available data
-      earningsStability: evaluateEarningsStability(ratiosData),
-      competitivePosition: evaluateCompetitivePosition(ratiosData),
-      
-      // Last updated timestamp
-      lastUpdated: quoteData.datetime || new Date().toISOString()
-    };
-    
-    console.log(`Successfully received RapidAPI data for ${symbol}`);
-    return stockData;
-    
+    // Fall back to Yahoo Finance API via RapidAPI
+    return await getYahooFinanceApiInfo(symbol);
   } catch (error: any) {
     console.error('Error fetching RapidAPI stock data:', error.message);
     throw new Error(`Failed to fetch data for ${symbol} via RapidAPI`);
@@ -79,7 +37,7 @@ export async function getRapidApiStockData(symbol: string): Promise<StockRespons
 }
 
 /**
- * Get historical price data using RapidAPI
+ * Get historical price data using Yahoo Finance API via RapidAPI
  */
 export async function getRapidApiHistoricalData(
   symbol: string,
@@ -89,45 +47,48 @@ export async function getRapidApiHistoricalData(
   console.log(`Fetching historical data for ${symbol} (${period}, ${interval}) using RapidAPI`);
   
   try {
-    // Convert period to interval and count for the API
-    const { apiInterval, outputInterval } = convertPeriodToInterval(interval);
-    const count = calculateTimeSeriesCount(period, apiInterval);
+    // Map our period format to Yahoo interval format
+    const { range, yahooInterval } = mapToYahooParams(period, interval);
     
-    const response = await axios.get(`https://${TWELVE_DATA_HOST}/time_series`, {
+    // Use Yahoo Finance API for historical data
+    const response = await axios.get(`https://${YAHOO_FINANCE_HOST}/stock/v3/get-historical-data`, {
       params: {
         symbol,
-        interval: apiInterval,
-        outputsize: count
+        region: 'US'
       },
       headers: {
         'X-RapidAPI-Key': RAPIDAPI_KEY,
-        'X-RapidAPI-Host': TWELVE_DATA_HOST
+        'X-RapidAPI-Host': YAHOO_FINANCE_HOST
       }
     });
     
     const data = response.data;
     
-    if (!data || data.error) {
-      throw new Error(data?.message || `Failed to fetch historical data for ${symbol}`);
+    if (!data || !data.prices || data.prices.length === 0) {
+      throw new Error(`Failed to fetch historical data for ${symbol}`);
     }
     
     // Transform data to match our HistoricalDataResponse format
-    const values = data.values || [];
-    const historicalData: HistoricalDataResponse = {
+    let historicalData: HistoricalDataResponse = {
       symbol,
       period,
-      interval: outputInterval,
-      data: values.map((item: any) => ({
-        date: item.datetime,
-        open: parseFloat(item.open),
-        high: parseFloat(item.high),
-        low: parseFloat(item.low),
-        close: parseFloat(item.close),
-        volume: parseFloat(item.volume)
-      }))
+      interval,
+      data: data.prices
+        .filter((item: any) => !item.type) // Remove splits and dividends
+        .map((item: any) => ({
+          date: new Date(item.date * 1000).toISOString().split('T')[0],
+          open: item.open || 0,
+          high: item.high || 0,
+          low: item.low || 0,
+          close: item.close || 0,
+          volume: item.volume || 0
+        }))
     };
     
-    // Sort data chronologically
+    // Filter data based on the period requested
+    historicalData.data = filterDataByPeriod(historicalData.data, period);
+    
+    // Sort data chronologically (oldest to newest)
     historicalData.data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
     console.log(`Successfully received historical data for ${symbol} from RapidAPI`);
@@ -139,28 +100,156 @@ export async function getRapidApiHistoricalData(
   }
 }
 
-// Helper functions for data transformation and analysis
+// Helper functions for API requests
 
-function calculateFcfPerShare(ratiosData: any): number {
-  // Estimate FCF per share from available data
-  // This is a simplified calculation based on operating cash flow and capital expenditures
-  const cashFlowPerShare = parseFloat(ratiosData?.cash_flow_per_share?.quarterly || 0);
-  return cashFlowPerShare > 0 ? cashFlowPerShare : 0;
+/**
+ * Get stock data from Stock Data API (higher rate limits)
+ */
+async function getStockDataApiInfo(symbol: string): Promise<StockResponse> {
+  const response = await axios.get(`https://${STOCK_DATA_HOST}/price`, {
+    params: {
+      symbol,
+      period: '1d'
+    },
+    headers: {
+      'X-RapidAPI-Key': RAPIDAPI_KEY,
+      'X-RapidAPI-Host': STOCK_DATA_HOST
+    }
+  });
+  
+  const data = response.data;
+  
+  if (!data || data.error) {
+    throw new Error(data?.message || `Failed to fetch stock data for ${symbol}`);
+  }
+  
+  // Get company profile for additional info
+  let companyData: CompanyProfile = {};
+  try {
+    const profileResponse = await axios.get(`https://${STOCK_DATA_HOST}/profile`, {
+      params: { symbol },
+      headers: {
+        'X-RapidAPI-Key': RAPIDAPI_KEY,
+        'X-RapidAPI-Host': STOCK_DATA_HOST
+      }
+    });
+    companyData = profileResponse.data || {};
+  } catch (err) {
+    console.warn(`Couldn't fetch company profile for ${symbol}, using limited data`);
+  }
+  
+  // Combine and transform the data to match our StockResponse schema
+  const stockData: StockResponse = {
+    symbol: symbol,
+    name: companyData.companyName || symbol,
+    price: data.regularMarketPrice || 0,
+    
+    // Financial metrics - extract from different API responses
+    eps: data.epsTrailingTwelveMonths || 0,
+    peRatio: data.regularMarketPriceToEarnings || 0,
+    fcfPerShare: data.freeCashflowPerShare || 0,
+    growthRate: estimateGrowthRate(data, companyData),
+    roe: data.returnOnEquity || companyData.returnOnEquity || 0,
+    debtToEquity: data.debtToEquity || companyData.debtToEquity || 0,
+    currentRatio: data.currentRatio || companyData.currentRatio || 0,
+    revenueGrowth: data.revenueGrowth || companyData.revenueGrowth || 0,
+    
+    // Quality metrics - calculate based on available data
+    earningsStability: evaluateEarningsStability(data, companyData),
+    competitivePosition: evaluateCompetitivePosition(data, companyData),
+    
+    // Last updated timestamp
+    lastUpdated: new Date().toISOString()
+  };
+  
+  console.log(`Successfully received Stock Data API data for ${symbol}`);
+  return stockData;
 }
 
-function calculateGrowthRate(ratiosData: any): number {
+/**
+ * Get stock data from Yahoo Finance API via RapidAPI (backup option)
+ */
+async function getYahooFinanceApiInfo(symbol: string): Promise<StockResponse> {
+  // Get quote information
+  const quoteResponse = await axios.get(`https://${YAHOO_FINANCE_HOST}/stock/v2/get-summary`, {
+    params: {
+      symbol,
+      region: 'US'
+    },
+    headers: {
+      'X-RapidAPI-Key': RAPIDAPI_KEY,
+      'X-RapidAPI-Host': YAHOO_FINANCE_HOST
+    }
+  });
+  
+  const quoteData = quoteResponse.data;
+  
+  if (!quoteData) {
+    throw new Error(`Failed to fetch quote data for ${symbol}`);
+  }
+  
+  // Extract key information from the complex Yahoo Finance response
+  const price = quoteData.price || {};
+  const financialData = quoteData.financialData || {};
+  const defaultKeyStatistics = quoteData.defaultKeyStatistics || {};
+  
+  // Combine and transform the data to match our StockResponse schema
+  const stockData: StockResponse = {
+    symbol: symbol,
+    name: price.longName || price.shortName || symbol,
+    price: price.regularMarketPrice?.raw || 0,
+    
+    // Financial metrics
+    eps: defaultKeyStatistics.trailingEps?.raw || 0,
+    peRatio: defaultKeyStatistics.forwardPE?.raw || 0,
+    fcfPerShare: financialData.freeCashflow?.raw 
+      ? financialData.freeCashflow.raw / (defaultKeyStatistics.sharesOutstanding?.raw || 1)
+      : 0,
+    growthRate: financialData.revenueGrowth?.raw || defaultKeyStatistics.earningsGrowth?.raw || 0,
+    roe: financialData.returnOnEquity?.raw || 0,
+    debtToEquity: financialData.debtToEquity?.raw || 0,
+    currentRatio: financialData.currentRatio?.raw || 0,
+    revenueGrowth: financialData.revenueGrowth?.raw || 0,
+    
+    // Quality metrics
+    earningsStability: evaluateEarningsStabilityYahoo(quoteData),
+    competitivePosition: evaluateCompetitivePositionYahoo(quoteData),
+    
+    // Last updated timestamp
+    lastUpdated: new Date().toISOString()
+  };
+  
+  console.log(`Successfully received Yahoo Finance API data for ${symbol}`);
+  return stockData;
+}
+
+// Company profile interface (defined outside function scope)
+interface CompanyProfile {
+  companyName?: string;
+  returnOnEquity?: number;
+  debtToEquity?: number;
+  currentRatio?: number;
+  revenueGrowth?: number;
+  grossMargin?: number;
+  operatingMargin?: number;
+  earningsGrowth?: number;
+  [key: string]: any; // Allow for other properties
+}
+
+// Helper functions for data transformation and analysis
+
+function estimateGrowthRate(data: any, companyData: CompanyProfile): number {
   // Estimate growth rate from available data
-  // Use earnings growth rate if available, otherwise revenue growth rate
-  const earningsGrowth = parseFloat(ratiosData?.earnings_growth?.quarterly || 0);
-  const revenueGrowth = parseFloat(ratiosData?.revenue_growth?.quarterly || 0);
+  const earningsGrowth = data.earningsGrowth || companyData.earningsGrowth || 0;
+  const revenueGrowth = data.revenueGrowth || companyData.revenueGrowth || 0;
   
   return earningsGrowth || revenueGrowth || 0;
 }
 
-function evaluateEarningsStability(ratiosData: any): 'High' | 'Medium' | 'Low' {
-  // Evaluate earnings stability based on ratios
-  const grossMargin = parseFloat(ratiosData?.gross_margin?.quarterly || 0);
-  const operatingMargin = parseFloat(ratiosData?.operating_margin?.quarterly || 0);
+function evaluateEarningsStability(data: any, companyData: CompanyProfile): 'High' | 'Medium' | 'Low' {
+  // Evaluate earnings stability based on available data
+  const grossMargin = data.grossMargin || companyData.grossMargin || 0;
+  const operatingMargin = data.operatingMargin || companyData.operatingMargin || 0;
   
   // High stability: good margins and consistent profitability
   if (grossMargin > 0.3 && operatingMargin > 0.15) {
@@ -176,10 +265,33 @@ function evaluateEarningsStability(ratiosData: any): 'High' | 'Medium' | 'Low' {
   return 'Low';
 }
 
-function evaluateCompetitivePosition(ratiosData: any): 'Strong' | 'Good' | 'Average' {
-  // Evaluate competitive position based on ratios
-  const roe = parseFloat(ratiosData?.roe?.quarterly || 0);
-  const operatingMargin = parseFloat(ratiosData?.operating_margin?.quarterly || 0);
+function evaluateEarningsStabilityYahoo(data: any): 'High' | 'Medium' | 'Low' {
+  const financialData = data.financialData || {};
+  
+  // Extract margins from Yahoo Finance data
+  const grossMargin = financialData.grossMargins?.raw || 0;
+  const operatingMargin = financialData.operatingMargins?.raw || 0;
+  const recommendationKey = financialData.recommendationKey;
+  
+  // High stability: good margins and strong buy/hold recommendations
+  if (grossMargin > 0.3 && operatingMargin > 0.15 && 
+      (recommendationKey === 'buy' || recommendationKey === 'strong_buy')) {
+    return 'High';
+  }
+  
+  // Medium stability: decent margins
+  if (grossMargin > 0.2 && operatingMargin > 0.08) {
+    return 'Medium';
+  }
+  
+  // Low stability: poor or inconsistent margins
+  return 'Low';
+}
+
+function evaluateCompetitivePosition(data: any, companyData: CompanyProfile): 'Strong' | 'Good' | 'Average' {
+  // Evaluate competitive position based on available data
+  const roe = data.returnOnEquity || companyData.returnOnEquity || 0;
+  const operatingMargin = data.operatingMargin || companyData.operatingMargin || 0;
   
   // Strong position: high returns and margins
   if (roe > 0.20 && operatingMargin > 0.15) {
@@ -195,30 +307,82 @@ function evaluateCompetitivePosition(ratiosData: any): 'Strong' | 'Good' | 'Aver
   return 'Average';
 }
 
-function convertPeriodToInterval(interval: string): { apiInterval: string, outputInterval: string } {
-  // Convert our interval format to the API's interval format
-  switch (interval) {
-    case '1d':
-      return { apiInterval: '1day', outputInterval: '1d' };
-    case '1wk':
-      return { apiInterval: '1week', outputInterval: '1wk' };
-    case '1mo':
-      return { apiInterval: '1month', outputInterval: '1mo' };
-    default:
-      return { apiInterval: '1month', outputInterval: '1mo' };
+function evaluateCompetitivePositionYahoo(data: any): 'Strong' | 'Good' | 'Average' {
+  const financialData = data.financialData || {};
+  
+  // Extract key metrics from Yahoo Finance data
+  const roe = financialData.returnOnEquity?.raw || 0;
+  const operatingMargin = financialData.operatingMargins?.raw || 0;
+  const recommendationMean = financialData.recommendationMean?.raw || 3;
+  
+  // Strong position: high returns, margins, and analyst recommendations
+  if (roe > 0.20 && operatingMargin > 0.15 && recommendationMean < 2) {
+    return 'Strong';
   }
+  
+  // Good position: solid returns and margins
+  if (roe > 0.12 && operatingMargin > 0.10 && recommendationMean < 2.5) {
+    return 'Good';
+  }
+  
+  // Average position: adequate returns and margins
+  return 'Average';
 }
 
-function calculateTimeSeriesCount(period: string, interval: string): number {
-  // Calculate the number of data points needed based on period and interval
+function mapToYahooParams(period: string, interval: string): { range: string, yahooInterval: string } {
+  // Convert our period format to Yahoo Finance format
+  let range = '5y';
+  let yahooInterval = '1mo';
+  
   switch (period) {
     case '5y':
-      return interval === '1day' ? 1250 : interval === '1week' ? 260 : 60;
+      range = '5y';
+      break;
     case '2y':
-      return interval === '1day' ? 500 : interval === '1week' ? 104 : 24;
+      range = '2y';
+      break;
     case '1y':
-      return interval === '1day' ? 250 : interval === '1week' ? 52 : 12;
+      range = '1y';
+      break;
     default:
-      return 60; // Default to 5 years of monthly data
+      range = '5y';
   }
+  
+  switch (interval) {
+    case '1d':
+      yahooInterval = '1d';
+      break;
+    case '1wk':
+      yahooInterval = '1wk';
+      break;
+    case '1mo':
+      yahooInterval = '1mo';
+      break;
+    default:
+      yahooInterval = '1mo';
+  }
+  
+  return { range, yahooInterval };
+}
+
+function filterDataByPeriod(data: any[], period: string): any[] {
+  // Filter data based on the requested period
+  const now = new Date();
+  let cutoffDate = new Date();
+  
+  switch (period) {
+    case '5y':
+      cutoffDate.setFullYear(now.getFullYear() - 5);
+      break;
+    case '2y':
+      cutoffDate.setFullYear(now.getFullYear() - 2);
+      break;
+    case '1y':
+      cutoffDate.setFullYear(now.getFullYear() - 1);
+      break;
+    default:
+      cutoffDate.setFullYear(now.getFullYear() - 5);
+  }
+  
+  return data.filter(item => new Date(item.date) >= cutoffDate);
 }
