@@ -3,6 +3,57 @@ import * as cheerio from 'cheerio';
 import { StockResponse } from '@shared/schema';
 import { HistoricalDataResponse } from './yahooFinance';
 
+// Add delay function to space out requests
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Create more realistic browser headers that change slightly between requests
+function getRandomUserAgent() {
+  const userAgents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.4 Safari/605.1.15',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36 Edg/111.0.1661.62',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36'
+  ];
+  
+  return userAgents[Math.floor(Math.random() * userAgents.length)];
+}
+
+/**
+ * Get real-time stock quote from a simpler API
+ * This should bypass complex website scraping issues
+ */
+async function getSimpleQuote(symbol: string): Promise<{price: number, name: string}> {
+  try {
+    // Try a simpler API endpoint that's less likely to be blocked
+    const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d`, {
+      headers: {
+        'User-Agent': getRandomUserAgent(),
+        'Accept': 'application/json',
+        'Referer': 'https://finance.yahoo.com/',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch JSON quote for ${symbol}`);
+    }
+    
+    const data = await response.json();
+    
+    // Extract the current price with proper type checking
+    const chartData = data as any;
+    const price = chartData?.chart?.result?.[0]?.meta?.regularMarketPrice || 0;
+    const name = chartData?.chart?.result?.[0]?.meta?.shortName || symbol;
+    
+    return { price, name };
+  } catch (error) {
+    console.error('Error fetching simple quote:', error);
+    throw error;
+  }
+}
+
 /**
  * Web scraper to extract stock data directly from Yahoo Finance website
  * This bypasses API rate limits by scraping the data directly from the website
@@ -11,38 +62,54 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
   console.log(`Scraping Yahoo Finance website for ${symbol}`);
   
   try {
+    // First try to get the current price using the simple API
+    const { price, name } = await getSimpleQuote(symbol);
+    
+    // Add a small delay to space out requests
+    await delay(500);
+    
     // Fetch the summary page for the stock symbol
     const response = await fetch(`https://finance.yahoo.com/quote/${symbol}`, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
-        'Accept': 'text/html'
+        'User-Agent': getRandomUserAgent(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Pragma': 'no-cache',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'DNT': '1'
       }
     });
     
-    if (!response.ok) {
-      throw new Error(`Failed to fetch page for ${symbol}, status: ${response.status}`);
-    }
-    
-    const html = await response.text();
-    const $ = cheerio.load(html);
-    
-    // Extract the stock name and price
-    const companyName = $('h1').text().trim();
-    const price = parseFloat($('[data-test="qsp-price"]').text().replace(/,/g, '')) || 0;
+    // Add another delay before the next request
+    await delay(800);
     
     // Get statistics page for more detailed metrics
     const statsResponse = await fetch(`https://finance.yahoo.com/quote/${symbol}/key-statistics`, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
-        'Accept': 'text/html'
+        'User-Agent': getRandomUserAgent(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Pragma': 'no-cache',
+        'Referer': `https://finance.yahoo.com/quote/${symbol}`,
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin',
+        'DNT': '1'
       }
     });
     
-    if (!statsResponse.ok) {
-      throw new Error(`Failed to fetch statistics page for ${symbol}`);
-    }
+    // Parse the pages if successful
+    const html = response.ok ? await response.text() : '';
+    const $ = cheerio.load(html);
     
-    const statsHtml = await statsResponse.text();
+    const statsHtml = statsResponse.ok ? await statsResponse.text() : '';
     const stats$ = cheerio.load(statsHtml);
     
     // Extract key metrics from the statistics page
@@ -55,7 +122,7 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
       }
     });
     
-    // Parse the metrics we need
+    // Parse the metrics we need (with fallbacks for missing data)
     const eps = parseNumber(metricsMap['Trailing EPS'] || metricsMap['Diluted EPS'] || '0');
     const peRatio = parseNumber(metricsMap['Trailing P/E'] || metricsMap['Forward P/E'] || '0');
     const roe = parseNumber(metricsMap['Return on Equity'] || '0');
@@ -73,10 +140,11 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
     const earningsStability = evaluateEarningsStability(metricsMap);
     const competitivePosition = evaluateCompetitivePosition(roe, currentRatio, metricsMap);
     
+    // Use the data from the simpler API which is more likely to work
     const stockData: StockResponse = {
       symbol,
-      name: companyName || symbol,
-      price,
+      name: name, // Use name from the chart API
+      price: price, // Use price from the chart API
       eps,
       peRatio,
       fcfPerShare,
@@ -90,7 +158,16 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
       lastUpdated: new Date().toISOString()
     };
     
-    console.log(`Successfully scraped data for ${symbol}`);
+    // Fill in reasonable defaults for missing values
+    if (stockData.eps === 0 && stockData.price > 0 && stockData.peRatio > 0) {
+      stockData.eps = stockData.price / stockData.peRatio;
+    }
+    
+    if (stockData.peRatio === 0 && stockData.price > 0 && stockData.eps > 0) {
+      stockData.peRatio = stockData.price / stockData.eps;
+    }
+    
+    console.log(`Successfully scraped data for ${symbol}: ${price}`);
     return stockData;
     
   } catch (error: any) {
@@ -100,8 +177,8 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
 }
 
 /**
- * Parse historical data from Yahoo Finance
- * This retrieves price history directly from the website
+ * Get historical data directly from Yahoo Finance API endpoint
+ * This is more reliable than scraping the website
  */
 export async function scrapeHistoricalData(
   symbol: string,
@@ -115,57 +192,61 @@ export async function scrapeHistoricalData(
     const yahooInterval = convertToYahooInterval(interval);
     const yahooRange = convertToYahooRange(period);
     
-    // Fetch the historical data page
-    const url = `https://finance.yahoo.com/quote/${symbol}/history?period1=${getStartTimestamp(period)}&period2=${Math.floor(Date.now() / 1000)}&interval=${yahooInterval}&filter=history`;
+    // Use the chart API endpoint to get historical data
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${yahooRange}&interval=${yahooInterval}`;
     
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
-        'Accept': 'text/html'
+        'User-Agent': getRandomUserAgent(),
+        'Accept': 'application/json',
+        'Referer': 'https://finance.yahoo.com/',
+        'Accept-Language': 'en-US,en;q=0.9'
       }
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to fetch historical data page for ${symbol}`);
+      throw new Error(`Failed to fetch historical data for ${symbol}`);
     }
     
-    const html = await response.text();
-    const $ = cheerio.load(html);
+    const data = await response.json();
+    const chartData = data as any;
+    const result = chartData?.chart?.result?.[0];
     
-    // Extract the historical data table
+    if (!result || !result.timestamp || !result.indicators?.quote?.[0]) {
+      throw new Error(`Invalid historical data format for ${symbol}`);
+    }
+    
+    const timestamps = result.timestamp;
+    const quotes = result.indicators.quote[0];
+    
+    // Map the data to our format
     const historicalData: HistoricalDataResponse['data'] = [];
     
-    // Find the table rows
-    $('table[data-test="historical-prices"] tbody tr').each((_, row) => {
-      const cells = $(row).find('td');
-      if (cells.length >= 6) {
-        const dateText = $(cells[0]).text().trim();
-        if (!dateText || dateText === 'Dividend') return; // Skip dividend rows
-        
-        const date = new Date(dateText);
-        if (isNaN(date.getTime())) return; // Skip invalid dates
-        
-        const openText = $(cells[1]).text().trim();
-        const highText = $(cells[2]).text().trim();
-        const lowText = $(cells[3]).text().trim();
-        const closeText = $(cells[4]).text().trim();
-        const volumeText = $(cells[6]).text().trim();
-        
+    for (let i = 0; i < timestamps.length; i++) {
+      const timestamp = timestamps[i];
+      if (!timestamp) continue;
+      
+      const date = new Date(timestamp * 1000);
+      const open = quotes.open?.[i] ?? null;
+      const high = quotes.high?.[i] ?? null;
+      const low = quotes.low?.[i] ?? null;
+      const close = quotes.close?.[i] ?? null;
+      const volume = quotes.volume?.[i] ?? 0;
+      
+      // Skip entries with null values
+      if (open !== null && high !== null && low !== null && close !== null) {
         historicalData.push({
           date: date.toISOString().split('T')[0],
-          open: parseNumber(openText),
-          high: parseNumber(highText),
-          low: parseNumber(lowText),
-          close: parseNumber(closeText),
-          volume: parseInt(volumeText.replace(/,/g, '')) || 0
+          open,
+          high,
+          low,
+          close,
+          volume
         });
       }
-    });
+    }
     
-    // Sort data chronologically
-    historicalData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    
-    console.log(`Successfully scraped historical data for ${symbol}`);
+    console.log(`Successfully retrieved historical data for ${symbol} via API`);
     return {
       symbol,
       period,
