@@ -1,6 +1,8 @@
 import { StockResponse } from '@shared/schema';
 import { getYahooFinanceData } from './yahooFinance';
 import { getRapidApiStockData } from './rapidApiFinance';
+import { scrapeStockData } from './webScraper';
+import { getFallbackStockData } from './fallbackData';
 
 // Simple in-memory cache to reduce API calls
 const stockDataCache: { [symbol: string]: { data: StockResponse, timestamp: number } } = {};
@@ -46,11 +48,42 @@ export async function getStockData(symbol: string): Promise<StockResponse> {
       return yahooData;
     } catch (yfinanceError) {
       console.log(`yfinance Python integration failed: ${yfinanceError}`);
-      console.log(`All data sources failed for ${symbol}`);
+      console.log(`Trying web scraping as fallback...`);
     }
     
-    // Return an error for invalid symbols
-    console.log(`Stock lookup failed, returning error for ${symbol}`);
+    // Try web scraping as fallback when APIs fail
+    try {
+      console.log(`Web scraping Yahoo Finance for ${symbol}...`);
+      const scrapedData = await scrapeStockData(symbol);
+      
+      // Cache the successful response
+      stockDataCache[symbol] = {
+        data: scrapedData,
+        timestamp: now
+      };
+      
+      return scrapedData;
+    } catch (scrapeError) {
+      console.log(`Web scraping failed: ${scrapeError}`);
+      console.log(`Checking for static fallback data for ${symbol}...`);
+    }
+    
+    // Try to use static fallback data for common stocks when all APIs and scraping fail
+    const fallbackData = getFallbackStockData(symbol);
+    if (fallbackData) {
+      console.log(`Using static fallback data for ${symbol} as all other methods failed`);
+      
+      // Cache the fallback data (but with a shorter duration)
+      stockDataCache[symbol] = {
+        data: fallbackData,
+        timestamp: now - (10 * 60 * 1000) // Expires in 5 minutes instead of 15
+      };
+      
+      return fallbackData;
+    }
+    
+    // No data available from any source, return an error
+    console.log(`All data sources failed for ${symbol}, no fallback available`);
     return {
       symbol: symbol,
       name: 'Error',
@@ -71,10 +104,26 @@ export async function getStockData(symbol: string): Promise<StockResponse> {
   } catch (error) {
     console.error('Error aggregating stock data:', error);
     
-    // Return an error response that the frontend can handle
-    console.log(`API error, returning error for ${symbol}`);
+    // Try other fallbacks even in case of unexpected errors
     
-    // Create an error response with a clear message
+    // First try web scraping
+    try {
+      console.log(`Attempting web scraping after error for ${symbol}...`);
+      const scrapedData = await scrapeStockData(symbol);
+      return scrapedData;
+    } catch (scrapeError) {
+      console.log(`Web scraping after error failed: ${scrapeError}`);
+    }
+    
+    // Then try static fallback data
+    const fallbackData = getFallbackStockData(symbol);
+    if (fallbackData) {
+      console.log(`Using static fallback data after unexpected error for ${symbol}`);
+      return fallbackData;
+    }
+    
+    // Return an error response as a last resort
+    console.log(`All recovery methods failed, returning error for ${symbol}`);
     return {
       symbol: symbol,
       name: 'Error',

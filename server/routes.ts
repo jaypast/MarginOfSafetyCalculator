@@ -6,6 +6,8 @@ import { getStockData } from "./services/stockData";
 import { getMarketSentiment, getMostActiveStocks, RealTimeSentiment } from "./services/marketSentiment";
 import { getHistoricalData } from "./services/yahooFinance";
 import { getRapidApiHistoricalData } from "./services/rapidApiFinance";
+import { scrapeHistoricalData } from "./services/webScraper";
+import { getFallbackHistoricalData } from "./services/fallbackData";
 import { ZodError } from "zod";
 
 // Simple admin authentication middleware
@@ -96,20 +98,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`Falling back to Yahoo Finance for historical data...`);
       }
       
-      // Fall back to Yahoo Finance if RapidAPI fails
-      const yahooData = await getHistoricalData(
-        symbol.toUpperCase(), 
+      // Try Yahoo Finance as second option
+      try {
+        const yahooData = await getHistoricalData(
+          symbol.toUpperCase(), 
+          periodStr,
+          intervalStr
+        );
+        
+        // Cache the successful response
+        historicalDataCache[cacheKey] = {
+          data: yahooData,
+          timestamp: now
+        };
+        
+        return res.json(yahooData);
+      } catch (yahooError) {
+        console.log(`Yahoo Finance historical data failed: ${yahooError}`);
+        console.log(`Trying web scraping for historical data...`);
+      }
+      
+      // Try web scraping as third option
+      try {
+        console.log(`Web scraping historical data for ${symbol}...`);
+        const scrapedData = await scrapeHistoricalData(
+          symbol.toUpperCase(),
+          periodStr,
+          intervalStr
+        );
+        
+        // Cache the successful response
+        historicalDataCache[cacheKey] = {
+          data: scrapedData,
+          timestamp: now
+        };
+        
+        return res.json(scrapedData);
+      } catch (scrapeError) {
+        console.log(`Web scraping historical data failed: ${scrapeError}`);
+        console.log(`Trying fallback data for ${symbol}...`);
+      }
+      
+      // Try static fallback data as last resort
+      const fallbackData = getFallbackHistoricalData(
+        symbol.toUpperCase(),
         periodStr,
         intervalStr
       );
       
-      // Cache the successful response
-      historicalDataCache[cacheKey] = {
-        data: yahooData,
-        timestamp: now
-      };
+      if (fallbackData) {
+        console.log(`Using fallback historical data for ${symbol}`);
+        // Cache the fallback data (with shorter expiration)
+        historicalDataCache[cacheKey] = {
+          data: fallbackData,
+          timestamp: now - (20 * 60 * 1000) // Expires in 4 hours instead of 24
+        };
+        
+        return res.json(fallbackData);
+      }
       
-      return res.json(yahooData);
+      // If all methods fail, return an error
+      return res.status(404).json({
+        message: `Could not retrieve historical data for ${symbol}`
+      });
     } catch (error) {
       console.error('Error fetching historical data:', error);
       return res.status(500).json({ 
