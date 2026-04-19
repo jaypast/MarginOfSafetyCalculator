@@ -77,7 +77,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(historicalDataCache[cacheKey].data);
       }
       
-      // Try RapidAPI first
+      // Try yfinance (Python) first — most reliable
+      console.log(`Trying yfinance for historical data of ${symbol}`);
+      try {
+        const yahooData = await getHistoricalData(
+          symbol.toUpperCase(),
+          periodStr,
+          intervalStr
+        );
+
+        historicalDataCache[cacheKey] = { data: yahooData, timestamp: now };
+        return res.json(yahooData);
+      } catch (yahooError) {
+        console.log(`yfinance historical data failed: ${yahooError}`);
+        console.log(`Falling back to RapidAPI for historical data of ${symbol}...`);
+      }
+
+      // Fall back to RapidAPI
       console.log(`Trying RapidAPI for historical data of ${symbol}`);
       try {
         const rapidApiData = await getRapidApiHistoricalData(
@@ -86,36 +102,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           intervalStr
         );
         
-        // Cache the successful response
-        historicalDataCache[cacheKey] = {
-          data: rapidApiData,
-          timestamp: now
-        };
-        
+        historicalDataCache[cacheKey] = { data: rapidApiData, timestamp: now };
         return res.json(rapidApiData);
       } catch (rapidApiError) {
         console.log(`RapidAPI historical data failed: ${rapidApiError}`);
-        console.log(`Falling back to Yahoo Finance for historical data...`);
-      }
-      
-      // Try Yahoo Finance as second option
-      try {
-        const yahooData = await getHistoricalData(
-          symbol.toUpperCase(), 
-          periodStr,
-          intervalStr
-        );
-        
-        // Cache the successful response
-        historicalDataCache[cacheKey] = {
-          data: yahooData,
-          timestamp: now
-        };
-        
-        return res.json(yahooData);
-      } catch (yahooError) {
-        console.log(`Yahoo Finance historical data failed: ${yahooError}`);
-        console.log(`Trying web scraping for historical data...`);
+        console.log(`Trying web scraping for historical data of ${symbol}...`);
       }
       
       // Try web scraping as third option

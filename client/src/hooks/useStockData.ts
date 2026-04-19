@@ -46,6 +46,18 @@ export const useStockData = () => {
     },
     onSuccess: (data) => {
       if (!data) return;
+
+      // If the API returned an error response, treat it as a failure
+      if (data.error) {
+        toast({
+          title: "Stock not found",
+          description: data.errorMessage || `Could not load data for "${data.symbol}". Please check the ticker symbol.`,
+          variant: "destructive",
+        });
+        // Remove errored entry from cache so the user can retry immediately
+        queryClient.removeQueries({ queryKey: ['/api/stock', data.symbol] });
+        return;
+      }
       
       // Prefetch historical data for better UX
       queryClient.prefetchQuery({
