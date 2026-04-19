@@ -16,6 +16,7 @@ import { StockData, ValuationResult, CalculationMethod, ValuationParams, MarginO
 import { formatCurrency, isETF, getInvestmentRecommendation } from '@/lib/utils';
 import { generateCalculationsPDF } from '@/utils/pdfGenerator';
 import { calculateDiscountPremium } from '@/lib/calculators';
+import EntryTimingBanner from './EntryTimingBanner';
 
 interface ValuationResultsProps {
   valuationResults: ValuationResult[];
@@ -250,8 +251,13 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
             </div>
           </>
         )}
-        
-        {/* Chart section removed for better performance and reliability */}
+
+        {/* Entry Timing Warning */}
+        {!isSpecialCase && !etfDetected && valuationResults.length > 0 && (
+          <div className="mb-4">
+            <EntryTimingBanner />
+          </div>
+        )}
         
         {/* Method Comparison */}
         <div>
