@@ -1,20 +1,26 @@
 import { StockResponse } from '@shared/schema';
 import { getYahooFinanceData } from './yahooFinance';
 import { getRapidApiStockData } from './rapidApiFinance';
+import { getAlphaVantageData } from './alphaVantage';
 import { scrapeStockData } from './webScraper';
 import { getFallbackStockData } from './fallbackData';
 
-// In-memory cache: symbol → { data, timestamp }
+// ---------------------------------------------------------------------------
+// Cache
+// ---------------------------------------------------------------------------
 const stockDataCache: { [symbol: string]: { data: StockResponse; timestamp: number } } = {};
 const CACHE_DURATION = 20 * 60 * 1000; // 20 minutes
 
-// In-flight deduplication: symbol → pending promise
-// If a request for the same symbol is already in-flight, we return the same promise
-// instead of spawning a duplicate API call (which causes rate-limit cascades).
+// ---------------------------------------------------------------------------
+// In-flight deduplication — concurrent requests for the same symbol share
+// one upstream call instead of hammering every API simultaneously.
+// ---------------------------------------------------------------------------
 const pendingRequests: Map<string, Promise<StockResponse>> = new Map();
 
-// Concurrency limiter for yfinance Python subprocess calls.
-// yfinance itself is rate-limited by Yahoo, so we cap simultaneous calls.
+// ---------------------------------------------------------------------------
+// yfinance concurrency limiter — Yahoo rate-limits the Python process when
+// too many subprocesses run at the same time.
+// ---------------------------------------------------------------------------
 const MAX_CONCURRENT_YFINANCE = 3;
 let activeYfinanceCalls = 0;
 const yfinanceQueue: Array<() => void> = [];
@@ -50,62 +56,137 @@ async function fetchYfinanceWithQueue(symbol: string): Promise<StockResponse> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Data quality gate
+// A response is considered "complete" when:
+//   • price  > 0   (we know the current market price)
+//   • at least one earnings/cash-flow metric is non-zero
+//     (eps OR fcfPerShare — needed for any valuation method to work)
+// ---------------------------------------------------------------------------
+function isDataComplete(data: StockResponse): boolean {
+  if (!data || data.error) return false;
+  if (!data.price || data.price <= 0) return false;
+  if ((!data.eps || data.eps === 0) && (!data.fcfPerShare || data.fcfPerShare === 0)) return false;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Metric derivation — fills in missing values from whatever IS present.
+// Applied after every source attempt before the quality gate runs.
+// Works for ANY stock; no hardcoded lists.
+// ---------------------------------------------------------------------------
+function deriveMetrics(data: StockResponse): StockResponse {
+  const d = { ...data };
+
+  // 1. EPS from P/E ratio
+  if ((!d.eps || d.eps === 0) && d.peRatio > 0 && d.price > 0) {
+    d.eps = parseFloat((d.price / d.peRatio).toFixed(4));
+    console.log(`  Derived EPS for ${d.symbol}: ${d.eps} (price=${d.price} / PE=${d.peRatio})`);
+  }
+
+  // 2. P/E from EPS
+  if ((!d.peRatio || d.peRatio === 0) && d.eps > 0 && d.price > 0) {
+    d.peRatio = parseFloat((d.price / d.eps).toFixed(2));
+  }
+
+  // 3. FCF per share from EPS (conservative 75% proxy)
+  if ((!d.fcfPerShare || d.fcfPerShare === 0) && d.eps > 0) {
+    d.fcfPerShare = parseFloat((d.eps * 0.75).toFixed(4));
+    console.log(`  Derived FCF/share for ${d.symbol}: ${d.fcfPerShare} (EPS × 0.75)`);
+  }
+
+  // 4. Growth rate: prefer earnings growth, fall back to revenue growth,
+  //    then a conservative long-run baseline of 8%
+  if (!d.growthRate || d.growthRate === 0) {
+    if (d.revenueGrowth && d.revenueGrowth !== 0) {
+      d.growthRate = d.revenueGrowth;
+      console.log(`  Derived growthRate for ${d.symbol}: ${d.growthRate} (from revenueGrowth)`);
+    } else {
+      d.growthRate = 8; // long-run nominal baseline
+      console.log(`  Using baseline growthRate=8 for ${d.symbol}`);
+    }
+  }
+
+  // 5. ROE fallback
+  if (!d.roe || d.roe === 0) {
+    d.roe = 10; // neutral baseline
+  }
+
+  return d;
+}
+
+// ---------------------------------------------------------------------------
+// Core fetch logic
+// ---------------------------------------------------------------------------
 async function _fetchStockData(symbol: string): Promise<StockResponse> {
   const now = Date.now();
 
-  // Return cached data if still fresh
+  // Serve from cache if still fresh
   if (stockDataCache[symbol] && now - stockDataCache[symbol].timestamp < CACHE_DURATION) {
     console.log(`Returning cached data for ${symbol}`);
     return stockDataCache[symbol].data;
   }
 
-  // --- Primary: yfinance Python (most reliable) ---
-  console.log(`Using yfinance Python integration to fetch data for ${symbol}`);
-  try {
-    const yfinanceData = await fetchYfinanceWithQueue(symbol);
-
-    stockDataCache[symbol] = { data: yfinanceData, timestamp: now };
-    return yfinanceData;
-  } catch (yfinanceError) {
-    console.log(`yfinance failed for ${symbol}: ${yfinanceError}`);
-    console.log(`Falling back to RapidAPI for ${symbol}...`);
+  // Helper: try a source, derive missing metrics, check quality gate
+  async function trySource(
+    label: string,
+    fetcher: () => Promise<StockResponse>
+  ): Promise<StockResponse | null> {
+    try {
+      console.log(`[${symbol}] Trying ${label}...`);
+      let data = await fetcher();
+      data = deriveMetrics(data);
+      if (isDataComplete(data)) {
+        console.log(`[${symbol}] ${label} returned complete data ✓`);
+        return data;
+      }
+      console.log(`[${symbol}] ${label} returned incomplete data — price=${data.price}, eps=${data.eps}, fcf=${data.fcfPerShare}`);
+      return null;
+    } catch (err) {
+      console.log(`[${symbol}] ${label} failed: ${err}`);
+      return null;
+    }
   }
 
-  // --- Secondary: RapidAPI ---
-  console.log(`Using RapidAPI to fetch data for ${symbol}`);
-  try {
-    const rapidApiData = await getRapidApiStockData(symbol);
-
-    stockDataCache[symbol] = { data: rapidApiData, timestamp: now };
-    return rapidApiData;
-  } catch (rapidApiError) {
-    console.log(`RapidAPI fetch failed for ${symbol}: ${rapidApiError}`);
-    console.log(`Falling back to web scraping for ${symbol}...`);
+  // --- 1. yfinance (Python — most reliable for broad symbol coverage) ---
+  const yfinanceResult = await trySource('yfinance', () => fetchYfinanceWithQueue(symbol));
+  if (yfinanceResult) {
+    stockDataCache[symbol] = { data: yfinanceResult, timestamp: now };
+    return yfinanceResult;
   }
 
-  // --- Tertiary: Web scraping ---
-  try {
-    console.log(`Web scraping Yahoo Finance for ${symbol}...`);
-    const scrapedData = await scrapeStockData(symbol);
-
-    stockDataCache[symbol] = { data: scrapedData, timestamp: now };
-    return scrapedData;
-  } catch (scrapeError) {
-    console.log(`Web scraping failed for ${symbol}: ${scrapeError}`);
-    console.log(`Checking static fallback for ${symbol}...`);
+  // --- 2. RapidAPI ---
+  const rapidResult = await trySource('RapidAPI', () => getRapidApiStockData(symbol));
+  if (rapidResult) {
+    stockDataCache[symbol] = { data: rapidResult, timestamp: now };
+    return rapidResult;
   }
 
-  // --- Quaternary: Static fallback for common stocks ---
+  // --- 3. Alpha Vantage (dedicated fundamentals API) ---
+  const avResult = await trySource('Alpha Vantage', () => getAlphaVantageData(symbol));
+  if (avResult) {
+    stockDataCache[symbol] = { data: avResult, timestamp: now };
+    return avResult;
+  }
+
+  // --- 4. Web scraping ---
+  const scrapeResult = await trySource('web scraping', () => scrapeStockData(symbol));
+  if (scrapeResult) {
+    stockDataCache[symbol] = { data: scrapeResult, timestamp: now };
+    return scrapeResult;
+  }
+
+  // --- 5. Static fallback (5 common stocks) ---
   const fallbackData = getFallbackStockData(symbol);
   if (fallbackData) {
-    console.log(`Using static fallback data for ${symbol}`);
-    // Cache fallback with shorter TTL (5 min) so live data is retried sooner
-    stockDataCache[symbol] = { data: fallbackData, timestamp: now - (15 * 60 * 1000) };
-    return fallbackData;
+    const derived = deriveMetrics(fallbackData);
+    console.log(`[${symbol}] Using static fallback data`);
+    stockDataCache[symbol] = { data: derived, timestamp: now - (15 * 60 * 1000) };
+    return derived;
   }
 
   // --- All sources exhausted ---
-  console.log(`All data sources failed for ${symbol}, returning error response`);
+  console.log(`[${symbol}] All data sources exhausted — returning error response`);
   return {
     symbol,
     name: symbol,
@@ -125,16 +206,17 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
   } as StockResponse;
 }
 
+// ---------------------------------------------------------------------------
+// Public API — deduplicates concurrent requests for the same symbol
+// ---------------------------------------------------------------------------
 export async function getStockData(symbol: string): Promise<StockResponse> {
   const key = symbol.toUpperCase();
 
-  // If there's already a pending request for this symbol, reuse it
   if (pendingRequests.has(key)) {
     console.log(`Reusing in-flight request for ${key}`);
     return pendingRequests.get(key)!;
   }
 
-  // Start a new request and register it so concurrent callers share it
   const requestPromise = _fetchStockData(key).finally(() => {
     pendingRequests.delete(key);
   });
