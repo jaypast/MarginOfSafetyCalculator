@@ -19,7 +19,7 @@ const MAX_CONCURRENT_YFINANCE = 3;
 let activeYfinanceCalls = 0;
 const yfinanceQueue: Array<() => void> = [];
 
-function acquireYfinanceSlot(): Promise<void> {
+export function acquireYfinanceSlot(): Promise<void> {
   return new Promise((resolve) => {
     if (activeYfinanceCalls < MAX_CONCURRENT_YFINANCE) {
       activeYfinanceCalls++;
@@ -33,7 +33,7 @@ function acquireYfinanceSlot(): Promise<void> {
   });
 }
 
-function releaseYfinanceSlot(): void {
+export function releaseYfinanceSlot(): void {
   activeYfinanceCalls--;
   if (yfinanceQueue.length > 0) {
     const next = yfinanceQueue.shift()!;

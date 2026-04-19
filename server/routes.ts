@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { stockResponseSchema, insertFeedbackSchema } from "@shared/schema";
-import { getStockData } from "./services/stockData";
+import { getStockData, acquireYfinanceSlot, releaseYfinanceSlot } from "./services/stockData";
 import { getMarketSentiment, getMostActiveStocks, RealTimeSentiment } from "./services/marketSentiment";
 import { getHistoricalData } from "./services/yahooFinance";
 import { getRapidApiHistoricalData } from "./services/rapidApiFinance";
@@ -78,13 +78,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Try yfinance (Python) first — most reliable
+      // Use the shared concurrency slot to prevent too many simultaneous subprocess calls
       console.log(`Trying yfinance for historical data of ${symbol}`);
       try {
-        const yahooData = await getHistoricalData(
-          symbol.toUpperCase(),
-          periodStr,
-          intervalStr
-        );
+        await acquireYfinanceSlot();
+        let yahooData;
+        try {
+          yahooData = await getHistoricalData(
+            symbol.toUpperCase(),
+            periodStr,
+            intervalStr
+          );
+        } finally {
+          releaseYfinanceSlot();
+        }
 
         historicalDataCache[cacheKey] = { data: yahooData, timestamp: now };
         return res.json(yahooData);
