@@ -67,11 +67,31 @@ export async function getAlphaVantageData(symbol: string): Promise<StockResponse
   const peRatio = parseFloat(overview.PERatio ?? '0') || 0;
   const sharesOutstanding = parseFloat(overview.SharesOutstanding ?? '0') || 0;
 
-  // FCF per share — AV doesn't expose this directly; estimate from operating CF
-  // We use OperatingCashflowPerShare if available, else eps * 0.85
-  const fcfPerShare =
-    parseFloat(overview.OperatingCashflowPerShare ?? '0') ||
-    (eps > 0 ? eps * 0.85 : 0);
+  // FCF per share — AV OVERVIEW doesn't expose FCF directly.
+  // Waterfall: OperatingCashflowPerShare → EPS-based (positive only) → revenue-based (when EPS ≤ 0)
+  let fcfPerShare = parseFloat(overview.OperatingCashflowPerShare ?? '0') || 0;
+  if (fcfPerShare === 0 && eps > 0) {
+    fcfPerShare = eps * 0.85;
+  }
+  if (fcfPerShare === 0) {
+    // Revenue-based fallback: useful when EPS is negative due to non-cash charges
+    // (e.g. automakers with large depreciation or EV write-offs)
+    const revenuePerShare = parseFloat(overview.RevenuePerShareTTM ?? '0') || 0;
+    const operatingMarginRaw = parseFloat(overview.OperatingMarginTTM ?? '0') || 0;
+    if (revenuePerShare > 0 && operatingMarginRaw > 0) {
+      // Conservative: operating margin × revenue/share × 0.6 capex-adjusted ratio
+      fcfPerShare = parseFloat((revenuePerShare * operatingMarginRaw * 0.6).toFixed(4));
+    }
+  }
+  if (fcfPerShare === 0) {
+    // Book value fallback: for established companies with negative current margins
+    // but positive asset base (e.g. auto manufacturers with large non-cash write-offs).
+    // A 5% sustainable return on book value is a conservative floor.
+    const bookValuePerShareRaw = parseFloat(overview.BookValue ?? '0') || 0;
+    if (bookValuePerShareRaw > 0) {
+      fcfPerShare = parseFloat((bookValuePerShareRaw * 0.05).toFixed(4));
+    }
+  }
 
   // Growth: prefer quarterly earnings growth, then revenue growth
   const earningsGrowthRaw = parseFloat(overview.QuarterlyEarningsGrowthYOY ?? '0');

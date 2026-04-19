@@ -138,40 +138,92 @@ def get_stock_data(symbol):
                     print(f"No conversion rate available for {currency}, using 1.0", file=sys.stderr)
         
         # Estimate FCF per share based on available data
-        shares_outstanding = info.get('sharesOutstanding', 0)
+        shares_outstanding = info.get('sharesOutstanding') or 0
+        # Ensure shares_outstanding is numeric
+        try:
+            shares_outstanding = float(shares_outstanding)
+        except (TypeError, ValueError):
+            shares_outstanding = 0
+
+        fcf_per_share = 0
         if shares_outstanding > 0:
-            operating_cash_flow = info.get('operatingCashflow', 0)
-            capital_expenditures = info.get('capitalExpenditures', 0)
-            
-            # Apply currency conversion to cash flow
-            if currency != 'USD':
-                operating_cash_flow = operating_cash_flow * rate
-                capital_expenditures = capital_expenditures * rate
-                
-            fcf_per_share = (operating_cash_flow - abs(capital_expenditures or 0)) / shares_outstanding
-        else:
-            fcf_per_share = eps * 0.8  # Estimate based on EPS
+            # Priority 1: use freeCashflow directly if yfinance provides it
+            free_cashflow = info.get('freeCashflow')
+            if free_cashflow is not None:
+                try:
+                    fcf_per_share = float(free_cashflow) / shares_outstanding
+                    if currency != 'USD':
+                        fcf_per_share = fcf_per_share * rate
+                except (TypeError, ValueError):
+                    fcf_per_share = 0
+
+            # Priority 2: derive from operating CF minus capex
+            if fcf_per_share == 0:
+                operating_cash_flow = info.get('operatingCashflow') or 0
+                capital_expenditures = info.get('capitalExpenditures') or 0
+                try:
+                    operating_cash_flow = float(operating_cash_flow)
+                    capital_expenditures = float(capital_expenditures)
+                    if currency != 'USD':
+                        operating_cash_flow = operating_cash_flow * rate
+                        capital_expenditures = capital_expenditures * rate
+                    fcf_per_share = (operating_cash_flow - abs(capital_expenditures)) / shares_outstanding
+                except (TypeError, ValueError):
+                    fcf_per_share = 0
+
+        # Priority 3: if we still have nothing, use cashflow statement
+        if fcf_per_share == 0:
+            try:
+                cf = ticker.cashflow
+                if cf is not None and not cf.empty:
+                    # Get most recent year's operating and investing cash flows
+                    op_cf_row = None
+                    capex_row = None
+                    for label in cf.index:
+                        label_lower = str(label).lower()
+                        if 'operating' in label_lower and op_cf_row is None:
+                            op_cf_row = label
+                        if ('capital expenditure' in label_lower or 'purchase of ppe' in label_lower) and capex_row is None:
+                            capex_row = label
+                    op_cf = float(cf.loc[op_cf_row].iloc[0]) if op_cf_row is not None else 0
+                    capex = float(cf.loc[capex_row].iloc[0]) if capex_row is not None else 0
+                    if shares_outstanding > 0:
+                        fcf_per_share = (op_cf - abs(capex)) / shares_outstanding
+                        if currency != 'USD':
+                            fcf_per_share = fcf_per_share * rate
+            except Exception:
+                pass
         
         # Determine growth rate from available metrics
-        growth_rate = info.get('earningsGrowth', info.get('revenueGrowth', 0)) * 100
+        # Use explicit None-safe extraction — yfinance sometimes returns None for these fields
+        earnings_growth = info.get('earningsGrowth')
+        revenue_growth_raw = info.get('revenueGrowth')
+        if earnings_growth is not None:
+            growth_rate = float(earnings_growth) * 100
+        elif revenue_growth_raw is not None:
+            growth_rate = float(revenue_growth_raw) * 100
+        else:
+            growth_rate = 0
         if growth_rate == 0:
-            # Use 5-year or forecasted growth if available
-            growth_rate = info.get('fiveYearAvgDividendYield', 8)
+            # Neutral long-run baseline — NOT dividend yield (which is unrelated to growth)
+            growth_rate = 8
         
         # Calculate ROE
-        roe = info.get('returnOnEquity', 0.1) * 100
+        roe_raw = info.get('returnOnEquity')
+        roe = float(roe_raw) * 100 if roe_raw is not None else 10.0
         
         # Get debt-to-equity ratio
         debt_to_equity = info.get('debtToEquity', 50) / 100 if info.get('debtToEquity') else 0.5
         
         # Get current ratio
-        current_ratio = info.get('currentRatio', 1.5)
+        current_ratio = info.get('currentRatio') or 1.5
         
         # Get revenue growth
-        revenue_growth = info.get('revenueGrowth', 0.05) * 100
+        revenue_growth_pct = info.get('revenueGrowth')
+        revenue_growth = float(revenue_growth_pct) * 100 if revenue_growth_pct is not None else 0.0
         
         # Evaluate earnings stability based on beta and other factors
-        beta = info.get('beta', 1)
+        beta = float(info.get('beta') or 1)
         if beta < 0.8:
             earnings_stability = "High"
         elif beta < 1.2:
@@ -180,10 +232,11 @@ def get_stock_data(symbol):
             earnings_stability = "Low"
         
         # Evaluate competitive position based on margins and market share
-        profit_margin = info.get('profitMargins', 0)
-        if profit_margin > 0.15 or info.get('grossMargins', 0) > 0.4:
+        profit_margin = float(info.get('profitMargins') or 0)
+        gross_margin = float(info.get('grossMargins') or 0)
+        if profit_margin > 0.15 or gross_margin > 0.4:
             competitive_position = "Strong"
-        elif profit_margin > 0.08 or info.get('grossMargins', 0) > 0.3:
+        elif profit_margin > 0.08 or gross_margin > 0.3:
             competitive_position = "Good"
         else:
             competitive_position = "Average"
