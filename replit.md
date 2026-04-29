@@ -27,9 +27,9 @@ Every `/api/stock/:symbol` response is stamped with:
 
 The UI surfaces these as badges on the search card so the user can judge how trustworthy the headline numbers are.
 
-## Valuation hardening (Task #9)
+## Valuation hardening (Task #9 / #15)
 Recent fixes:
-- Removed hard-coded `5year=18.6 / 10year=16.2 / industry=22.5` P/E branches. Only `current` and `custom` modes remain — neither lies about per-stock data.
+- Removed hard-coded `5year=18.6 / 10year=16.2 / industry=22.5` P/E branches in Task #9. Task #15 restored the three modes — backed by per-ticker `peHistory` (TTM-P/E medians from yfinance) and a published `INDUSTRY_PE_BASELINES` table — never the magic constants. Each mode falls back to current P/E with an explicit note when its data source is missing.
 - Japanese price floor (was unconditionally raising every `.T` listing to 65–70 % of current price) is now opt-in via `ValuationParams.applyJapanFloor`.
 - `calculateAverageValuation` now takes `currentPrice` as a required argument instead of reverse-engineering it from `discountPremium` (which silently produced wrong recommendations whenever one method was capped).
 - TSLA's classification as `AUTO_MANUFACTURER` is documented; the previous "duplicate" was just an undocumented intentional choice.

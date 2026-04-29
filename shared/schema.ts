@@ -72,6 +72,19 @@ export const crossSourceDivergenceSchema = z.object({
 });
 export type CrossSourceDivergence = z.infer<typeof crossSourceDivergenceSchema>;
 
+// Historical P/E block (Task #15). `fiveYearAvg` and `tenYearAvg` are the
+// median of trailing-twelve-month P/E ratios computed at quarter ends over
+// the trailing 20 / 40 quarters; quarters with non-positive EPS are skipped.
+// `industryAvg` is a published per-sector median P/E (S&P sector medians)
+// used as a sanity baseline. Each field is independently nullable so an
+// adapter with partial coverage can return what it has.
+export const peHistorySchema = z.object({
+  fiveYearAvg: z.number().nullable(),
+  tenYearAvg: z.number().nullable(),
+  industryAvg: z.number().nullable(),
+});
+export type PeHistory = z.infer<typeof peHistorySchema>;
+
 // API Schemas
 export const stockResponseSchema = z.object({
   symbol: z.string(),
@@ -103,6 +116,12 @@ export const stockResponseSchema = z.object({
   // sources agreed; `undefined` means no spot-check has run yet.
   // (Append-only block — keep adjacent to other parallel-task additions.)
   crossSourceDivergence: crossSourceDivergenceSchema.nullable().optional(),
+  // Historical P/E block (Task #15) — per-ticker trailing-twelve-month
+  // medians computed from the upstream's quarterly EPS + price history,
+  // plus an industry baseline. Each field is independently nullable so
+  // adapters with partial coverage can return what they have. Adapters
+  // without any historical visibility omit the field entirely.
+  peHistory: peHistorySchema.nullable().optional(),
 });
 
 export type StockResponse = z.infer<typeof stockResponseSchema>;

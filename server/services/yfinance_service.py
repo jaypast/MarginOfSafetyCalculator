@@ -10,6 +10,139 @@ try:
 except ImportError:
     print("Warning: yfinance or pandas module not found. Please install them using 'pip install yfinance pandas'", file=sys.stderr)
 
+def compute_pe_history(ticker):
+    """
+    Compute per-ticker historical P/E medians from quarterly EPS and
+    monthly close prices. Returns a dict with keys ``fiveYearAvg``,
+    ``tenYearAvg``, ``industryAvg`` (each ``None`` when unavailable).
+
+    Methodology: at each quarter end, take the trailing-twelve-month
+    EPS (sum of the trailing four quarterly diluted EPS values, skipping
+    quarters with non-positive EPS), match it against the closest monthly
+    close on/after that quarter end, and form ``price / ttm_eps``. Then
+    take the median over the trailing 20 / 40 quarters. Sane outputs are
+    bounded ``0 < pe < 200``.
+
+    The function is wrapped in a broad ``try/except`` so a missing or
+    paywalled ``quarterly_income_stmt`` row, an empty earnings frame, or
+    any pandas hiccup degrades gracefully — every failure mode returns
+    ``{fiveYearAvg: None, tenYearAvg: None, industryAvg: None}`` rather
+    than raising.
+
+    industryAvg is intentionally left as None here; the frontend
+    calculator falls back to the published per-sector baseline table in
+    ``client/src/lib/companyAdjustments.ts``. Future work (Task #22) can
+    enrich this from a sector-median data source.
+    """
+    empty = {"fiveYearAvg": None, "tenYearAvg": None, "industryAvg": None}
+    try:
+        # `pd` may not have imported (the module-level try/except above
+        # swallows the ImportError); guard before using it.
+        if 'pd' not in globals():
+            return empty
+
+        # Pull diluted-EPS row from the quarterly income statement.
+        # yfinance changes row labels across versions, so try a few.
+        eps_series = None
+        try:
+            qis = ticker.quarterly_income_stmt
+            if qis is not None and not qis.empty:
+                for label in ('Diluted EPS', 'Basic EPS', 'DilutedEPS', 'BasicEPS'):
+                    if label in qis.index:
+                        eps_series = qis.loc[label].dropna()
+                        break
+        except Exception:
+            eps_series = None
+
+        # Fallback: yfinance's `quarterly_earnings` frame (legacy field,
+        # populated for some tickers when the income statement is sparse).
+        if eps_series is None or eps_series.empty:
+            try:
+                qe = ticker.quarterly_earnings
+                if qe is not None and not qe.empty and 'Earnings' in qe.columns:
+                    # `quarterly_earnings` doesn't expose EPS directly,
+                    # so we cannot use it here. Skip.
+                    pass
+            except Exception:
+                pass
+
+        if eps_series is None or eps_series.empty or len(eps_series) < 4:
+            return empty
+
+        # Sort oldest -> newest so .rolling(4).sum() builds TTM correctly.
+        eps_series = eps_series.sort_index()
+
+        # 10y of monthly closes — needed to match each quarter end with
+        # a price datapoint. Extra cushion (12y) so a recent IPO with
+        # only ~5y of history still aligns at the early quarters.
+        hist = ticker.history(period='10y', interval='1mo')
+        if hist is None or hist.empty or 'Close' not in hist.columns:
+            return empty
+
+        # TTM-EPS at each quarter end. Drop quarters where TTM is
+        # non-positive; valuation P/E is meaningless when EPS<=0.
+        ttm = eps_series.rolling(window=4).sum().dropna()
+        ttm = ttm[ttm > 0]
+        if ttm.empty:
+            return empty
+
+        # Localize timezones so .asof() doesn't choke on tz mismatch.
+        try:
+            hist_idx = hist.index.tz_localize(None) if hist.index.tz is not None else hist.index
+            ttm.index = ttm.index.tz_localize(None) if getattr(ttm.index, 'tz', None) is not None else ttm.index
+            hist = hist.copy()
+            hist.index = hist_idx
+        except Exception:
+            pass
+
+        # For each quarter end, take the next monthly close on/after
+        # that date; using `.asof` would peek backward, which is what
+        # we want — the most recent published close at that point.
+        pe_points = []
+        for q_end, ttm_eps in ttm.items():
+            try:
+                close_at = hist['Close'].asof(q_end)
+                if close_at is None or pd.isna(close_at):
+                    continue
+                pe = float(close_at) / float(ttm_eps)
+                if 0 < pe < 200:
+                    pe_points.append((q_end, pe))
+            except Exception:
+                continue
+
+        if not pe_points:
+            return empty
+
+        pe_only = [p for _, p in pe_points]
+
+        def _median(values):
+            if not values:
+                return None
+            ordered = sorted(values)
+            n = len(ordered)
+            mid = n // 2
+            if n % 2 == 1:
+                return float(ordered[mid])
+            return float((ordered[mid - 1] + ordered[mid]) / 2)
+
+        # Last 20 / 40 quarters of computed P/E ratios.
+        five = _median(pe_only[-20:]) if len(pe_only) >= 4 else None
+        ten = _median(pe_only[-40:]) if len(pe_only) >= 8 else None
+
+        # Round to one decimal so JSON output is stable across runs.
+        def _round(x):
+            return None if x is None else round(x, 1)
+
+        return {
+            "fiveYearAvg": _round(five),
+            "tenYearAvg": _round(ten),
+            "industryAvg": None,
+        }
+    except Exception as e:
+        print(f"compute_pe_history failed: {e}", file=sys.stderr)
+        return empty
+
+
 def get_stock_data(symbol):
     """
     Fetch stock data using the yfinance package
@@ -299,6 +432,11 @@ def get_stock_data(symbol):
         # Add current timestamp to indicate when the data was last fetched
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
+        # Per-ticker historical P/E series (Task #15). Best-effort —
+        # any failure returns {None, None, None} and the frontend
+        # calculator handles missing data with explicit fallback notes.
+        pe_history = compute_pe_history(ticker)
+
         response = {
             "symbol": symbol.upper(),
             "name": name,
@@ -313,7 +451,8 @@ def get_stock_data(symbol):
             "revenueGrowth": revenue_growth,
             "earningsStability": earnings_stability,
             "competitivePosition": competitive_position,
-            "lastUpdated": current_time
+            "lastUpdated": current_time,
+            "peHistory": pe_history
         }
         
         # Return as JSON string

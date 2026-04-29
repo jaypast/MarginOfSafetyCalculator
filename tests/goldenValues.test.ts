@@ -79,6 +79,37 @@ describe('AAPL (Technology) — golden values', () => {
   it('25% margin-of-safety buy-below for the P/E value is 168 × 0.75', () => {
     expect(calculateBuyBelow(168, 25)).toBeCloseTo(126, 2);
   });
+
+  // ----- Task #15 historical P/E modes (locked-in goldens) -----
+  it('5-year historical P/E mode: 6 EPS × 24 = 144', () => {
+    const aaplWithHistory: StockData = {
+      ...aapl,
+      peHistory: { fiveYearAvg: 24, tenYearAvg: 19, industryAvg: 28 },
+    };
+    expect(calculatePE(aaplWithHistory, p({ peType: '5year' }))).toBeCloseTo(144, 2);
+  });
+
+  it('10-year historical P/E mode: 6 EPS × 19 = 114', () => {
+    const aaplWithHistory: StockData = {
+      ...aapl,
+      peHistory: { fiveYearAvg: 24, tenYearAvg: 19, industryAvg: 28 },
+    };
+    expect(calculatePE(aaplWithHistory, p({ peType: '10year' }))).toBeCloseTo(114, 2);
+  });
+
+  it('industry P/E mode without payload uses TECHNOLOGY baseline (28): 6 × 28 = 168', () => {
+    // No peHistory.industryAvg → falls back to INDUSTRY_PE_BASELINES.TECHNOLOGY (28).
+    expect(calculatePE(aapl, p({ peType: 'industry' }))).toBeCloseTo(168, 2);
+  });
+
+  it('5-year mode falls back to current P/E when peHistory.fiveYearAvg is null', () => {
+    const aaplNullFive: StockData = {
+      ...aapl,
+      peHistory: { fiveYearAvg: null, tenYearAvg: 19, industryAvg: 28 },
+    };
+    // Falls back to current peRatio 28 → 6 × 28 = 168.
+    expect(calculatePE(aaplNullFive, p({ peType: '5year' }))).toBeCloseTo(168, 2);
+  });
 });
 
 describe('JPM (Financial) — golden values', () => {

@@ -203,7 +203,10 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
                 <SelectValue placeholder="Select P/E type" />
               </StyledSelect.Trigger>
               <SelectContent>
-                <SelectItem value="current">Current P/E ({stockData ? stockData.peRatio.toFixed(1) : '-'})</SelectItem>
+                <SelectItem value="current">{`Current P/E (${stockData ? stockData.peRatio.toFixed(1) : '-'})`}</SelectItem>
+                <SelectItem value="5year">{`5-year average (${stockData?.peHistory?.fiveYearAvg != null ? stockData.peHistory.fiveYearAvg.toFixed(1) : 'N/A'})`}</SelectItem>
+                <SelectItem value="10year">{`10-year average (${stockData?.peHistory?.tenYearAvg != null ? stockData.peHistory.tenYearAvg.toFixed(1) : 'N/A'})`}</SelectItem>
+                <SelectItem value="industry">Industry baseline</SelectItem>
                 <SelectItem value="custom">Custom P/E...</SelectItem>
               </SelectContent>
             </StyledSelect>

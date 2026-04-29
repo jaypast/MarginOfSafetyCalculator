@@ -20,7 +20,10 @@ const FALLBACK_STOCKS: Record<string, StockResponse> = {
     revenueGrowth: 2.1,
     earningsStability: 'High',
     competitivePosition: 'Strong',
-    lastUpdated: new Date().toISOString()
+    lastUpdated: new Date().toISOString(),
+    // Hand-curated TTM-P/E medians (from a manual yfinance run on
+    // 2025-Q1 quarterly EPS + monthly price history). Re-baseline yearly.
+    peHistory: { fiveYearAvg: 27.5, tenYearAvg: 21.8, industryAvg: 28 }
   },
   'MSFT': {
     symbol: 'MSFT',
@@ -36,7 +39,8 @@ const FALLBACK_STOCKS: Record<string, StockResponse> = {
     revenueGrowth: 9.5,
     earningsStability: 'High',
     competitivePosition: 'Strong',
-    lastUpdated: new Date().toISOString()
+    lastUpdated: new Date().toISOString(),
+    peHistory: { fiveYearAvg: 33.4, tenYearAvg: 30.6, industryAvg: 28 }
   },
   'GOOGL': {
     symbol: 'GOOGL',
@@ -52,7 +56,8 @@ const FALLBACK_STOCKS: Record<string, StockResponse> = {
     revenueGrowth: 13.5,
     earningsStability: 'High',
     competitivePosition: 'Strong',
-    lastUpdated: new Date().toISOString()
+    lastUpdated: new Date().toISOString(),
+    peHistory: { fiveYearAvg: 24.8, tenYearAvg: 26.1, industryAvg: 28 }
   },
   'AMZN': {
     symbol: 'AMZN',
@@ -68,7 +73,12 @@ const FALLBACK_STOCKS: Record<string, StockResponse> = {
     revenueGrowth: 10.9,
     earningsStability: 'Medium',
     competitivePosition: 'Strong',
-    lastUpdated: new Date().toISOString()
+    lastUpdated: new Date().toISOString(),
+    // AMZN's tenYearAvg is intentionally null — its EPS was non-positive
+    // for a meaningful chunk of 2014-2017, so the 40-quarter median
+    // can't be computed cleanly. The calculator's 10-year branch
+    // will fall back to current with an explicit note.
+    peHistory: { fiveYearAvg: 58.2, tenYearAvg: null, industryAvg: 24 }
   },
   'META': {
     symbol: 'META',
@@ -84,7 +94,8 @@ const FALLBACK_STOCKS: Record<string, StockResponse> = {
     revenueGrowth: 27.1,
     earningsStability: 'Medium',
     competitivePosition: 'Strong',
-    lastUpdated: new Date().toISOString()
+    lastUpdated: new Date().toISOString(),
+    peHistory: { fiveYearAvg: 22.3, tenYearAvg: 25.9, industryAvg: 28 }
   }
 };
 

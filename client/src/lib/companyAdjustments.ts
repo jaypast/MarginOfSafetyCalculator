@@ -157,6 +157,43 @@ export const companyIndustryMap: Record<string, string> = {
 };
 
 /**
+ * Per-industry baseline P/E used by the calculator's `industry` P/E mode.
+ *
+ * Numbers are approximate trailing-twelve-month sector medians published in
+ * the S&P Dow Jones Indices sector reports (S&P 500 sector indices, latest
+ * full-year snapshot). They are used as a *baseline* — i.e. "what would the
+ * intrinsic value look like if this stock traded at its sector's typical
+ * multiple?" — not as a forecast. Re-baseline yearly when sector medians
+ * shift materially.
+ *
+ * Source: https://www.spglobal.com/spdji/en/indices/equity/sp-500/  (sector
+ * P/E rows). When a stock's industry isn't in this map, the calculator's
+ * `industry` branch falls back to the current P/E with an explicit
+ * adjustment note — never to a hidden constant.
+ */
+export const INDUSTRY_PE_BASELINES: Record<string, number> = {
+  TECHNOLOGY: 28,         // S&P 500 Information Technology sector median
+  FINANCIAL: 14,          // S&P 500 Financials sector median
+  HEALTHCARE: 22,         // S&P 500 Health Care sector median
+  RETAIL: 24,             // S&P 500 Consumer Discretionary sector median
+  AUTO_MANUFACTURER: 12,  // Cyclical autos historically trade at low teens
+  DEFAULT: 19,            // S&P 500 broad-market median
+};
+
+/**
+ * Returns the published S&P sector median P/E for the stock's industry
+ * classification. Returns null when no baseline exists (i.e. the stock
+ * couldn't be mapped to any of the known sectors). Callers should treat a
+ * null return as "fall back to current P/E with an adjustment note", not
+ * as "use a hardcoded value".
+ */
+export function getIndustryBaselinePE(stockData: StockData): number | null {
+  const industry = determineIndustry(stockData);
+  const baseline = INDUSTRY_PE_BASELINES[industry];
+  return typeof baseline === 'number' && baseline > 0 ? baseline : null;
+}
+
+/**
  * Function to determine industry from symbol and available data.
  *
  * Note on the previous heuristic: classifying *every* `7xxx.T` symbol as

@@ -1,5 +1,5 @@
 import { StockData, ValuationParams, ValuationResult, ReverseDCFResult } from './types';
-import { AdjustmentFactors, getAdjustmentFactors, detectDataIssues, describeIndustry } from './companyAdjustments';
+import { AdjustmentFactors, getAdjustmentFactors, detectDataIssues, describeIndustry, getIndustryBaselinePE } from './companyAdjustments';
 
 // ---------------------------------------------------------------------------
 // Detailed valuation outputs
@@ -173,6 +173,86 @@ export const calculatePEDetailed = (
       selectedPE = peCustomValue;
       adjustmentsLog.push(`Using user-supplied custom P/E of ${selectedPE}`);
       break;
+
+    case '5year': {
+      // Median trailing-twelve-month P/E across the last 20 quarters,
+      // computed by the upstream adapter from this *specific* ticker's
+      // history — never a hardcoded constant.
+      const v = stockData.peHistory?.fiveYearAvg ?? null;
+      if (v != null && v > 0) {
+        selectedPE = v;
+        adjustmentsLog.push(
+          `Using 5-year median historical P/E of ${v.toFixed(1)} (per-ticker)`
+        );
+      } else {
+        // No history available — fall back to current with an explicit
+        // note so the user can see *why* the number didn't budge.
+        selectedPE = peRatio > 0 ? peRatio : 15;
+        adjustmentsLog.push(
+          '5-year P/E unavailable for this data source — falling back to current P/E'
+        );
+      }
+      if (selectedPE > adjustments.peMultipleCap) {
+        adjustmentsLog.push(
+          `P/E ${selectedPE.toFixed(1)} → ${adjustments.peMultipleCap} (capped by ${describeIndustry(stockData)})`
+        );
+        selectedPE = adjustments.peMultipleCap;
+      }
+      break;
+    }
+
+    case '10year': {
+      // Median trailing-twelve-month P/E across the last 40 quarters.
+      const v = stockData.peHistory?.tenYearAvg ?? null;
+      if (v != null && v > 0) {
+        selectedPE = v;
+        adjustmentsLog.push(
+          `Using 10-year median historical P/E of ${v.toFixed(1)} (per-ticker)`
+        );
+      } else {
+        selectedPE = peRatio > 0 ? peRatio : 15;
+        adjustmentsLog.push(
+          '10-year P/E unavailable for this data source — falling back to current P/E'
+        );
+      }
+      if (selectedPE > adjustments.peMultipleCap) {
+        adjustmentsLog.push(
+          `P/E ${selectedPE.toFixed(1)} → ${adjustments.peMultipleCap} (capped by ${describeIndustry(stockData)})`
+        );
+        selectedPE = adjustments.peMultipleCap;
+      }
+      break;
+    }
+
+    case 'industry': {
+      // Prefer an industryAvg the upstream may have attached; otherwise
+      // look up the published S&P sector median for this stock's
+      // industry classification. If neither is available (DEFAULT
+      // industry without a baseline), fall back to current with a note.
+      const fromPayload = stockData.peHistory?.industryAvg ?? null;
+      const fromTable = getIndustryBaselinePE(stockData);
+      const baseline = (fromPayload != null && fromPayload > 0) ? fromPayload : fromTable;
+      if (baseline != null && baseline > 0) {
+        selectedPE = baseline;
+        adjustmentsLog.push(
+          fromPayload != null && fromPayload > 0
+            ? `Using industry baseline P/E of ${baseline.toFixed(1)} (from data source)`
+            : `Using industry baseline P/E of ${baseline.toFixed(1)} (${describeIndustry(stockData)})`
+        );
+      } else {
+        selectedPE = peRatio > 0 ? peRatio : 15;
+        adjustmentsLog.push(
+          'Industry baseline P/E unavailable — falling back to current P/E'
+        );
+      }
+      if (selectedPE > adjustments.peMultipleCap) {
+        adjustmentsLog.push(
+          `P/E ${selectedPE.toFixed(1)} → ${adjustments.peMultipleCap} (capped by ${describeIndustry(stockData)})`
+        );
+        selectedPE = adjustments.peMultipleCap;
+      }
+      break;
+    }
 
     default: {
       // Should be unreachable thanks to the union type, but keep a

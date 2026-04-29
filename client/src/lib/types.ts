@@ -22,6 +22,19 @@ export interface CrossSourceDivergence {
   }>;
 }
 
+// Historical P/E block (Task #15) — per-ticker trailing-twelve-month P/E
+// medians computed by the upstream adapter from quarterly EPS + price
+// history, plus a published per-industry baseline. Each field is
+// independently nullable so adapters with partial coverage can return
+// what they have. Adapters without any historical visibility omit the
+// whole block, in which case the calculator's `industry` branch falls
+// back to the in-app `INDUSTRY_PE_BASELINES` lookup.
+export interface PeHistory {
+  fiveYearAvg: number | null;
+  tenYearAvg: number | null;
+  industryAvg: number | null;
+}
+
 export interface StockData {
   symbol: string;
   name: string;
@@ -44,15 +57,20 @@ export interface StockData {
   appliedAdjustments?: string[];
   // Latest cross-source spot-check result (null = sources agreed).
   crossSourceDivergence?: CrossSourceDivergence | null;
+  // Per-ticker historical P/E series (null when adapter doesn't compute it).
+  peHistory?: PeHistory | null;
   error?: boolean;
   errorMessage?: string;
 }
 
-// Only valuation modes that have a real, per-stock data backing are supported.
-// The previous "5year" / "10year" / "industry" options applied hard-coded
-// constants (18.6 / 16.2 / 22.5) to *every* stock regardless of sector — that
-// produced misleading "intrinsic values". They have been removed; users who
-// want a non-current multiple can pick "custom".
+// P/E modes (Task #15). The `5year` / `10year` modes consume the upstream
+// per-ticker `peHistory` block — the medians of trailing-twelve-month P/E
+// over the last 20 / 40 quarters. The `industry` mode uses the published
+// per-sector baseline from `INDUSTRY_PE_BASELINES` (or the upstream's
+// `peHistory.industryAvg` when populated). Each branch falls back to the
+// current P/E with an explicit `appliedAdjustments` note when its data
+// source is unavailable, so the user is never silently shown a magic
+// constant the way the old (pre-Task-#9) implementation did.
 export interface ValuationParams {
   // DCF Parameters
   dcfGrowthRate: number;
@@ -61,7 +79,7 @@ export interface ValuationParams {
   dcfForecastPeriod: number;
 
   // P/E Parameters
-  peType: 'current' | 'custom';
+  peType: 'current' | 'custom' | '5year' | '10year' | 'industry';
   peCustomValue: number;
   peAdjustment: number;
 

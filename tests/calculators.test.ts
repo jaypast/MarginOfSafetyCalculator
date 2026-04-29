@@ -161,6 +161,126 @@ describe('calculatePE', () => {
   });
 });
 
+// ----- Task #15: real per-ticker historical P/E modes -----
+describe('calculatePE historical modes', () => {
+  it('uses peHistory.fiveYearAvg when peType=5year', () => {
+    const stock = makeStock({
+      eps: 10,
+      price: 200,
+      peRatio: 30,
+      // industry-cap for DEFAULT-industry stock is 50 (well above 22),
+      // so the 22 multiple should pass through uncapped.
+      peHistory: { fiveYearAvg: 22, tenYearAvg: 18, industryAvg: 19 },
+    });
+    const out = calculatePEDetailed(stock, makeParams({ peType: '5year' }));
+    expect(out.value).toBeCloseTo(220, 0);
+    expect(out.appliedAdjustments.some(a => /5-year median/i.test(a))).toBe(true);
+  });
+
+  it('uses peHistory.tenYearAvg when peType=10year', () => {
+    const stock = makeStock({
+      eps: 10,
+      price: 200,
+      peRatio: 30,
+      peHistory: { fiveYearAvg: 22, tenYearAvg: 18, industryAvg: 19 },
+    });
+    const out = calculatePEDetailed(stock, makeParams({ peType: '10year' }));
+    expect(out.value).toBeCloseTo(180, 0);
+    expect(out.appliedAdjustments.some(a => /10-year median/i.test(a))).toBe(true);
+  });
+
+  it('5year and 10year produce different values for the same stock when history differs', () => {
+    const stock = makeStock({
+      eps: 10,
+      price: 200,
+      peHistory: { fiveYearAvg: 25, tenYearAvg: 17, industryAvg: 19 },
+    });
+    const fiveYear = calculatePE(stock, makeParams({ peType: '5year' }));
+    const tenYear = calculatePE(stock, makeParams({ peType: '10year' }));
+    expect(fiveYear).not.toBeCloseTo(tenYear, 0);
+    expect(fiveYear).toBeGreaterThan(tenYear);
+  });
+
+  it('falls back to current P/E with explicit note when peHistory is missing', () => {
+    const stock = makeStock({ eps: 10, price: 200, peRatio: 18 });
+    // No peHistory field at all.
+    const out = calculatePEDetailed(stock, makeParams({ peType: '5year' }));
+    expect(out.value).toBeCloseTo(180, 0);
+    expect(out.appliedAdjustments.some(a => /5-year P\/E unavailable/i.test(a))).toBe(true);
+  });
+
+  it('falls back to current P/E when peHistory.fiveYearAvg is null (e.g. AMZN-like history)', () => {
+    const stock = makeStock({
+      eps: 10,
+      price: 200,
+      peRatio: 18,
+      peHistory: { fiveYearAvg: null, tenYearAvg: 25, industryAvg: 24 },
+    });
+    const out = calculatePEDetailed(stock, makeParams({ peType: '5year' }));
+    expect(out.value).toBeCloseTo(180, 0);
+    expect(out.appliedAdjustments.some(a => /5-year P\/E unavailable/i.test(a))).toBe(true);
+  });
+
+  it('industry mode prefers payload industryAvg over the in-app baseline', () => {
+    const stock = makeStock({
+      symbol: 'AAPL', // mapped TECHNOLOGY → table baseline 28
+      eps: 10,
+      price: 200,
+      peHistory: { fiveYearAvg: null, tenYearAvg: null, industryAvg: 16 },
+    });
+    const out = calculatePEDetailed(stock, makeParams({ peType: 'industry' }));
+    expect(out.value).toBeCloseTo(160, 0);
+    expect(out.appliedAdjustments.some(a => /from data source/i.test(a))).toBe(true);
+  });
+
+  it('industry mode falls back to in-app baseline table when no payload value', () => {
+    const stock = makeStock({
+      symbol: 'JPM', // FINANCIAL → baseline 14
+      name: 'JPMorgan Chase',
+      eps: 10,
+      price: 200,
+      peRatio: 12,
+    });
+    const out = calculatePEDetailed(stock, makeParams({ peType: 'industry' }));
+    expect(out.value).toBeCloseTo(140, 0);
+    expect(out.appliedAdjustments.some(a => /industry baseline.*FINANCIAL/i.test(a))).toBe(true);
+  });
+
+  it('industry mode falls back to current P/E when stock cannot be classified', () => {
+    const stock = makeStock({
+      symbol: 'XYZQ',
+      name: 'Generic Co',
+      eps: 10,
+      price: 200,
+      peRatio: 17,
+      // No peHistory field. determineIndustry returns DEFAULT, which DOES
+      // have a baseline (19), so verify the DEFAULT path is exercised.
+    });
+    const out = calculatePEDetailed(stock, makeParams({ peType: 'industry' }));
+    // DEFAULT baseline = 19 → 10 × 19 = 190
+    expect(out.value).toBeCloseTo(190, 0);
+  });
+
+  it('historical modes still respect the per-industry P/E cap', () => {
+    // Use a generic DEFAULT-industry symbol so the test isn't entangled
+    // with `specialCases` overrides (which short-circuit industry caps).
+    // DEFAULT peMultipleCap = 30, DEFAULT priceToCap = 3.0.
+    // A peHistory.fiveYearAvg of 60 should be capped down to 30.
+    const stock = makeStock({
+      symbol: 'XYZQ',
+      name: 'Generic Co',
+      eps: 10,
+      price: 200,
+      peHistory: { fiveYearAvg: 60, tenYearAvg: 28, industryAvg: 12 },
+    });
+    const out = calculatePEDetailed(stock, makeParams({ peType: '5year' }));
+    expect(out.appliedAdjustments.some(a => /capped/i.test(a))).toBe(true);
+    // Capped P/E 30 × EPS 10 = 300 (then bound by priceToCap 3.0 × 200 = 600,
+    // so 300 stands).
+    expect(out.value).toBeCloseTo(300, 0);
+  });
+});
+
 describe('calculateGraham', () => {
   it('caps growth rate at min(20, industry-cap) per Graham\'s formula', () => {
     const out = calculateGrahamDetailed(
