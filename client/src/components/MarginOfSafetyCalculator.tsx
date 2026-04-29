@@ -4,6 +4,7 @@ import KeyMetrics from './KeyMetrics';
 import ValuationMethod from './ValuationMethod';
 import MarginOfSafetyParams from './MarginOfSafetyParams';
 import ValuationResults from './ValuationResults';
+import ValueInvestorVerdict from './ValueInvestorVerdict';
 import QualityIndicators from './QualityIndicators';
 import EducationalResources from './EducationalResources';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -222,6 +223,21 @@ const MarginOfSafetyCalculator: React.FC = () => {
               reverseDCFResult={reverseDCFResult}
             />
           </div>
+        )}
+
+        {/* Value-Investor Verdict — applies the Graham/Klarman/Munger gates
+            (quality, inversion, MoS, reverse-DCF reality check) to the same
+            inputs the valuation card consumes, so the in-app verdict matches
+            what the chat assistant would say. Hidden for ETFs / unmodelable
+            stocks; the component handles those cases internally. */}
+        {stockData && !stockData.error && valuationResults.length > 0 && (
+          <ValueInvestorVerdict
+            stockData={stockData}
+            valuationResults={valuationResults}
+            reverseDCFResult={reverseDCFResult}
+            companyQuality={companyQuality}
+            marginOfSafetyParams={marginOfSafetyParams}
+          />
         )}
         
 {/* Chart is now integrated with Valuation Results */}

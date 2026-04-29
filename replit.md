@@ -15,6 +15,7 @@ A value-investing web app that estimates intrinsic stock value via DCF, P/E, and
 - `client/src/components/MarginOfSafetyCalculator.tsx` — Top-level calculator UI.
 - `client/src/components/StockInformation.tsx` — Search box + data-source / freshness badge.
 - `client/src/components/ValuationResults.tsx` — Method comparison table + "Applied adjustments" panel.
+- `client/src/components/ValueInvestorVerdict.tsx` — Graham / Klarman / Munger scorecard panel that turns the same inputs into a Buy / Watch / Pass verdict using the gate order documented in `.agents/skills/value-investing-masters/SKILL.md`.
 - `server/services/stockData.ts` — Tiered data fetch (yfinance → RapidAPI → Alpha Vantage → web scrape → static fallback) with provenance stamping.
 - `shared/schema.ts` — Zod + Drizzle schemas. Source of truth for `StockResponse`, `DATA_SOURCES`, etc.
 - `tests/*.test.ts` — Vitest suite (calculators, adjustments, research pipeline, storage, schema).
