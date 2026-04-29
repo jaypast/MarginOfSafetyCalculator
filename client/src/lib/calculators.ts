@@ -1,5 +1,5 @@
-import { StockData, ValuationParams, ValuationResult } from './types';
-import { getAdjustmentFactors, detectDataIssues, describeIndustry } from './companyAdjustments';
+import { StockData, ValuationParams, ValuationResult, ReverseDCFResult } from './types';
+import { AdjustmentFactors, getAdjustmentFactors, detectDataIssues, describeIndustry } from './companyAdjustments';
 
 // ---------------------------------------------------------------------------
 // Detailed valuation outputs
@@ -416,3 +416,204 @@ export const compareDataSources = (
     discrepancies,
   };
 };
+
+// =============================================================================
+// Reverse DCF
+//
+// The forward DCF answers "given a growth assumption, what is this stock
+// worth?". The reverse DCF answers the inverse: "given today's price, what
+// growth rate is the market actually pricing in?". A useful sanity check —
+// if the implied growth is wildly above the company's actual track record,
+// the market may be too optimistic; if it's well below, there may be an
+// opportunity (or a problem the model isn't capturing).
+//
+// Implementation: bisection on the growth rate over [-50, 100] %. The NPV
+// model used here mirrors `calculateDCFDetailed` (same 0.95^year decay, same
+// terminal-multiple cap, same FCF and priceToCap ceilings, same FCF/EPS
+// fallback) — EXCEPT it does not cap the growth rate input, since growth is
+// the variable we are solving for. NPV(g) is monotonically increasing in g
+// for healthy inputs, so bisection is well-behaved.
+// =============================================================================
+
+const REVERSE_DCF_MIN_GROWTH = -50;
+const REVERSE_DCF_MAX_GROWTH = 100;
+const REVERSE_DCF_ITERATIONS = 60;
+// Bisection halts once price is matched within this relative tolerance.
+// 0.1 % is far tighter than the financial inputs themselves.
+const REVERSE_DCF_PRICE_TOLERANCE_PCT = 0.1;
+
+/**
+ * Project DCF NPV at an arbitrary growth rate. Mirrors the structure of
+ * `calculateDCFDetailed` (FCF estimation, terminal cap, FCF cap, priceToCap)
+ * but takes the growth rate as a raw parameter instead of capping it — that
+ * is essential for the reverse-DCF solver, otherwise every g above the
+ * industry growth cap would map to the same NPV and the bisection would
+ * collapse to the cap value for every aggressive case.
+ */
+function projectReverseDcfNpv(
+  stockData: StockData,
+  params: ValuationParams,
+  growthRate: number,
+  effectiveFCF: number,
+  adjustments: AdjustmentFactors,
+): number {
+  const { dcfDiscountRate, dcfTerminalMultiple, dcfForecastPeriod } = params;
+  const effectiveTerminalMultiple = Math.min(dcfTerminalMultiple, adjustments.terminalMultipleCap);
+
+  let intrinsicValue = 0;
+  let currentFCF = effectiveFCF;
+  for (let year = 1; year <= dcfForecastPeriod; year++) {
+    const yearGrowthRate = growthRate * Math.pow(0.95, year - 1);
+    currentFCF *= (1 + yearGrowthRate / 100);
+    const discountFactor = Math.pow(1 + dcfDiscountRate / 100, year);
+    intrinsicValue += currentFCF / discountFactor;
+  }
+
+  const terminalGrowthRate = Math.min(growthRate * 0.5, 4);
+  const terminalFCF = currentFCF * (1 + terminalGrowthRate / 100);
+  const terminalValue = (terminalFCF * effectiveTerminalMultiple) /
+    Math.pow(1 + dcfDiscountRate / 100, dcfForecastPeriod);
+  intrinsicValue += terminalValue;
+
+  // FCF multiple ceiling — mirrors forward DCF's outlier guard.
+  if (effectiveFCF > 0) {
+    const priceFCFRatio = intrinsicValue / effectiveFCF;
+    if (priceFCFRatio > adjustments.fcfMultipleCap) {
+      intrinsicValue = effectiveFCF * adjustments.fcfMultipleCap;
+    }
+  }
+
+  // priceToCap ceiling — mirrors forward DCF. Note: for the reverse DCF this
+  // rarely binds because we are targeting NPV = current price < priceToCap ×
+  // current price, but mirroring it keeps the forward / reverse math in sync.
+  const maxAllowedValue = stockData.price * adjustments.priceToCap;
+  if (intrinsicValue > maxAllowedValue) {
+    intrinsicValue = maxAllowedValue;
+  }
+
+  return intrinsicValue;
+}
+
+export const calculateReverseDCFDetailed = (
+  stockData: StockData,
+  params: ValuationParams,
+): ReverseDCFResult => {
+  const adjustmentsLog: string[] = [];
+  const { fcfPerShare, eps, price, growthRate } = stockData;
+
+  if (price <= 0) {
+    return {
+      impliedGrowthRate: -1,
+      status: 'not_applicable',
+      interpretation: 'Reverse DCF not applicable: current price is non-positive',
+      appliedAdjustments: ['Reverse DCF not applicable: current price ≤ 0'],
+    };
+  }
+
+  const adjustments = getAdjustmentFactors(stockData);
+  const dataIssues = detectDataIssues(stockData);
+
+  let effectiveFCF = fcfPerShare;
+  if (dataIssues.hasFcfIssue || dataIssues.hasExtremeFcf) {
+    if (eps > 0) {
+      effectiveFCF = eps * adjustments.fcfToEpsRatio;
+      adjustmentsLog.push(
+        `FCF/share missing or extreme — estimated as EPS × ${adjustments.fcfToEpsRatio} (${describeIndustry(stockData)})`
+      );
+    } else {
+      return {
+        impliedGrowthRate: -1,
+        status: 'not_applicable',
+        interpretation: 'Reverse DCF not applicable: both FCF and EPS are non-positive',
+        appliedAdjustments: ['Reverse DCF not applicable: FCF and EPS both non-positive'],
+      };
+    }
+  }
+
+  if (eps > 0 && effectiveFCF > eps * 3) {
+    effectiveFCF = eps * 2.5;
+    adjustmentsLog.push('FCF capped at 2.5× EPS (outlier sanity check)');
+  }
+
+  // Bracket check — if even the extremes can't reach the price, report
+  // gracefully instead of returning a spurious bisection result.
+  const npvAtMin = projectReverseDcfNpv(stockData, params, REVERSE_DCF_MIN_GROWTH, effectiveFCF, adjustments);
+  const npvAtMax = projectReverseDcfNpv(stockData, params, REVERSE_DCF_MAX_GROWTH, effectiveFCF, adjustments);
+
+  if (npvAtMax < price) {
+    adjustmentsLog.push(
+      `Implied growth exceeds ${REVERSE_DCF_MAX_GROWTH}% — current price is above what even an aggressive growth assumption justifies (likely the FCF or priceToCap ceiling is binding)`
+    );
+    return {
+      impliedGrowthRate: REVERSE_DCF_MAX_GROWTH,
+      status: 'above_max',
+      interpretation: `Market is pricing in growth above ${REVERSE_DCF_MAX_GROWTH}% — even an aggressive growth assumption can't justify the current price under this model`,
+      appliedAdjustments: adjustmentsLog,
+    };
+  }
+
+  if (npvAtMin > price) {
+    adjustmentsLog.push(
+      `Implied growth below ${REVERSE_DCF_MIN_GROWTH}% — current price is below what even a steeply negative growth assumption produces`
+    );
+    return {
+      impliedGrowthRate: REVERSE_DCF_MIN_GROWTH,
+      status: 'below_min',
+      interpretation: `Market is pricing in growth below ${REVERSE_DCF_MIN_GROWTH}% — possibly an opportunity, possibly a sign the model isn't capturing the company's situation`,
+      appliedAdjustments: adjustmentsLog,
+    };
+  }
+
+  // Bisection — NPV(g) is monotonically increasing in g for the inputs that
+  // pass the bracket check above, so the standard bisection invariant holds.
+  let lo = REVERSE_DCF_MIN_GROWTH;
+  let hi = REVERSE_DCF_MAX_GROWTH;
+  let mid = (lo + hi) / 2;
+  for (let i = 0; i < REVERSE_DCF_ITERATIONS; i++) {
+    mid = (lo + hi) / 2;
+    const npv = projectReverseDcfNpv(stockData, params, mid, effectiveFCF, adjustments);
+    if (Math.abs(npv - price) / price < REVERSE_DCF_PRICE_TOLERANCE_PCT / 100) break;
+    if (npv < price) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+
+  const impliedGrowthRate = parseFloat(mid.toFixed(2));
+
+  // Build a one-line interpretation comparing the implied rate to the
+  // company's actual historical growth. Skip the comparison if historical
+  // growth is missing or non-positive.
+  let interpretation: string;
+  if (growthRate > 0) {
+    const gap = parseFloat((impliedGrowthRate - growthRate).toFixed(1));
+    if (Math.abs(gap) < 0.5) {
+      interpretation =
+        `Market is pricing in ${impliedGrowthRate.toFixed(1)}% growth — roughly in line with the company's historical growth (${growthRate.toFixed(1)}%)`;
+    } else if (gap > 0) {
+      interpretation =
+        `Market is pricing in ${impliedGrowthRate.toFixed(1)}% growth — ${Math.abs(gap).toFixed(1)} pts higher than the company's historical growth (${growthRate.toFixed(1)}%). The market is more optimistic than the trailing record.`;
+    } else {
+      interpretation =
+        `Market is pricing in ${impliedGrowthRate.toFixed(1)}% growth — ${Math.abs(gap).toFixed(1)} pts lower than the company's historical growth (${growthRate.toFixed(1)}%). The market is more pessimistic than the trailing record.`;
+    }
+  } else {
+    interpretation = `Market is pricing in ${impliedGrowthRate.toFixed(1)}% growth (no historical growth available to compare against)`;
+  }
+
+  return {
+    impliedGrowthRate,
+    status: 'solved',
+    interpretation,
+    appliedAdjustments: adjustmentsLog,
+  };
+};
+
+// Thin number-returning wrapper for symmetry with the other calculators.
+// Returns the implied growth rate (%); see `calculateReverseDCFDetailed` for
+// the full result including status and interpretation.
+export const calculateReverseDCF = (
+  stockData: StockData,
+  params: ValuationParams,
+): number => calculateReverseDCFDetailed(stockData, params).impliedGrowthRate;

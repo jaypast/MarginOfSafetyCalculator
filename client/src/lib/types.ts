@@ -78,3 +78,14 @@ export interface CompanyQualityResult {
 }
 
 export type CalculationMethod = 'dcf' | 'pe' | 'graham';
+
+// Reverse DCF — answers "what growth rate would justify the current price under
+// this DCF model?". Sentinel `impliedGrowthRate = -1` together with
+// `status = 'not_applicable'` means the model cannot be applied (e.g. negative
+// FCF and EPS, or non-positive price).
+export interface ReverseDCFResult {
+  impliedGrowthRate: number;          // %, or the clamp boundary when status != 'solved'
+  status: 'solved' | 'above_max' | 'below_min' | 'not_applicable';
+  interpretation: string;             // Short human-readable comparison vs. company history
+  appliedAdjustments: string[];       // Same provenance pattern as the other valuations
+}

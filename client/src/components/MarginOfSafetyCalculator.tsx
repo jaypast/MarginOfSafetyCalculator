@@ -15,7 +15,8 @@ import {
   MarginOfSafetyParams as MoSParams, 
   ValuationResult,
   CalculationMethod,
-  CompanyQualityResult
+  CompanyQualityResult,
+  ReverseDCFResult
 } from '@/lib/types';
 import {
   calculateDCFDetailed,
@@ -24,7 +25,8 @@ import {
   calculateBuyBelow,
   calculateDiscountPremium,
   calculateAverageValuation,
-  calculateBuyBelowStatus
+  calculateBuyBelowStatus,
+  calculateReverseDCFDetailed
 } from '@/lib/calculators';
 import { getCompanyQuality, getRecommendedMarginOfSafety, getDefaultMarginOfSafety } from '@/lib/utils';
 
@@ -62,6 +64,10 @@ const MarginOfSafetyCalculator: React.FC = () => {
   // Valuation results state
   const [valuationResults, setValuationResults] = useState<ValuationResult[]>([]);
   const [companyQuality, setCompanyQuality] = useState<CompanyQualityResult | null>(null);
+  // Reverse-DCF result lives in its own slot rather than being shoehorned
+  // into the valuation-results table (it's a growth rate, not an intrinsic
+  // value, so the existing columns don't fit).
+  const [reverseDCFResult, setReverseDCFResult] = useState<ReverseDCFResult | null>(null);
   
   // Update default MoS and automatically calculate when stock data changes
   useEffect(() => {
@@ -151,6 +157,12 @@ const MarginOfSafetyCalculator: React.FC = () => {
     const avgResult = calculateAverageValuation(results, price);
 
     setValuationResults([...results, avgResult]);
+
+    // Reverse DCF — solve for the growth rate that justifies the current
+    // price under the same DCF model. Computed in its own block so future
+    // refactors of the DCF/PE/Graham trio don't accidentally entangle it.
+    const reverse = calculateReverseDCFDetailed(stockData, valuationParams);
+    setReverseDCFResult(reverse);
   };
   
   // Recalculate when margin of safety or valuation parameters change
@@ -206,6 +218,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
               activeMethod={activeMethod}
               valuationParams={valuationParams}
               marginOfSafetyParams={marginOfSafetyParams}
+              reverseDCFResult={reverseDCFResult}
             />
           </div>
         )}

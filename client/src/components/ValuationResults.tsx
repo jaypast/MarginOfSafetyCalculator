@@ -9,10 +9,10 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileText, TrendingDown, TrendingUp, Pause, Info } from 'lucide-react';
+import { FileText, TrendingDown, TrendingUp, Pause, Info, Activity } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { StockData, ValuationResult, CalculationMethod, ValuationParams, MarginOfSafetyParams } from '@/lib/types';
+import { StockData, ValuationResult, CalculationMethod, ValuationParams, MarginOfSafetyParams, ReverseDCFResult } from '@/lib/types';
 import { formatCurrency, isETF, getInvestmentRecommendation } from '@/lib/utils';
 import { generateCalculationsPDF } from '@/utils/pdfGenerator';
 import { calculateDiscountPremium } from '@/lib/calculators';
@@ -24,6 +24,7 @@ interface ValuationResultsProps {
   activeMethod: CalculationMethod;
   valuationParams?: ValuationParams;
   marginOfSafetyParams?: MarginOfSafetyParams;
+  reverseDCFResult?: ReverseDCFResult | null;
 }
 
 const ValuationResults: React.FC<ValuationResultsProps> = ({
@@ -31,7 +32,8 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
   stockData,
   activeMethod,
   valuationParams,
-  marginOfSafetyParams
+  marginOfSafetyParams,
+  reverseDCFResult
 }) => {
   // Add state for dialog control and report content
   const [showReportDialog, setShowReportDialog] = useState(false);
@@ -312,6 +314,69 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
           </div>
         </div>
         
+        {/* Reverse DCF — the growth rate that would justify the current price
+            under the same DCF model, presented separately because it's a
+            growth rate (not an intrinsic value) and doesn't fit the columns
+            of the methods table above. */}
+        {reverseDCFResult && !isSpecialCase && !etfDetected && stockData && (() => {
+          const { impliedGrowthRate, status, interpretation } = reverseDCFResult;
+
+          if (status === 'not_applicable') {
+            return (
+              <div className="mt-6 bg-neutral-50 border border-neutral-200 rounded-md p-3">
+                <div className="flex items-center mb-1">
+                  <Activity className="w-4 h-4 text-neutral-500 mr-2" />
+                  <h3 className="text-sm font-medium text-neutral-700">Reverse DCF — implied growth</h3>
+                </div>
+                <p className="text-xs text-neutral-600">{interpretation}</p>
+              </div>
+            );
+          }
+
+          const impliedDisplay =
+            status === 'above_max'
+              ? `>${impliedGrowthRate.toFixed(0)}%`
+              : status === 'below_min'
+              ? `<${impliedGrowthRate.toFixed(0)}%`
+              : `${impliedGrowthRate.toFixed(1)}%`;
+
+          const hasHistorical = stockData.growthRate > 0;
+          const gap = hasHistorical && status === 'solved'
+            ? parseFloat((impliedGrowthRate - stockData.growthRate).toFixed(1))
+            : null;
+
+          return (
+            <div className="mt-6 bg-blue-50 border border-blue-200 rounded-md p-4">
+              <div className="flex items-center mb-2">
+                <Activity className="w-4 h-4 text-blue-600 mr-2" />
+                <h3 className="text-sm font-medium text-blue-900">Reverse DCF — implied growth</h3>
+              </div>
+              <p className="text-xs text-blue-700 mb-3">
+                The growth rate that, if achieved over the forecast horizon, would justify the current price under this DCF model.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                <div className="bg-white p-3 rounded-md border border-blue-100">
+                  <p className="text-xs text-blue-600 mb-1">Market-implied growth</p>
+                  <p className="text-lg font-bold text-blue-900">{impliedDisplay}</p>
+                </div>
+                <div className="bg-white p-3 rounded-md border border-blue-100">
+                  <p className="text-xs text-blue-600 mb-1">Company historical growth</p>
+                  <p className="text-lg font-bold text-blue-900">
+                    {hasHistorical ? `${stockData.growthRate.toFixed(1)}%` : 'N/A'}
+                  </p>
+                </div>
+                <div className="bg-white p-3 rounded-md border border-blue-100">
+                  <p className="text-xs text-blue-600 mb-1">Gap (implied − historical)</p>
+                  <p className="text-lg font-bold text-blue-900">
+                    {gap === null ? 'N/A' : `${gap > 0 ? '+' : ''}${gap.toFixed(1)} pts`}
+                  </p>
+                </div>
+              </div>
+              <p className="text-sm text-blue-800 italic">{interpretation}</p>
+            </div>
+          );
+        })()}
+
         {/* Applied adjustments — surfaces every cap, override, and fallback
             so the user can see *why* a number is what it is rather than
             having to trust the model blindly. */}
