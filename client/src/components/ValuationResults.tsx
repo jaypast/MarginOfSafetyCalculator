@@ -309,73 +309,65 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                     </TableCell>
                   </TableRow>
                 )}
+                {/* Reverse DCF — appended as a sibling row of DCF / P/E /
+                    Graham / Average so users see all four methods side-by-side.
+                    The reverse DCF is a growth rate, not an intrinsic value,
+                    so the cells re-purpose the existing columns to show
+                    implied growth / historical growth / gap rather than
+                    forcing it into the "intrinsic value" / "buy below" frame. */}
+                {reverseDCFResult && stockData && (() => {
+                  const { impliedGrowthRate, status, interpretation } = reverseDCFResult;
+                  const isNotApplicable = status === 'not_applicable';
+                  const impliedDisplay = isNotApplicable
+                    ? 'N/A'
+                    : status === 'above_max'
+                    ? `>${impliedGrowthRate.toFixed(0)}%`
+                    : status === 'below_min'
+                    ? `<${impliedGrowthRate.toFixed(0)}%`
+                    : `${impliedGrowthRate.toFixed(1)}%`;
+                  const hasHistorical = stockData.growthRate > 0;
+                  const historicalDisplay = hasHistorical ? `${stockData.growthRate.toFixed(1)}%` : 'N/A';
+                  const gap = hasHistorical && status === 'solved'
+                    ? parseFloat((impliedGrowthRate - stockData.growthRate).toFixed(1))
+                    : null;
+                  const gapDisplay = gap === null
+                    ? 'N/A'
+                    : `${gap > 0 ? '+' : ''}${gap.toFixed(1)} pts`;
+                  const gapClass = gap === null
+                    ? 'text-neutral-600'
+                    : gap > 0 ? 'text-red-600' : 'text-green-600';
+                  return (
+                    <>
+                      <TableRow className="bg-blue-50 border-t-2 border-blue-200">
+                        <TableCell className="font-medium text-blue-900">
+                          <div className="flex items-center">
+                            <Activity className="w-3.5 h-3.5 text-blue-600 mr-1.5" />
+                            Reverse DCF
+                          </div>
+                          <div className="text-xs font-normal text-blue-600 ml-5">implied growth</div>
+                        </TableCell>
+                        <TableCell className="font-medium text-blue-900 text-right">{impliedDisplay}</TableCell>
+                        <TableCell className="font-medium text-blue-900 text-right">{historicalDisplay}</TableCell>
+                        <TableCell className={`font-medium ${gapClass} text-right`}>{gapDisplay}</TableCell>
+                        <TableCell className="text-blue-700 text-right text-xs">vs. historical</TableCell>
+                      </TableRow>
+                      <TableRow className="bg-blue-50">
+                        <TableCell colSpan={5} className="text-sm italic text-blue-800 pt-0">
+                          {interpretation}
+                        </TableCell>
+                      </TableRow>
+                    </>
+                  );
+                })()}
               </TableBody>
             </Table>
           </div>
+          {reverseDCFResult && stockData && (
+            <p className="text-xs text-neutral-500 mt-2">
+              Reverse DCF columns re-purpose the row to show <span className="font-medium">market-implied growth</span> / <span className="font-medium">company historical growth</span> / <span className="font-medium">gap (pts)</span>.
+            </p>
+          )}
         </div>
-        
-        {/* Reverse DCF — the growth rate that would justify the current price
-            under the same DCF model, presented separately because it's a
-            growth rate (not an intrinsic value) and doesn't fit the columns
-            of the methods table above. */}
-        {reverseDCFResult && !isSpecialCase && !etfDetected && stockData && (() => {
-          const { impliedGrowthRate, status, interpretation } = reverseDCFResult;
-
-          if (status === 'not_applicable') {
-            return (
-              <div className="mt-6 bg-neutral-50 border border-neutral-200 rounded-md p-3">
-                <div className="flex items-center mb-1">
-                  <Activity className="w-4 h-4 text-neutral-500 mr-2" />
-                  <h3 className="text-sm font-medium text-neutral-700">Reverse DCF — implied growth</h3>
-                </div>
-                <p className="text-xs text-neutral-600">{interpretation}</p>
-              </div>
-            );
-          }
-
-          const impliedDisplay =
-            status === 'above_max'
-              ? `>${impliedGrowthRate.toFixed(0)}%`
-              : status === 'below_min'
-              ? `<${impliedGrowthRate.toFixed(0)}%`
-              : `${impliedGrowthRate.toFixed(1)}%`;
-
-          const hasHistorical = stockData.growthRate > 0;
-          const gap = hasHistorical && status === 'solved'
-            ? parseFloat((impliedGrowthRate - stockData.growthRate).toFixed(1))
-            : null;
-
-          return (
-            <div className="mt-6 bg-blue-50 border border-blue-200 rounded-md p-4">
-              <div className="flex items-center mb-2">
-                <Activity className="w-4 h-4 text-blue-600 mr-2" />
-                <h3 className="text-sm font-medium text-blue-900">Reverse DCF — implied growth</h3>
-              </div>
-              <p className="text-xs text-blue-700 mb-3">
-                The growth rate that, if achieved over the forecast horizon, would justify the current price under this DCF model.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                <div className="bg-white p-3 rounded-md border border-blue-100">
-                  <p className="text-xs text-blue-600 mb-1">Market-implied growth</p>
-                  <p className="text-lg font-bold text-blue-900">{impliedDisplay}</p>
-                </div>
-                <div className="bg-white p-3 rounded-md border border-blue-100">
-                  <p className="text-xs text-blue-600 mb-1">Company historical growth</p>
-                  <p className="text-lg font-bold text-blue-900">
-                    {hasHistorical ? `${stockData.growthRate.toFixed(1)}%` : 'N/A'}
-                  </p>
-                </div>
-                <div className="bg-white p-3 rounded-md border border-blue-100">
-                  <p className="text-xs text-blue-600 mb-1">Gap (implied − historical)</p>
-                  <p className="text-lg font-bold text-blue-900">
-                    {gap === null ? 'N/A' : `${gap > 0 ? '+' : ''}${gap.toFixed(1)} pts`}
-                  </p>
-                </div>
-              </div>
-              <p className="text-sm text-blue-800 italic">{interpretation}</p>
-            </div>
-          );
-        })()}
 
         {/* Applied adjustments — surfaces every cap, override, and fallback
             so the user can see *why* a number is what it is rather than

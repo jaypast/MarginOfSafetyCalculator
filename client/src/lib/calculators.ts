@@ -435,8 +435,12 @@ export const compareDataSources = (
 // for healthy inputs, so bisection is well-behaved.
 // =============================================================================
 
+// Bisection clamps the implied growth rate within ±50 %. Anything outside
+// that band is reported with a `>50 %` / `<-50 %` label rather than a
+// spurious bisection result — per spec, a model that requires growth above
+// 50 % to justify the price has effectively given up on the price.
 const REVERSE_DCF_MIN_GROWTH = -50;
-const REVERSE_DCF_MAX_GROWTH = 100;
+const REVERSE_DCF_MAX_GROWTH = 50;
 const REVERSE_DCF_ITERATIONS = 60;
 // Bisection halts once price is matched within this relative tolerance.
 // 0.1 % is far tighter than the financial inputs themselves.
@@ -510,26 +514,23 @@ export const calculateReverseDCFDetailed = (
     };
   }
 
-  const adjustments = getAdjustmentFactors(stockData);
-  const dataIssues = detectDataIssues(stockData);
-
-  let effectiveFCF = fcfPerShare;
-  if (dataIssues.hasFcfIssue || dataIssues.hasExtremeFcf) {
-    if (eps > 0) {
-      effectiveFCF = eps * adjustments.fcfToEpsRatio;
-      adjustmentsLog.push(
-        `FCF/share missing or extreme — estimated as EPS × ${adjustments.fcfToEpsRatio} (${describeIndustry(stockData)})`
-      );
-    } else {
-      return {
-        impliedGrowthRate: -1,
-        status: 'not_applicable',
-        interpretation: 'Reverse DCF not applicable: both FCF and EPS are non-positive',
-        appliedAdjustments: ['Reverse DCF not applicable: FCF and EPS both non-positive'],
-      };
-    }
+  // Strict precondition: reverse DCF requires real free cash flow. Unlike
+  // the forward DCF (which falls back to EPS × industry ratio when FCF is
+  // missing), the reverse solver is meant to tell investors what the
+  // *market* is pricing in — substituting a derived FCF would silently
+  // change the question being answered. So we refuse to run when FCF ≤ 0.
+  if (fcfPerShare <= 0) {
+    return {
+      impliedGrowthRate: -1,
+      status: 'not_applicable',
+      interpretation: 'Reverse DCF not applicable: FCF non-positive',
+      appliedAdjustments: ['Reverse DCF not applicable: FCF non-positive'],
+    };
   }
 
+  const adjustments = getAdjustmentFactors(stockData);
+
+  let effectiveFCF = fcfPerShare;
   if (eps > 0 && effectiveFCF > eps * 3) {
     effectiveFCF = eps * 2.5;
     adjustmentsLog.push('FCF capped at 2.5× EPS (outlier sanity check)');

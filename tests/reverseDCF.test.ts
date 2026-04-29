@@ -123,30 +123,30 @@ describe('Round-trip property — forward(g) → P → reverse(P) recovers g', (
 });
 
 describe('Edge cases', () => {
-  it('returns -1 / not_applicable when both FCF and EPS are non-positive', () => {
+  it('returns -1 / not_applicable when FCF is non-positive (no EPS fallback)', () => {
+    // Spec: reverse DCF should refuse to run when FCF ≤ 0, regardless of
+    // EPS. Using a derived FCF would silently change what question is
+    // being answered ("market-implied growth" vs. "growth that would
+    // justify a synthesized FCF").
+    for (const fcf of [-1, 0]) {
+      const out = calculateReverseDCFDetailed(
+        makeHealthy({ fcfPerShare: fcf, eps: 5 }),
+        p(),
+      );
+      expect(out.impliedGrowthRate).toBe(-1);
+      expect(out.status).toBe('not_applicable');
+      expect(out.interpretation).toMatch(/not applicable/i);
+      expect(out.appliedAdjustments.join(' ')).toMatch(/FCF non-positive/i);
+    }
+  });
+
+  it('returns not_applicable even when EPS is also negative', () => {
     const out = calculateReverseDCFDetailed(
       makeHealthy({ fcfPerShare: -1, eps: -2 }),
       p(),
     );
-    expect(out.impliedGrowthRate).toBe(-1);
     expect(out.status).toBe('not_applicable');
-    expect(out.interpretation).toMatch(/not applicable/i);
-    expect(out.appliedAdjustments.join(' ')).toMatch(/FCF and EPS/i);
-  });
-
-  it('falls back to EPS-derived FCF when FCF is missing but EPS is positive', () => {
-    // Note: when FCF is missing, getAdjustmentFactors tightens the caps
-    // (fcfMultipleCap → 20, priceToCap → 2.0). With effectiveFCF = 5 ×
-    // 0.85 = 4.25, that means NPV is bounded above by 4.25 × 20 = 85.
-    // We pick a price (50) well inside that range so the bracket can
-    // close and the test exercises the fallback path rather than the
-    // above_max clamp.
-    const out = calculateReverseDCFDetailed(
-      makeHealthy({ price: 50, fcfPerShare: 0, eps: 5 }),
-      p(),
-    );
-    expect(out.status).toBe('solved');
-    expect(out.appliedAdjustments.some(a => /FCF.*EPS/.test(a))).toBe(true);
+    expect(out.impliedGrowthRate).toBe(-1);
   });
 
   it('returns not_applicable when current price is non-positive', () => {
@@ -155,15 +155,16 @@ describe('Edge cases', () => {
     expect(out.impliedGrowthRate).toBe(-1);
   });
 
-  it('clamps to the upper boundary (>100 %) when the price is unreachable', () => {
-    // Tiny FCF + huge price → no growth rate can lift the NPV that high.
+  it('clamps to the upper boundary (>50 %) when the price is unreachable', () => {
+    // Tiny FCF + huge price → no growth rate up to the +50 % cap can
+    // lift NPV that high.
     const out = calculateReverseDCFDetailed(
       makeHealthy({ price: 10000, fcfPerShare: 0.01, eps: 0.01, growthRate: 5 }),
       p(),
     );
     expect(out.status).toBe('above_max');
-    expect(out.impliedGrowthRate).toBe(100);
-    expect(out.interpretation).toMatch(/above 100/i);
+    expect(out.impliedGrowthRate).toBe(50);
+    expect(out.interpretation).toMatch(/above 50/i);
   });
 
   it('clamps to the lower boundary (<-50 %) when the price is far below model floor', () => {
