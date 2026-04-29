@@ -131,44 +131,92 @@ describe('Property: discount/premium is monotonic in price', () => {
 });
 
 describe('Property: historical P/E modes consume per-ticker data', () => {
-  // Two stocks identical in everything except their peHistory.fiveYearAvg
-  // must produce different intrinsic values under peType=5year — which
-  // would NOT have been true under the old "5year=18.6 always" code.
-  it('different fiveYearAvg → different intrinsic value (peType=5year)', () => {
+  // Cap-free arbitrary: bound the inputs so neither the per-industry
+  // peMultipleCap (DEFAULT=30) nor the priceToCap (DEFAULT=3.0×price)
+  // ever fires — that way ANY non-equality between intrinsic values
+  // can only come from the calculator actually reading the per-ticker
+  // peHistory payload. This is the *real* "no constants" guarantee:
+  // a constant branch (the old `5year=18.6 always` bug) would produce
+  // the SAME output for distinct payloads and would fail this test.
+  const capFreeArb: fc.Arbitrary<StockData> = fc.record({
+    price: fc.double({ min: 100, max: 1000, noNaN: true, noDefaultInfinity: true }),
+    eps: fc.double({ min: 1, max: 10, noNaN: true, noDefaultInfinity: true }),
+  }).map((v) => ({
+    symbol: 'XYZ',
+    name: 'Generic Co',
+    price: parseFloat(v.price.toFixed(2)),
+    eps: parseFloat(v.eps.toFixed(2)),
+    peRatio: 15,
+    fcfPerShare: 5,
+    growthRate: 10,
+    roe: 15,
+    debtToEquity: 1.0,
+    currentRatio: 1.5,
+    revenueGrowth: 5,
+    earningsStability: 'Medium' as const,
+    competitivePosition: 'Average' as const,
+  }));
+
+  // Two payloads that differ ONLY in fiveYearAvg, both inside the
+  // uncapped range [5, 25]. With DEFAULT peMultipleCap=30 and
+  // priceToCap=3.0, eps∈[1,10] and price∈[100,1000], the worst case
+  // is 10 × 25 = 250 ≤ 100 × 3.0 = 300 → no cap fires. The intrinsic
+  // values must therefore be *strictly* different (≠), not just
+  // monotone — which would catch a constant branch.
+  it('different fiveYearAvg → strictly different intrinsic value (no constants)', () => {
     fc.assert(
       fc.property(
-        healthyStockArb,
-        // Two distinct historical multiples in the uncapped range.
-        fc.double({ min: 8, max: 20, noNaN: true, noDefaultInfinity: true }),
-        fc.double({ min: 25, max: 45, noNaN: true, noDefaultInfinity: true }),
+        capFreeArb,
+        fc.double({ min: 5, max: 15, noNaN: true, noDefaultInfinity: true }),
+        fc.double({ min: 16, max: 25, noNaN: true, noDefaultInfinity: true }),
         (stock, lowPe, highPe) => {
           const sLow = { ...stock, peHistory: { fiveYearAvg: lowPe, tenYearAvg: null, industryAvg: null } };
           const sHigh = { ...stock, peHistory: { fiveYearAvg: highPe, tenYearAvg: null, industryAvg: null } };
           const vLow = calculatePE(sLow, { ...DEFAULT_PARAMS, peType: '5year' });
           const vHigh = calculatePE(sHigh, { ...DEFAULT_PARAMS, peType: '5year' });
-          // Both bounded by priceToCap (DEFAULT 3×). When both are below
-          // the cap the higher P/E must produce a strictly higher value.
-          // When the higher one is capped they may converge.
-          return vHigh >= vLow - 0.01;
+          // Strictly greater (caps cannot fire here): exact difference
+          // must equal eps × (highPe - lowPe). A constant branch would
+          // yield vLow === vHigh and fail this assertion.
+          return vHigh > vLow + 0.01;
         },
       ),
       { numRuns: 100 },
     );
   });
 
-  // Symmetric to the above but for the 10-year mode.
-  it('different tenYearAvg → different intrinsic value (peType=10year)', () => {
+  // Symmetric "no-constants" test for the 10-year mode.
+  it('different tenYearAvg → strictly different intrinsic value (no constants)', () => {
     fc.assert(
       fc.property(
-        healthyStockArb,
-        fc.double({ min: 8, max: 20, noNaN: true, noDefaultInfinity: true }),
-        fc.double({ min: 25, max: 45, noNaN: true, noDefaultInfinity: true }),
+        capFreeArb,
+        fc.double({ min: 5, max: 15, noNaN: true, noDefaultInfinity: true }),
+        fc.double({ min: 16, max: 25, noNaN: true, noDefaultInfinity: true }),
         (stock, lowPe, highPe) => {
           const sLow = { ...stock, peHistory: { fiveYearAvg: null, tenYearAvg: lowPe, industryAvg: null } };
           const sHigh = { ...stock, peHistory: { fiveYearAvg: null, tenYearAvg: highPe, industryAvg: null } };
           const vLow = calculatePE(sLow, { ...DEFAULT_PARAMS, peType: '10year' });
           const vHigh = calculatePE(sHigh, { ...DEFAULT_PARAMS, peType: '10year' });
-          return vHigh >= vLow - 0.01;
+          return vHigh > vLow + 0.01;
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
+  // Same guarantee for industry mode: a different payload-supplied
+  // industryAvg must yield a different intrinsic value.
+  it('different industryAvg → strictly different intrinsic value (no constants)', () => {
+    fc.assert(
+      fc.property(
+        capFreeArb,
+        fc.double({ min: 5, max: 15, noNaN: true, noDefaultInfinity: true }),
+        fc.double({ min: 16, max: 25, noNaN: true, noDefaultInfinity: true }),
+        (stock, lowPe, highPe) => {
+          const sLow = { ...stock, peHistory: { fiveYearAvg: null, tenYearAvg: null, industryAvg: lowPe } };
+          const sHigh = { ...stock, peHistory: { fiveYearAvg: null, tenYearAvg: null, industryAvg: highPe } };
+          const vLow = calculatePE(sLow, { ...DEFAULT_PARAMS, peType: 'industry' });
+          const vHigh = calculatePE(sHigh, { ...DEFAULT_PARAMS, peType: 'industry' });
+          return vHigh > vLow + 0.01;
         },
       ),
       { numRuns: 100 },

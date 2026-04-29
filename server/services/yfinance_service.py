@@ -125,9 +125,15 @@ def compute_pe_history(ticker):
                 return float(ordered[mid])
             return float((ordered[mid - 1] + ordered[mid]) / 2)
 
-        # Last 20 / 40 quarters of computed P/E ratios.
-        five = _median(pe_only[-20:]) if len(pe_only) >= 4 else None
-        ten = _median(pe_only[-40:]) if len(pe_only) >= 8 else None
+        # Last 20 / 40 quarters of computed P/E ratios. Require the FULL
+        # window to be present — the whole point of "5-year median" is
+        # that it spans 5 years, not "as much as we have". When history
+        # is short (newly listed ticker, sparse upstream coverage, or
+        # too many EPS<=0 quarters dropping below threshold), return
+        # None so the frontend's fallback note fires instead of
+        # silently presenting a 1-year median as a "5-year average".
+        five = _median(pe_only[-20:]) if len(pe_only) >= 20 else None
+        ten = _median(pe_only[-40:]) if len(pe_only) >= 40 else None
 
         # Round to one decimal so JSON output is stable across runs.
         def _round(x):

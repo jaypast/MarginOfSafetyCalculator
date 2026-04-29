@@ -189,8 +189,15 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
                   <TooltipTrigger className="text-neutral-400 ml-1">
                     <i className="ri-question-line"></i>
                   </TooltipTrigger>
-                  <TooltipContent className="w-64">
-                    <p>P/E ratio used for valuation. Conservative investors often use lower historical P/E ratios to build in additional safety.</p>
+                  <TooltipContent className="w-72">
+                    <div className="space-y-2 text-xs">
+                      <p className="font-medium">Which P/E multiple drives the P/E-based intrinsic value:</p>
+                      <p><span className="font-medium">Current</span> — today's reported P/E ratio.</p>
+                      <p><span className="font-medium">5-year average</span> — the median trailing-twelve-month P/E across the last 20 quarters of <em>this</em> ticker's own history. Falls back to current with a note when the data source can't compute it.</p>
+                      <p><span className="font-medium">10-year average</span> — same idea over the last 40 quarters. Stricter requirement, so falls back more often for newer listings.</p>
+                      <p><span className="font-medium">Industry baseline</span> — published S&amp;P sector median P/E for this stock's industry (e.g. ~28 for Tech, ~14 for Financials). Falls back when the industry can't be classified.</p>
+                      <p><span className="font-medium">Custom</span> — pick your own multiple.</p>
+                    </div>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -210,6 +217,31 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
                 <SelectItem value="custom">Custom P/E...</SelectItem>
               </SelectContent>
             </StyledSelect>
+            {/* Per-mode help line that shows underneath the selector,
+                explaining the *currently selected* mode in plain words.
+                Complements the umbrella tooltip above and is always
+                visible without hovering. */}
+            <p className="mt-1 text-xs text-neutral-500" data-testid="pe-mode-help">
+              {valuationParams.peType === '5year' && (
+                stockData?.peHistory?.fiveYearAvg != null
+                  ? `Median trailing-twelve-month P/E across the last 20 quarters of ${stockData?.symbol ?? 'this ticker'}'s own history.`
+                  : '5-year median unavailable for this ticker — calculation will fall back to the current P/E with a note.'
+              )}
+              {valuationParams.peType === '10year' && (
+                stockData?.peHistory?.tenYearAvg != null
+                  ? `Median trailing-twelve-month P/E across the last 40 quarters of ${stockData?.symbol ?? 'this ticker'}'s own history.`
+                  : '10-year median unavailable for this ticker — calculation will fall back to the current P/E with a note.'
+              )}
+              {valuationParams.peType === 'industry' && (
+                'Published S&P sector median P/E for this stock\'s industry classification (used as a what-if baseline, not a forecast).'
+              )}
+              {valuationParams.peType === 'current' && (
+                "Today's reported P/E. Reflects the market's current opinion of the stock."
+              )}
+              {valuationParams.peType === 'custom' && (
+                'Pick your own multiple — useful for stress-testing valuation under different assumptions.'
+              )}
+            </p>
           </div>
           
           {valuationParams.peType === 'custom' && (
