@@ -18,8 +18,9 @@ def compute_pe_history(ticker):
 
     Methodology: at each quarter end, take the trailing-twelve-month
     EPS (sum of the trailing four quarterly diluted EPS values, skipping
-    quarters with non-positive EPS), match it against the closest monthly
-    close on/after that quarter end, and form ``price / ttm_eps``. Then
+    quarters with non-positive EPS), match it against the most recent
+    monthly close at or before that quarter end (backward ``.asof``
+    lookup, no look-ahead bias), and form ``price / ttm_eps``. Then
     take the median over the trailing 20 / 40 quarters. Sane outputs are
     bounded ``0 < pe < 200``.
 
