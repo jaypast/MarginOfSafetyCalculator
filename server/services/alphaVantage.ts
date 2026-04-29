@@ -140,6 +140,10 @@ export async function getAlphaVantageData(symbol: string): Promise<StockResponse
     earningsStability,
     competitivePosition,
     lastUpdated: new Date().toISOString(),
+    // Alpha Vantage's free tier doesn't expose enough quarterly EPS
+    // history to compute trailing-twelve-month medians reliably.
+    // Emit explicit null so the API contract stays uniform (Task #15).
+    peHistory: null,
   };
 
   console.log(`Alpha Vantage data for ${symbol}: price=${price}, eps=${eps}, growth=${growthRate}%`);

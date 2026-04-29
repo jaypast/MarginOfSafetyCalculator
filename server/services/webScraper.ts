@@ -155,7 +155,11 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
       revenueGrowth,
       earningsStability,
       competitivePosition,
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      // Web-scrape adapter has no historical-EPS visibility; emit
+      // explicit null so the API contract stays uniform across
+      // adapters (Task #15).
+      peHistory: null
     };
     
     // Fill in reasonable defaults for missing values

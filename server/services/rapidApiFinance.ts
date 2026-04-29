@@ -159,7 +159,11 @@ async function getStockDataApiInfo(symbol: string): Promise<StockResponse> {
     competitivePosition: evaluateCompetitivePosition(data, companyData),
     
     // Last updated timestamp
-    lastUpdated: new Date().toISOString()
+    lastUpdated: new Date().toISOString(),
+    // RapidAPI's Stock Data endpoint doesn't expose enough quarterly
+    // EPS history to compute trailing-twelve-month medians. Emit
+    // explicit null so the API contract stays uniform (Task #15).
+    peHistory: null
   };
   
   console.log(`Successfully received Stock Data API data for ${symbol}`);
@@ -216,7 +220,10 @@ async function getYahooFinanceApiInfo(symbol: string): Promise<StockResponse> {
     competitivePosition: evaluateCompetitivePositionYahoo(quoteData),
     
     // Last updated timestamp
-    lastUpdated: new Date().toISOString()
+    lastUpdated: new Date().toISOString(),
+    // Yahoo's RapidAPI quote endpoint doesn't return historical
+    // quarterly EPS — emit explicit null for uniform contract (Task #15).
+    peHistory: null
   };
   
   console.log(`Successfully received Yahoo Finance API data for ${symbol}`);
