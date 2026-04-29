@@ -20,8 +20,9 @@ export interface IStorage {
   }>;
 }
 
-// Memory storage for fallback when database is not available
-class MemStorage implements IStorage {
+// Memory storage for fallback when database is not available.
+// Exported so tests can exercise the same PMF math the runtime uses.
+export class MemStorage implements IStorage {
   private users: User[] = [];
   private feedbackEntries: Feedback[] = [];
   private nextUserId = 1;

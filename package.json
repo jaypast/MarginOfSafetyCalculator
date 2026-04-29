@@ -58,6 +58,7 @@
     "embla-carousel-react": "^8.3.0",
     "express": "^4.21.2",
     "express-session": "^1.18.1",
+    "fast-check": "^4.7.0",
     "framer-motion": "^11.13.1",
     "happy-dom": "^15.11.7",
     "input-otp": "^1.2.4",

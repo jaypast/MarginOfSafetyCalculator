@@ -41,20 +41,44 @@ Recent fixes:
 - `npm run db:push` — push Drizzle migrations.
 
 ### Test scripts (need to be added to `package.json` manually)
-The agent is forbidden from editing `package.json`. Please add the following entries to the `scripts` block to enable the testing workflow:
+The agent's environment hard-blocks edits to `package.json`. Please add the
+following entries to the `scripts` block once and for all so CI can run the
+suite via plain `npm test` / `npm run verify`:
 
 ```jsonc
 "test": "vitest run",
 "test:watch": "vitest",
 "test:coverage": "vitest run --coverage",
-"verify": "npm run check && npm test"
+"verify": "npm run check && npm run test"
 ```
 
-In the meantime, you can run the suite directly with:
+Until then, run the suite directly with:
 - `npx vitest run` — single run (CI-style).
 - `npx vitest` — watch mode during development.
 - `npx vitest run --coverage` — coverage report.
 
+## Test layout
+- `tests/calculators.test.ts` — unit tests for DCF / P/E / Graham including
+  cap regressions and the Japan-floor opt-in.
+- `tests/companyAdjustments.test.ts` — industry mapping, special cases, the
+  removed `7xxx.T → AUTO` heuristic.
+- `tests/researchCalculations.test.ts` — end-to-end research pipeline.
+- `tests/schema.test.ts` — Zod schema validation.
+- `tests/storage.test.ts` — exercises the production `MemStorage` class
+  (with `server/db` mocked to `null`) for the Sean Ellis PMF math.
+- `tests/goldenValues.test.ts` — locked-in intrinsic values for AAPL, JPM,
+  Ford, Toyota (7203.T) and a loss-making company. Any math change that
+  shifts a number by more than $0.01 trips these tests.
+- `tests/properties.test.ts` — property-based tests (fast-check) for
+  invariants like "DCF/P/E/Graham never exceed `priceToCap × price`",
+  "buy-below is always strictly less than intrinsic value", and
+  cross-source comparison symmetry.
+- `tests/crossSource.test.ts` — divergence-detection logic that powers
+  the `CROSS_SOURCE_DIVERGENCE` warn logs in `server/services/stockData.ts`.
+
 ## Notes
 - The Vite + Express setup lives in `vite.config.ts` and `server/vite.ts` and must not be modified. There is a known preexisting `tsc` error in `server/vite.ts` (`allowedHosts: boolean` vs the new Vite type) that is unrelated to the test work; runtime is unaffected.
 - New tests should be placed in `tests/` and end in `.test.ts` to be picked up by Vitest.
+- When the primary stock-data source returns complete data, a non-blocking
+  secondary source is fetched and compared. Any field that diverges by more
+  than 15% logs `CROSS_SOURCE_DIVERGENCE` to stderr (single-line, greppable).

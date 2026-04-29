@@ -6,6 +6,75 @@ import { scrapeStockData } from './webScraper';
 import { getFallbackStockData } from './fallbackData';
 
 // ---------------------------------------------------------------------------
+// Cross-source agreement gate
+// When a primary source returns complete data we kick off a *non-blocking*
+// secondary fetch to spot-check it. Any field that diverges by more than
+// CROSS_SOURCE_DIVERGENCE_PCT is logged as a structured warn so operators
+// can see (and `npm run verify` can grep for) data-quality issues.
+// ---------------------------------------------------------------------------
+const CROSS_SOURCE_DIVERGENCE_PCT = 15;
+const COMPARABLE_FIELDS: Array<keyof StockResponse> = [
+  'price', 'eps', 'peRatio', 'fcfPerShare', 'growthRate',
+];
+
+export interface CrossSourceDiscrepancy {
+  symbol: string;
+  primarySource: DataSource;
+  secondarySource: DataSource;
+  field: string;
+  primary: number;
+  secondary: number;
+  deltaPct: number;
+}
+
+/**
+ * Compare two payloads field-by-field. Returns the list of fields that
+ * disagree by more than `tolerancePct` percent.
+ *
+ * Exported so tests can exercise the exact production divergence math.
+ */
+export function diffPayloads(
+  primary: StockResponse,
+  secondary: StockResponse,
+  primarySource: DataSource,
+  secondarySource: DataSource,
+  tolerancePct = CROSS_SOURCE_DIVERGENCE_PCT,
+): CrossSourceDiscrepancy[] {
+  const out: CrossSourceDiscrepancy[] = [];
+  for (const field of COMPARABLE_FIELDS) {
+    const va = primary[field] as unknown as number;
+    const vb = secondary[field] as unknown as number;
+    if (typeof va !== 'number' || typeof vb !== 'number') continue;
+    if (!va || !vb) continue; // skip missing/zero on either side
+    const denom = Math.max(Math.abs(va), Math.abs(vb));
+    const deltaPct = denom === 0 ? 0 : (Math.abs(va - vb) / denom) * 100;
+    if (deltaPct > tolerancePct) {
+      out.push({
+        symbol: primary.symbol,
+        primarySource,
+        secondarySource,
+        field: String(field),
+        primary: va,
+        secondary: vb,
+        deltaPct: parseFloat(deltaPct.toFixed(2)),
+      });
+    }
+  }
+  return out;
+}
+
+function logDiscrepancies(diffs: CrossSourceDiscrepancy[]): void {
+  for (const d of diffs) {
+    // Single-line, structured, easy to grep with: rg 'CROSS_SOURCE_DIVERGENCE'
+    console.warn(
+      `CROSS_SOURCE_DIVERGENCE symbol=${d.symbol} field=${d.field} ` +
+      `${d.primarySource}=${d.primary} ${d.secondarySource}=${d.secondary} ` +
+      `delta=${d.deltaPct}%`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Cache
 // ---------------------------------------------------------------------------
 const stockDataCache: { [symbol: string]: { data: StockResponse; timestamp: number } } = {};
@@ -167,11 +236,30 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
     }
   }
 
+  // Fire-and-forget secondary fetch to spot-check the primary. Runs in the
+  // background so it never blocks the user's request.
+  function spotCheck(
+    primary: StockResponse,
+    primarySource: DataSource,
+    secondarySource: DataSource,
+    fetcher: () => Promise<StockResponse>,
+  ): void {
+    fetcher()
+      .then((raw) => {
+        const secondary = deriveMetrics(raw);
+        if (!isDataComplete(secondary)) return;
+        const diffs = diffPayloads(primary, secondary, primarySource, secondarySource);
+        if (diffs.length > 0) logDiscrepancies(diffs);
+      })
+      .catch(() => { /* secondary failures are non-fatal */ });
+  }
+
   // --- 1. yfinance (Python — most reliable for broad symbol coverage) ---
   const yfinanceResult = await trySource('yfinance', () => fetchYfinanceWithQueue(symbol));
   if (yfinanceResult) {
     const stamped = stampProvenance(yfinanceResult, 'yfinance');
     stockDataCache[symbol] = { data: stamped, timestamp: now };
+    spotCheck(stamped, 'yfinance', 'rapidapi', () => getRapidApiStockData(symbol));
     return stamped;
   }
 
@@ -180,6 +268,7 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
   if (rapidResult) {
     const stamped = stampProvenance(rapidResult, 'rapidapi');
     stockDataCache[symbol] = { data: stamped, timestamp: now };
+    spotCheck(stamped, 'rapidapi', 'alpha-vantage', () => getAlphaVantageData(symbol));
     return stamped;
   }
 
@@ -188,6 +277,7 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
   if (avResult) {
     const stamped = stampProvenance(avResult, 'alpha-vantage');
     stockDataCache[symbol] = { data: stamped, timestamp: now };
+    spotCheck(stamped, 'alpha-vantage', 'rapidapi', () => getRapidApiStockData(symbol));
     return stamped;
   }
 
