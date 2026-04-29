@@ -29,11 +29,30 @@ def compute_pe_history(ticker):
     ``{fiveYearAvg: None, tenYearAvg: None, industryAvg: None}`` rather
     than raising.
 
-    industryAvg is intentionally left as None here; the frontend
-    calculator falls back to the published per-sector baseline table in
-    ``client/src/lib/companyAdjustments.ts``. Future work (Task #22) can
-    enrich this from a sector-median data source.
+    industryAvg is populated server-side when ``ticker.info`` exposes a
+    GICS-style sector classification, using a published S&P sector
+    median P/E lookup (mirrored from the client-side baseline table so
+    both sides agree). When the sector is unknown the field is left
+    None and the frontend calculator's local fallback fires.
     """
+    # S&P sector median P/E baselines, mirroring the client-side
+    # INDUSTRY_PE_BASELINES table in companyAdjustments.ts so the
+    # server-attached value matches what the client would compute
+    # locally as a fallback. Keys use the canonical yfinance/GICS
+    # sector strings as returned by ``Ticker.info['sector']``.
+    sector_pe = {
+        'Technology': 28.0,
+        'Communication Services': 22.0,
+        'Consumer Cyclical': 20.0,
+        'Consumer Defensive': 21.0,
+        'Healthcare': 22.0,
+        'Financial Services': 14.0,
+        'Industrials': 19.0,
+        'Energy': 12.0,
+        'Utilities': 18.0,
+        'Real Estate': 25.0,
+        'Basic Materials': 15.0,
+    }
     empty = {"fiveYearAvg": None, "tenYearAvg": None, "industryAvg": None}
     try:
         # `pd` may not have imported (the module-level try/except above
@@ -56,15 +75,31 @@ def compute_pe_history(ticker):
 
         # Fallback: yfinance's `quarterly_earnings` frame (legacy field,
         # populated for some tickers when the income statement is sparse).
+        # It exposes net Earnings rather than EPS, so derive EPS by
+        # dividing by current shares outstanding. This is an
+        # approximation (shares can change over a 10-year window via
+        # buybacks/issuance), but it's far better than dropping the
+        # ticker entirely — the resulting medians stay within the same
+        # 0<pe<200 sanity band, and any large drift would be filtered.
         if eps_series is None or eps_series.empty:
             try:
                 qe = ticker.quarterly_earnings
-                if qe is not None and not qe.empty and 'Earnings' in qe.columns:
-                    # `quarterly_earnings` doesn't expose EPS directly,
-                    # so we cannot use it here. Skip.
-                    pass
+                shares = None
+                try:
+                    info = ticker.info or {}
+                    shares = info.get('sharesOutstanding')
+                except Exception:
+                    shares = None
+                if (
+                    qe is not None
+                    and not qe.empty
+                    and 'Earnings' in qe.columns
+                    and shares
+                    and shares > 0
+                ):
+                    eps_series = (qe['Earnings'].dropna() / float(shares))
             except Exception:
-                pass
+                eps_series = None
 
         if eps_series is None or eps_series.empty or len(eps_series) < 4:
             return empty
@@ -139,10 +174,23 @@ def compute_pe_history(ticker):
         def _round(x):
             return None if x is None else round(x, 1)
 
+        # Look up the per-sector industry baseline from yfinance's
+        # ``info['sector']`` (canonical GICS string). When the sector
+        # is missing or unrecognized, leave ``industryAvg`` as None and
+        # let the client's local fallback table fire.
+        industry_avg = None
+        try:
+            info = ticker.info or {}
+            sector = info.get('sector')
+            if sector and sector in sector_pe:
+                industry_avg = sector_pe[sector]
+        except Exception:
+            industry_avg = None
+
         return {
             "fiveYearAvg": _round(five),
             "tenYearAvg": _round(ten),
-            "industryAvg": None,
+            "industryAvg": _round(industry_avg),
         }
     except Exception as e:
         print(f"compute_pe_history failed: {e}", file=sys.stderr)

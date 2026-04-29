@@ -231,6 +231,42 @@ describe('yahooFinance adapter', () => {
     expect(result.price).toBe(170.25);
   });
 
+  // Adapter-level contract test for Task #15: when the Python helper
+  // returns a populated `peHistory` block (5y/10y/industry medians),
+  // the TS adapter must pass those keys straight through to the
+  // schema-valid StockResponse — not drop or rename them.
+  it('passes through peHistory keys (5y/10y/industry) from the Python payload', async () => {
+    const payload = {
+      symbol: 'MSFT',
+      name: 'Microsoft Corp.',
+      price: 380,
+      eps: 11.0,
+      peRatio: 34.5,
+      fcfPerShare: 9.5,
+      growthRate: 14,
+      roe: 35,
+      debtToEquity: 0.5,
+      currentRatio: 1.8,
+      revenueGrowth: 12,
+      earningsStability: 'High',
+      competitivePosition: 'Strong',
+      peHistory: { fiveYearAvg: 31.2, tenYearAvg: 27.8, industryAvg: 28.0 },
+    };
+
+    vi.doMock('child_process', () => ({
+      exec: (cmd: string, cb: any) =>
+        cb(null, { stdout: JSON.stringify(payload), stderr: '' }),
+    }));
+
+    const { getYahooFinanceData } = await import('../server/services/yahooFinance');
+    const result = await getYahooFinanceData('MSFT');
+    expect(stockResponseSchema.safeParse(result).success).toBe(true);
+    expect(result.peHistory).toBeDefined();
+    expect(result.peHistory?.fiveYearAvg).toBe(31.2);
+    expect(result.peHistory?.tenYearAvg).toBe(27.8);
+    expect(result.peHistory?.industryAvg).toBe(28.0);
+  });
+
   it('throws when the Python script reports an error', async () => {
     vi.doMock('child_process', () => ({
       exec: (cmd: string, cb: any) =>
