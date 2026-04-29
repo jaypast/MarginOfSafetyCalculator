@@ -6,6 +6,22 @@ export type DataSource =
   | 'fallback'
   | 'unknown';
 
+// Cross-source divergence — populated by the server when a background
+// spot-check between two upstream providers found at least one comparable
+// metric exceeding the 15% tolerance. Used by the StockInformation chip to
+// warn users that the headline numbers may be unreliable.
+export interface CrossSourceDivergence {
+  checkedAt: string;
+  sourceA: DataSource;
+  sourceB: DataSource;
+  fields: Array<{
+    field: string;
+    valueA: number;
+    valueB: number;
+    deltaPct: number;
+  }>;
+}
+
 export interface StockData {
   symbol: string;
   name: string;
@@ -26,6 +42,8 @@ export interface StockData {
   dataSource?: DataSource;
   fetchedAt?: string;
   appliedAdjustments?: string[];
+  // Latest cross-source spot-check result (null = sources agreed).
+  crossSourceDivergence?: CrossSourceDivergence | null;
   error?: boolean;
   errorMessage?: string;
 }

@@ -54,6 +54,24 @@ export const DATA_SOURCES = [
 ] as const;
 export type DataSource = (typeof DATA_SOURCES)[number];
 
+// Cross-source divergence — emitted when a background spot-check between two
+// upstream sources finds at least one comparable field (price/EPS/PE/FCF/
+// growthRate) that differs by more than the configured tolerance (15%).
+export const crossSourceDivergenceSchema = z.object({
+  checkedAt: z.string(), // ISO timestamp of when the spot-check finished
+  sourceA: z.enum(DATA_SOURCES),
+  sourceB: z.enum(DATA_SOURCES),
+  fields: z.array(
+    z.object({
+      field: z.string(),
+      valueA: z.number(),
+      valueB: z.number(),
+      deltaPct: z.number(),
+    }),
+  ),
+});
+export type CrossSourceDivergence = z.infer<typeof crossSourceDivergenceSchema>;
+
 // API Schemas
 export const stockResponseSchema = z.object({
   symbol: z.string(),
@@ -79,6 +97,12 @@ export const stockResponseSchema = z.object({
   appliedAdjustments: z.array(z.string()).optional(),
   error: z.boolean().optional(),
   errorMessage: z.string().optional(),
+  // Cross-source divergence — populated when a background spot-check
+  // between two upstream sources flagged at least one comparable metric
+  // exceeding the 15% tolerance. `null` means a spot-check ran and the
+  // sources agreed; `undefined` means no spot-check has run yet.
+  // (Append-only block — keep adjacent to other parallel-task additions.)
+  crossSourceDivergence: crossSourceDivergenceSchema.nullable().optional(),
 });
 
 export type StockResponse = z.infer<typeof stockResponseSchema>;

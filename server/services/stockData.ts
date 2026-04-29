@@ -1,4 +1,4 @@
-import { StockResponse, DataSource } from '@shared/schema';
+import { StockResponse, DataSource, CrossSourceDivergence } from '@shared/schema';
 import { getYahooFinanceData } from './yahooFinance';
 import { getRapidApiStockData } from './rapidApiFinance';
 import { getAlphaVantageData } from './alphaVantage';
@@ -74,11 +74,65 @@ function logDiscrepancies(diffs: CrossSourceDiscrepancy[]): void {
   }
 }
 
+// Convert the internal discrepancy list into the user-facing payload that the
+// UI renders inside the "Sources disagree" chip.
+function buildDivergencePayload(
+  diffs: CrossSourceDiscrepancy[],
+  sourceA: DataSource,
+  sourceB: DataSource,
+): CrossSourceDivergence {
+  return {
+    checkedAt: new Date().toISOString(),
+    sourceA,
+    sourceB,
+    fields: diffs.map((d) => ({
+      field: d.field,
+      valueA: d.primary,
+      valueB: d.secondary,
+      deltaPct: d.deltaPct,
+    })),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Cache
 // ---------------------------------------------------------------------------
-const stockDataCache: { [symbol: string]: { data: StockResponse; timestamp: number } } = {};
+interface StockCacheEntry {
+  data: StockResponse;
+  timestamp: number;
+  // Latest cross-source spot-check result for this symbol.
+  // `null` = check ran and the sources agreed within tolerance.
+  // `undefined` = no spot-check has run yet.
+  divergence?: CrossSourceDivergence | null;
+}
+const stockDataCache: { [symbol: string]: StockCacheEntry } = {};
 const CACHE_DURATION = 20 * 60 * 1000; // 20 minutes
+
+// Background spot-check promises, exposed to tests so they can deterministically
+// wait for fire-and-forget agreement checks before asserting on cache state.
+const inFlightSpotChecks: Set<Promise<void>> = new Set();
+
+// Test helpers — never used by production code paths.
+export async function __awaitPendingSpotChecks(): Promise<void> {
+  await Promise.allSettled(Array.from(inFlightSpotChecks));
+}
+export function __resetStockDataCache(): void {
+  for (const key of Object.keys(stockDataCache)) delete stockDataCache[key];
+}
+// Push a cached entry's timestamp far enough into the past that the next
+// fetch is treated as a cache miss. Lets tests deterministically exercise
+// the "all live sources fail → fallback against cached primary" path.
+export function __expireStockDataCache(symbol: string): void {
+  const entry = stockDataCache[symbol];
+  if (entry) entry.timestamp = 0;
+}
+
+// Build the response payload that gets returned to the client, attaching the
+// most recent divergence finding (if any) from the cache entry.
+function attachDivergence(symbol: string, data: StockResponse): StockResponse {
+  const div = stockDataCache[symbol]?.divergence;
+  return { ...data, crossSourceDivergence: div ?? null };
+}
 
 // ---------------------------------------------------------------------------
 // In-flight deduplication — concurrent requests for the same symbol share
@@ -212,7 +266,7 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
   // Serve from cache if still fresh
   if (stockDataCache[symbol] && now - stockDataCache[symbol].timestamp < CACHE_DURATION) {
     console.log(`Returning cached data for ${symbol}`);
-    return stockDataCache[symbol].data;
+    return attachDivergence(symbol, stockDataCache[symbol].data);
   }
 
   // Helper: try a source, derive missing metrics, check quality gate
@@ -237,71 +291,92 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
   }
 
   // Fire-and-forget secondary fetch to spot-check the primary. Runs in the
-  // background so it never blocks the user's request.
+  // background so it never blocks the user's request, but the result is
+  // captured into the cache entry so the *next* response can surface it.
   function spotCheck(
     primary: StockResponse,
     primarySource: DataSource,
     secondarySource: DataSource,
     fetcher: () => Promise<StockResponse>,
   ): void {
-    fetcher()
+    let p: Promise<void>;
+    p = fetcher()
       .then((raw) => {
         const secondary = deriveMetrics(raw);
         if (!isDataComplete(secondary)) return;
         const diffs = diffPayloads(primary, secondary, primarySource, secondarySource);
         if (diffs.length > 0) logDiscrepancies(diffs);
+        const entry = stockDataCache[symbol];
+        if (!entry) return;
+        // Always record the result so a previously-flagged divergence can
+        // be cleared when the next check finds agreement.
+        entry.divergence =
+          diffs.length > 0
+            ? buildDivergencePayload(diffs, primarySource, secondarySource)
+            : null;
       })
-      .catch(() => { /* secondary failures are non-fatal */ });
+      .catch(() => { /* secondary failures are non-fatal */ })
+      .finally(() => { inFlightSpotChecks.delete(p); });
+    inFlightSpotChecks.add(p);
   }
 
   // Compare a fallback's output against the most recent cached primary
   // (if any, even if expired). This is the "fallback succeeded after primary
   // failure" agreement check — it surfaces when a downgrade source is
   // returning numbers materially different from what we last knew.
+  // Returns the divergence payload so the caller can attach it to the new
+  // cache entry it's about to write.
   const cached = stockDataCache[symbol]?.data;
-  function compareWithCachedPrimary(secondary: StockResponse, secondarySource: DataSource) {
-    if (!cached || !cached.dataSource || cached.dataSource === secondarySource) return;
+  function compareWithCachedPrimary(
+    secondary: StockResponse,
+    secondarySource: DataSource,
+  ): CrossSourceDivergence | null {
+    if (!cached || !cached.dataSource || cached.dataSource === secondarySource) return null;
     const diffs = diffPayloads(cached, secondary, cached.dataSource, secondarySource);
-    if (diffs.length > 0) logDiscrepancies(diffs);
+    if (diffs.length > 0) {
+      logDiscrepancies(diffs);
+      return buildDivergencePayload(diffs, cached.dataSource, secondarySource);
+    }
+    return null;
   }
 
   // --- 1. yfinance (Python — most reliable for broad symbol coverage) ---
   const yfinanceResult = await trySource('yfinance', () => fetchYfinanceWithQueue(symbol));
   if (yfinanceResult) {
     const stamped = stampProvenance(yfinanceResult, 'yfinance');
-    compareWithCachedPrimary(stamped, 'yfinance');
-    stockDataCache[symbol] = { data: stamped, timestamp: now };
+    const divergence = compareWithCachedPrimary(stamped, 'yfinance');
+    stockDataCache[symbol] = { data: stamped, timestamp: now, divergence };
     spotCheck(stamped, 'yfinance', 'rapidapi', () => getRapidApiStockData(symbol));
-    return stamped;
+    return attachDivergence(symbol, stamped);
   }
 
   // --- 2. RapidAPI ---
   const rapidResult = await trySource('RapidAPI', () => getRapidApiStockData(symbol));
   if (rapidResult) {
     const stamped = stampProvenance(rapidResult, 'rapidapi');
-    compareWithCachedPrimary(stamped, 'rapidapi');
-    stockDataCache[symbol] = { data: stamped, timestamp: now };
+    const divergence = compareWithCachedPrimary(stamped, 'rapidapi');
+    stockDataCache[symbol] = { data: stamped, timestamp: now, divergence };
     spotCheck(stamped, 'rapidapi', 'alphavantage', () => getAlphaVantageData(symbol));
-    return stamped;
+    return attachDivergence(symbol, stamped);
   }
 
   // --- 3. Alpha Vantage (dedicated fundamentals API) ---
   const avResult = await trySource('Alpha Vantage', () => getAlphaVantageData(symbol));
   if (avResult) {
     const stamped = stampProvenance(avResult, 'alphavantage');
-    compareWithCachedPrimary(stamped, 'alphavantage');
-    stockDataCache[symbol] = { data: stamped, timestamp: now };
+    const divergence = compareWithCachedPrimary(stamped, 'alphavantage');
+    stockDataCache[symbol] = { data: stamped, timestamp: now, divergence };
     spotCheck(stamped, 'alphavantage', 'rapidapi', () => getRapidApiStockData(symbol));
-    return stamped;
+    return attachDivergence(symbol, stamped);
   }
 
   // --- 4. Web scraping ---
   const scrapeResult = await trySource('web scraping', () => scrapeStockData(symbol));
   if (scrapeResult) {
     const stamped = stampProvenance(scrapeResult, 'scraper');
-    compareWithCachedPrimary(stamped, 'scraper');
-    stockDataCache[symbol] = { data: stamped, timestamp: now };
-    return stamped;
+    const divergence = compareWithCachedPrimary(stamped, 'scraper');
+    stockDataCache[symbol] = { data: stamped, timestamp: now, divergence };
+    return attachDivergence(symbol, stamped);
   }
 
   // --- 5. Static fallback (5 common stocks) ---
@@ -310,9 +385,13 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
     const derived = deriveMetrics(fallbackData);
     const stamped = stampProvenance(derived, 'fallback');
     console.log(`[${symbol}] Using static fallback data`);
+    // Compare the downgrade against the most recent cached primary — if the
+    // static numbers are materially out of sync with the last live fetch,
+    // surface that on the response so the user knows the figures are stale.
+    const divergence = compareWithCachedPrimary(stamped, 'fallback');
     // Cache as if it expired 15 minutes ago, so a real source is retried sooner.
-    stockDataCache[symbol] = { data: stamped, timestamp: now - (15 * 60 * 1000) };
-    return stamped;
+    stockDataCache[symbol] = { data: stamped, timestamp: now - (15 * 60 * 1000), divergence };
+    return attachDivergence(symbol, stamped);
   }
 
   // --- All sources exhausted ---

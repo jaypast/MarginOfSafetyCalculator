@@ -4,7 +4,36 @@ import { Button } from '@/components/ui/button';
 import { StockData } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
 import { useQueryClient } from '@tanstack/react-query';
-import { Search, RefreshCcw, Database, Clock, AlertTriangle } from 'lucide-react';
+import { Search, RefreshCcw, Database, Clock, AlertTriangle, AlertOctagon } from 'lucide-react';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+
+// Map upstream IDs to short, user-friendly labels for the divergence popover.
+const SOURCE_DISPLAY_NAMES: Record<string, string> = {
+  yfinance: 'Yahoo Finance',
+  rapidapi: 'RapidAPI',
+  alphavantage: 'Alpha Vantage',
+  scraper: 'web scrape',
+  fallback: 'static fallback',
+  unknown: 'unknown',
+};
+
+// Map raw schema field names to plain-English labels for the popover.
+const FIELD_DISPLAY_NAMES: Record<string, string> = {
+  price: 'Price',
+  eps: 'EPS',
+  peRatio: 'P/E ratio',
+  fcfPerShare: 'FCF / share',
+  growthRate: 'Growth rate',
+};
+
+function formatFieldValue(field: string, value: number): string {
+  if (field === 'price' || field === 'eps' || field === 'fcfPerShare') {
+    return formatCurrency(value);
+  }
+  if (field === 'peRatio') return value.toFixed(2);
+  if (field === 'growthRate') return `${value.toFixed(2)}%`;
+  return String(value);
+}
 
 // Map upstream source IDs to short, user-friendly labels for the badge.
 const SOURCE_LABELS: Record<string, { label: string; tone: 'fresh' | 'ok' | 'warn' }> = {
@@ -205,6 +234,56 @@ const StockInformation: React.FC<StockInformationProps> = ({
                       {stockData.appliedAdjustments.length} adjustment{stockData.appliedAdjustments.length === 1 ? '' : 's'}
                     </span>
                   )}
+                  {stockData.crossSourceDivergence && stockData.crossSourceDivergence.fields.length > 0 && (() => {
+                    const div = stockData.crossSourceDivergence;
+                    const aLabel = SOURCE_DISPLAY_NAMES[div.sourceA] ?? div.sourceA;
+                    const bLabel = SOURCE_DISPLAY_NAMES[div.sourceB] ?? div.sourceB;
+                    return (
+                      <HoverCard openDelay={120}>
+                        <HoverCardTrigger asChild>
+                          <button
+                            type="button"
+                            data-testid="badge-sources-disagree"
+                            className="inline-flex items-center px-2 py-0.5 rounded border border-yellow-300 bg-yellow-100 text-yellow-900 hover:bg-yellow-200 focus:outline-none focus:ring-2 focus:ring-yellow-400 cursor-help"
+                          >
+                            <AlertOctagon className="w-3 h-3 mr-1" />
+                            Sources disagree
+                          </button>
+                        </HoverCardTrigger>
+                        <HoverCardContent className="w-80" align="start">
+                          <div className="space-y-2 text-xs">
+                            <p className="font-semibold text-neutral-800">
+                              {aLabel} vs. {bLabel} disagree on {div.fields.length} metric{div.fields.length === 1 ? '' : 's'}
+                            </p>
+                            <p className="text-neutral-600">
+                              These two providers returned numbers more than 15% apart. The headline figures above use the primary source — treat them with extra care.
+                            </p>
+                            <div className="border-t border-neutral-200 pt-2 space-y-1.5">
+                              {div.fields.map((f) => (
+                                <div key={f.field} className="flex flex-col">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-medium text-neutral-800">
+                                      {FIELD_DISPLAY_NAMES[f.field] ?? f.field}
+                                    </span>
+                                    <span className="text-yellow-800 font-semibold">
+                                      Δ {f.deltaPct.toFixed(1)}%
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-between text-neutral-600">
+                                    <span>{aLabel}: <strong>{formatFieldValue(f.field, f.valueA)}</strong></span>
+                                    <span>{bLabel}: <strong>{formatFieldValue(f.field, f.valueB)}</strong></span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <p className="text-[10px] text-neutral-500 pt-1">
+                              Last checked {describeFreshness(div.checkedAt)}
+                            </p>
+                          </div>
+                        </HoverCardContent>
+                      </HoverCard>
+                    );
+                  })()}
                 </div>
               );
             })()}

@@ -18,7 +18,18 @@ vi.mock('../server/services/fallbackData', () => ({
   getFallbackStockData: vi.fn(),
 }));
 
-import { diffPayloads } from '../server/services/stockData';
+import {
+  diffPayloads,
+  getStockData,
+  __awaitPendingSpotChecks,
+  __resetStockDataCache,
+  __expireStockDataCache,
+} from '../server/services/stockData';
+import { getYahooFinanceData } from '../server/services/yahooFinance';
+import { getRapidApiStockData } from '../server/services/rapidApiFinance';
+import { getAlphaVantageData } from '../server/services/alphaVantage';
+import { scrapeStockData } from '../server/services/webScraper';
+import { getFallbackStockData } from '../server/services/fallbackData';
 import type { StockResponse } from '../shared/schema';
 
 function payload(overrides: Partial<StockResponse> = {}): StockResponse {
@@ -90,5 +101,109 @@ describe('diffPayloads — cross-source divergence detection', () => {
     const b = payload({ price: 105 }); // 4.76% diff
     expect(diffPayloads(a, b, 'yfinance', 'rapidapi', 10)).toEqual([]);
     expect(diffPayloads(a, b, 'yfinance', 'rapidapi', 1)).toHaveLength(1);
+  });
+});
+
+// End-to-end capture-and-attach: when the primary fetch succeeds and the
+// background spot-check finds divergence with the secondary, the next
+// `getStockData` call must surface the divergence on the response payload.
+describe('getStockData — cross-source divergence capture & attach', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    __resetStockDataCache();
+  });
+
+  it('attaches crossSourceDivergence to the response after a divergent spot-check', async () => {
+    const symbol = 'DIVG1';
+
+    // Primary (yfinance) — EPS 5
+    vi.mocked(getYahooFinanceData).mockResolvedValue(payload({
+      symbol,
+      eps: 5,
+      price: 100,
+      peRatio: 20,
+      fcfPerShare: 4,
+      growthRate: 10,
+    }));
+    // Secondary (rapidapi) — EPS 8 → ~37.5% delta, well over 15% tolerance
+    vi.mocked(getRapidApiStockData).mockResolvedValue(payload({
+      symbol,
+      eps: 8,
+      price: 100,
+      peRatio: 20,
+      fcfPerShare: 4,
+      growthRate: 10,
+    }));
+
+    // First call kicks off the fire-and-forget spot-check.
+    await getStockData(symbol);
+    // Wait for the spot-check to complete and record into the cache.
+    await __awaitPendingSpotChecks();
+
+    // Second call serves from cache and must include the captured divergence.
+    const second = await getStockData(symbol);
+    expect(second.crossSourceDivergence).toBeTruthy();
+    const div = second.crossSourceDivergence!;
+    expect(div.sourceA).toBe('yfinance');
+    expect(div.sourceB).toBe('rapidapi');
+    expect(typeof div.checkedAt).toBe('string');
+    const epsField = div.fields.find((f) => f.field === 'eps');
+    expect(epsField).toBeDefined();
+    expect(epsField!.valueA).toBe(5);
+    expect(epsField!.valueB).toBe(8);
+    expect(epsField!.deltaPct).toBeGreaterThan(15);
+  });
+
+  it('attaches crossSourceDivergence: null when the spot-check finds agreement', async () => {
+    const symbol = 'DIVG2';
+    const agreed = payload({ symbol, eps: 5, price: 100, peRatio: 20, fcfPerShare: 4, growthRate: 10 });
+    vi.mocked(getYahooFinanceData).mockResolvedValue(agreed);
+    vi.mocked(getRapidApiStockData).mockResolvedValue({ ...agreed });
+
+    await getStockData(symbol);
+    await __awaitPendingSpotChecks();
+    const second = await getStockData(symbol);
+    expect(second.crossSourceDivergence).toBeNull();
+  });
+
+  it('attaches divergence when the static fallback disagrees with the cached primary', async () => {
+    const symbol = 'DIVG3';
+
+    // 1. Seed a live primary into the cache (yfinance), with the secondary
+    //    spot-check agreeing so the cached entry's `divergence` slot is null.
+    const primaryPayload = payload({
+      symbol, eps: 5, price: 100, peRatio: 20, fcfPerShare: 4, growthRate: 10,
+    });
+    vi.mocked(getYahooFinanceData).mockResolvedValueOnce(primaryPayload);
+    vi.mocked(getRapidApiStockData).mockResolvedValueOnce({ ...primaryPayload });
+    await getStockData(symbol);
+    await __awaitPendingSpotChecks();
+
+    // 2. Age the cached entry so the next call is treated as a miss and walks
+    //    the fetch pipeline all the way down to the static fallback.
+    __expireStockDataCache(symbol);
+
+    // 3. Make every live source fail, then have the static fallback return EPS
+    //    that is materially different from the cached primary (5 vs 9 ≈ 44%).
+    vi.mocked(getYahooFinanceData).mockRejectedValueOnce(new Error('rate limited'));
+    vi.mocked(getRapidApiStockData).mockRejectedValueOnce(new Error('429'));
+    vi.mocked(getAlphaVantageData).mockRejectedValueOnce(new Error('no key'));
+    vi.mocked(scrapeStockData).mockRejectedValueOnce(new Error('blocked'));
+    vi.mocked(getFallbackStockData).mockReturnValueOnce(payload({
+      symbol, eps: 9, price: 100, peRatio: 20, fcfPerShare: 4, growthRate: 10,
+    }));
+
+    // 4. The fallback branch should compute divergence vs. the cached primary
+    //    and attach it to the returned payload.
+    const fallbackResp = await getStockData(symbol);
+    expect(fallbackResp.crossSourceDivergence).toBeTruthy();
+    const div = fallbackResp.crossSourceDivergence!;
+    expect(div.sourceA).toBe('yfinance'); // the cached primary's source
+    expect(div.sourceB).toBe('fallback');
+    const epsField = div.fields.find((f) => f.field === 'eps');
+    expect(epsField).toBeDefined();
+    expect(epsField!.valueA).toBe(5);
+    expect(epsField!.valueB).toBe(9);
+    expect(epsField!.deltaPct).toBeGreaterThan(15);
   });
 });

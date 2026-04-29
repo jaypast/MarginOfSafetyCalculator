@@ -67,6 +67,74 @@ describe('stockResponseSchema', () => {
     ).toThrow();
   });
 
+  it('parses a payload that includes a populated crossSourceDivergence', () => {
+    const parsed = stockResponseSchema.parse({
+      symbol: 'AAPL',
+      name: 'Apple',
+      price: 100,
+      eps: 5,
+      peRatio: 20,
+      fcfPerShare: 4,
+      growthRate: 10,
+      roe: 30,
+      debtToEquity: 1.5,
+      currentRatio: 1.0,
+      revenueGrowth: 8,
+      earningsStability: 'High',
+      competitivePosition: 'Strong',
+      dataSource: 'yfinance',
+      crossSourceDivergence: {
+        checkedAt: '2026-04-29T12:00:00.000Z',
+        sourceA: 'yfinance',
+        sourceB: 'rapidapi',
+        fields: [
+          { field: 'eps', valueA: 5, valueB: 8, deltaPct: 37.5 },
+        ],
+      },
+    });
+    expect(parsed.crossSourceDivergence?.sourceA).toBe('yfinance');
+    expect(parsed.crossSourceDivergence?.fields).toHaveLength(1);
+    expect(parsed.crossSourceDivergence?.fields[0].deltaPct).toBe(37.5);
+  });
+
+  it('accepts crossSourceDivergence: null (post-spot-check agreement)', () => {
+    const parsed = stockResponseSchema.parse({
+      symbol: 'AAPL',
+      name: 'Apple',
+      price: 100,
+      eps: 5,
+      peRatio: 20,
+      fcfPerShare: 4,
+      growthRate: 10,
+      roe: 30,
+      debtToEquity: 1.5,
+      currentRatio: 1.0,
+      revenueGrowth: 8,
+      earningsStability: 'High',
+      competitivePosition: 'Strong',
+      crossSourceDivergence: null,
+    });
+    expect(parsed.crossSourceDivergence).toBeNull();
+  });
+
+  it('rejects a crossSourceDivergence with an invalid source value', () => {
+    expect(() =>
+      stockResponseSchema.parse({
+        symbol: 'AAPL',
+        name: 'Apple',
+        price: 100, eps: 5, peRatio: 20, fcfPerShare: 4, growthRate: 10,
+        roe: 30, debtToEquity: 1.5, currentRatio: 1.0, revenueGrowth: 8,
+        earningsStability: 'High', competitivePosition: 'Strong',
+        crossSourceDivergence: {
+          checkedAt: '2026-04-29T12:00:00.000Z',
+          sourceA: 'bloomberg',
+          sourceB: 'rapidapi',
+          fields: [],
+        },
+      })
+    ).toThrow();
+  });
+
   it('every DATA_SOURCES entry is accepted by the schema', () => {
     for (const src of DATA_SOURCES) {
       expect(() =>
