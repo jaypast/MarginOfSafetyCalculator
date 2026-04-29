@@ -261,6 +261,52 @@ describe('calculatePE historical modes', () => {
     expect(out.value).toBeCloseTo(190, 0);
   });
 
+  // Contract test: lock the precedence semantics for industry mode.
+  // For ONE AND THE SAME ticker, we run the calculator twice — once
+  // with a server-attached `peHistory.industryAvg` and once without —
+  // and assert that:
+  //   (1) the payload value is the authoritative source (its number
+  //       drives the output), and
+  //   (2) the local fallback table fires when the payload field is
+  //       absent (the output changes to match the table baseline).
+  // This lets reviewers see the precedence as a single observable
+  // diff rather than inferring it from two unrelated tests.
+  it('industry mode contract: payload industryAvg takes precedence over local table for the same ticker', () => {
+    // AAPL → TECHNOLOGY in determineIndustry → local baseline 28.
+    const base = {
+      symbol: 'AAPL',
+      name: 'Apple Inc.',
+      eps: 10,
+      price: 200,
+      peRatio: 25,
+    };
+
+    // (a) With payload — calculator MUST use 16, not 28.
+    const stockWithPayload = makeStock({
+      ...base,
+      peHistory: { fiveYearAvg: null, tenYearAvg: null, industryAvg: 16 },
+    });
+    const outPayload = calculatePEDetailed(
+      stockWithPayload,
+      makeParams({ peType: 'industry' })
+    );
+
+    // (b) Without payload — calculator MUST fall back to local table (28).
+    const stockNoPayload = makeStock({ ...base });
+    const outFallback = calculatePEDetailed(
+      stockNoPayload,
+      makeParams({ peType: 'industry' })
+    );
+
+    // Payload-driven output: 10 × 16 = 160
+    expect(outPayload.value).toBeCloseTo(160, 0);
+    // Fallback-driven output: 10 × 28 = 280 (clear, observable contrast)
+    expect(outFallback.value).toBeCloseTo(280, 0);
+    // Outputs MUST differ — proves precedence is a real branch, not a
+    // silent merge that quietly averages the two sources together.
+    expect(Math.abs(outPayload.value - outFallback.value)).toBeGreaterThan(50);
+  });
+
   it('historical modes still respect the per-industry P/E cap', () => {
     // Use a generic DEFAULT-industry symbol so the test isn't entangled
     // with `specialCases` overrides (which short-circuit industry caps).
