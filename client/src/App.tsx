@@ -7,6 +7,7 @@ import Home from "@/pages/Home";
 import Feedback from "@/pages/Feedback";
 import Admin from "@/pages/Admin";
 import ResearchPage from "@/pages/ResearchPage";
+import Watchlist from "@/pages/Watchlist";
 
 function Router() {
   return (
@@ -19,6 +20,9 @@ function Router() {
           <div className="space-x-4">
             <Link href="/" className="hover:underline">
               Home
+            </Link>
+            <Link href="/watchlist" className="hover:underline" data-testid="nav-watchlist">
+              Watchlist
             </Link>
             <Link href="/research" className="hover:underline">
               Research
@@ -33,6 +37,7 @@ function Router() {
       <div className="min-h-screen">
         <Switch>
           <Route path="/" component={Home} />
+          <Route path="/watchlist" component={Watchlist} />
           <Route path="/research" component={ResearchPage} />
           <Route path="/feedback" component={Feedback} />
           <Route path="/admin" component={Admin} />

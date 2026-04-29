@@ -133,3 +133,46 @@ export const feedbackResponseSchema = z.object({
 
 export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
 export type Feedback = typeof feedback.$inferSelect;
+
+// =============================================================================
+// Watchlist (Task #14)
+//
+// A persistent list of tickers the user is tracking, scoped by an opaque
+// browser-set session cookie (no auth yet — per-user lists are a clean
+// follow-up). Append-only block at the bottom of the file to keep merges
+// with the parallel cross-source / historical-P/E tasks mechanical.
+// =============================================================================
+export const watchlist = pgTable("watchlist", {
+  id: serial("id").primaryKey(),
+  sessionId: varchar("session_id", { length: 64 }).notNull(),
+  symbol: varchar("symbol", { length: 10 }).notNull(),
+  // Margin-of-safety percent (whole-number percent). The calculator UI only
+  // ever produces integers (20 / 30 / 35 / 45 / etc.), so an integer column
+  // matches the data without needing any decimal conversion.
+  marginOfSafety: integer("margin_of_safety").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Insert schema — sessionId and createdAt are filled in server-side, so the
+// client only sends the user-controlled fields.
+export const insertWatchlistEntrySchema = createInsertSchema(watchlist)
+  .omit({ id: true, sessionId: true, createdAt: true })
+  .extend({
+    // Stricter than the column constraint: the API accepts any case but we
+    // normalise to uppercase before persisting.
+    symbol: z.string().min(1).max(10),
+    marginOfSafety: z.number().int().min(0).max(95),
+  });
+
+export type InsertWatchlistEntry = z.infer<typeof insertWatchlistEntrySchema>;
+export type WatchlistEntry = typeof watchlist.$inferSelect;
+
+// Wire-format response — Date → ISO string so the client can render
+// freshness without re-parsing.
+export const watchlistEntryResponseSchema = z.object({
+  id: z.number(),
+  symbol: z.string(),
+  marginOfSafety: z.number().int(),
+  createdAt: z.string(),
+});
+export type WatchlistEntryResponse = z.infer<typeof watchlistEntryResponseSchema>;

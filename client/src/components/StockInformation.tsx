@@ -3,8 +3,10 @@ import { StyledInput } from '@/components/ui/styled-input';
 import { Button } from '@/components/ui/button';
 import { StockData } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
-import { useQueryClient } from '@tanstack/react-query';
-import { Search, RefreshCcw, Database, Clock, AlertTriangle, AlertOctagon } from 'lucide-react';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
+import { Search, RefreshCcw, Database, Clock, AlertTriangle, AlertOctagon, BookmarkPlus, Check } from 'lucide-react';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 
 // Map upstream IDs to short, user-friendly labels for the divergence popover.
@@ -65,6 +67,10 @@ interface StockInformationProps {
   onFetchData: (symbol: string) => void;
   error?: boolean;
   errorMessage?: string;
+  // Current MoS % the user has dialled in. Used by the "Add to Watchlist"
+  // button so the saved entry reflects what the user is actually looking at.
+  // Optional (defaults to 25) so older callers don't break.
+  marginOfSafety?: number;
 }
 
 // Popular stocks for prefetching
@@ -75,12 +81,47 @@ const StockInformation: React.FC<StockInformationProps> = ({
   isLoading, 
   onFetchData,
   error,
-  errorMessage
+  errorMessage,
+  marginOfSafety = 25,
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [isCached, setIsCached] = useState(false);
+  const [justAddedSymbol, setJustAddedSymbol] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  // Watchlist add — isolated from the provenance/divergence badge block on
+  // purpose so this commit doesn't tangle with the parallel cross-source and
+  // historical-P/E tasks that own that area.
+  const addToWatchlist = useMutation({
+    mutationFn: async (payload: { symbol: string; marginOfSafety: number }) => {
+      const res = await apiRequest('POST', '/api/watchlist', payload);
+      return res.json();
+    },
+    onSuccess: (_data, variables) => {
+      setJustAddedSymbol(variables.symbol);
+      queryClient.invalidateQueries({ queryKey: ['/api/watchlist'] });
+      toast({
+        title: 'Added to watchlist',
+        description: `${variables.symbol} will alert when price ≤ buy-below (MoS ${variables.marginOfSafety}%).`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: 'Could not add to watchlist',
+        description: err.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Reset the "Added" confirmation when the user loads a different ticker.
+  useEffect(() => {
+    if (stockData?.symbol && stockData.symbol !== justAddedSymbol) {
+      setJustAddedSymbol(null);
+    }
+  }, [stockData?.symbol, justAddedSymbol]);
 
   // Prefetch popular stock data when component loads
   useEffect(() => {
@@ -287,6 +328,30 @@ const StockInformation: React.FC<StockInformationProps> = ({
                 </div>
               );
             })()}
+
+            {/* Watchlist add — separate sibling from the provenance badge row
+                above to keep merges with the cross-source / historical-P/E
+                tasks mechanical. */}
+            <div className="mt-3 flex">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid="button-add-to-watchlist"
+                disabled={addToWatchlist.isPending || justAddedSymbol === stockData.symbol}
+                onClick={() => addToWatchlist.mutate({
+                  symbol: stockData.symbol,
+                  marginOfSafety: Math.round(marginOfSafety),
+                })}
+                className="text-xs h-7 px-2 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+              >
+                {justAddedSymbol === stockData.symbol ? (
+                  <span className="flex items-center"><Check className="w-3 h-3 mr-1" /> Added</span>
+                ) : (
+                  <span className="flex items-center"><BookmarkPlus className="w-3 h-3 mr-1" /> Add to Watchlist</span>
+                )}
+              </Button>
+            </div>
           </div>
         )}
       </div>

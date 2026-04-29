@@ -1,6 +1,10 @@
-import { users, type User, type InsertUser, feedback, type Feedback, type InsertFeedback } from "@shared/schema";
+import {
+  users, type User, type InsertUser,
+  feedback, type Feedback, type InsertFeedback,
+  watchlist, type WatchlistEntry,
+} from "@shared/schema";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -18,6 +22,15 @@ export interface IStorage {
     notDisappointed: number;
     pmfScore: number;
   }>;
+
+  // Watchlist methods (Task #14)
+  // Returns the existing entry when (sessionId, symbol) already present so
+  // the UI can be optimistic without worrying about duplicates.
+  addWatchlistEntry(sessionId: string, symbol: string, marginOfSafety: number): Promise<WatchlistEntry>;
+  listWatchlistEntries(sessionId: string): Promise<WatchlistEntry[]>;
+  // Returns true when a row was deleted (so the route can return 404 for
+  // attempts to delete entries belonging to a different session).
+  removeWatchlistEntry(id: number, sessionId: string): Promise<boolean>;
 }
 
 // Memory storage for fallback when database is not available.
@@ -25,8 +38,10 @@ export interface IStorage {
 export class MemStorage implements IStorage {
   private users: User[] = [];
   private feedbackEntries: Feedback[] = [];
+  private watchlistEntries: WatchlistEntry[] = [];
   private nextUserId = 1;
   private nextFeedbackId = 1;
+  private nextWatchlistId = 1;
   
   // User methods
   async getUser(id: number): Promise<User | undefined> {
@@ -107,6 +122,40 @@ export class MemStorage implements IStorage {
       notDisappointed,
       pmfScore
     };
+  }
+
+  // Watchlist methods --------------------------------------------------------
+  async addWatchlistEntry(sessionId: string, symbol: string, marginOfSafety: number): Promise<WatchlistEntry> {
+    const upper = symbol.toUpperCase();
+    // Dedup on (sessionId, symbol) so re-adding the same ticker is a no-op
+    // rather than creating noisy duplicate rows. The most recent MoS wins.
+    const existing = this.watchlistEntries.find(e => e.sessionId === sessionId && e.symbol === upper);
+    if (existing) {
+      existing.marginOfSafety = marginOfSafety;
+      return existing;
+    }
+    const entry: WatchlistEntry = {
+      id: this.nextWatchlistId++,
+      sessionId,
+      symbol: upper,
+      marginOfSafety,
+      createdAt: new Date(),
+    };
+    this.watchlistEntries.push(entry);
+    return entry;
+  }
+
+  async listWatchlistEntries(sessionId: string): Promise<WatchlistEntry[]> {
+    return this.watchlistEntries
+      .filter(e => e.sessionId === sessionId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  async removeWatchlistEntry(id: number, sessionId: string): Promise<boolean> {
+    const idx = this.watchlistEntries.findIndex(e => e.id === id && e.sessionId === sessionId);
+    if (idx === -1) return false;
+    this.watchlistEntries.splice(idx, 1);
+    return true;
   }
 }
 
@@ -222,6 +271,49 @@ export class DatabaseStorage implements IStorage {
       pmfScore
     };
   }
+
+  // Watchlist methods --------------------------------------------------------
+  async addWatchlistEntry(sessionId: string, symbol: string, marginOfSafety: number): Promise<WatchlistEntry> {
+    if (!db) throw new Error("Database connection not available");
+    const upper = symbol.toUpperCase();
+    // Dedup at the application layer (no unique constraint in the schema yet).
+    // The most recent MoS wins so re-adding behaves as an "update".
+    const existing = await db
+      .select()
+      .from(watchlist)
+      .where(and(eq(watchlist.sessionId, sessionId), eq(watchlist.symbol, upper)));
+    if (existing.length > 0) {
+      const [updated] = await db
+        .update(watchlist)
+        .set({ marginOfSafety })
+        .where(eq(watchlist.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    const [entry] = await db
+      .insert(watchlist)
+      .values({ sessionId, symbol: upper, marginOfSafety })
+      .returning();
+    return entry;
+  }
+
+  async listWatchlistEntries(sessionId: string): Promise<WatchlistEntry[]> {
+    if (!db) return [];
+    return await db
+      .select()
+      .from(watchlist)
+      .where(eq(watchlist.sessionId, sessionId))
+      .orderBy(watchlist.createdAt);
+  }
+
+  async removeWatchlistEntry(id: number, sessionId: string): Promise<boolean> {
+    if (!db) return false;
+    const result = await db
+      .delete(watchlist)
+      .where(and(eq(watchlist.id, id), eq(watchlist.sessionId, sessionId)))
+      .returning({ id: watchlist.id });
+    return result.length > 0;
+  }
 }
 
 // Handle the case when errors occur with the database storage
@@ -313,6 +405,40 @@ class SafeStorageWrapper implements IStorage {
       console.error("Database error in getFeedbackStats, falling back to memory storage:", err);
     }
     return this.memStorage.getFeedbackStats();
+  }
+
+  // Watchlist methods --------------------------------------------------------
+  async addWatchlistEntry(sessionId: string, symbol: string, marginOfSafety: number): Promise<WatchlistEntry> {
+    try {
+      if (this.dbStorage) {
+        return await this.dbStorage.addWatchlistEntry(sessionId, symbol, marginOfSafety);
+      }
+    } catch (err) {
+      console.error("Database error in addWatchlistEntry, falling back to memory storage:", err);
+    }
+    return this.memStorage.addWatchlistEntry(sessionId, symbol, marginOfSafety);
+  }
+
+  async listWatchlistEntries(sessionId: string): Promise<WatchlistEntry[]> {
+    try {
+      if (this.dbStorage) {
+        return await this.dbStorage.listWatchlistEntries(sessionId);
+      }
+    } catch (err) {
+      console.error("Database error in listWatchlistEntries, falling back to memory storage:", err);
+    }
+    return this.memStorage.listWatchlistEntries(sessionId);
+  }
+
+  async removeWatchlistEntry(id: number, sessionId: string): Promise<boolean> {
+    try {
+      if (this.dbStorage) {
+        return await this.dbStorage.removeWatchlistEntry(id, sessionId);
+      }
+    } catch (err) {
+      console.error("Database error in removeWatchlistEntry, falling back to memory storage:", err);
+    }
+    return this.memStorage.removeWatchlistEntry(id, sessionId);
   }
 }
 

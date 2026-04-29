@@ -107,3 +107,12 @@ export interface ReverseDCFResult {
   interpretation: string;             // Short human-readable comparison vs. company history
   appliedAdjustments: string[];       // Same provenance pattern as the other valuations
 }
+
+// Watchlist entry — what the /api/watchlist endpoint returns. `marginOfSafety`
+// is the whole-number percent the user picked when they added the ticker.
+export interface WatchlistEntry {
+  id: number;
+  symbol: string;
+  marginOfSafety: number;
+  createdAt: string;  // ISO timestamp
+}

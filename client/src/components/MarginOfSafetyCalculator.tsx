@@ -200,6 +200,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
             onFetchData={fetchStockData}
             error={isError}
             errorMessage={error instanceof Error ? error.message : "Could not retrieve stock data. Please try again."}
+            marginOfSafety={marginOfSafetyParams.marginOfSafety}
           />
         </div>
         

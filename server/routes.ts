@@ -1,7 +1,13 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import { randomUUID } from "crypto";
 import { storage } from "./storage";
-import { stockResponseSchema, insertFeedbackSchema } from "@shared/schema";
+import {
+  stockResponseSchema,
+  insertFeedbackSchema,
+  insertWatchlistEntrySchema,
+  type WatchlistEntryResponse,
+} from "@shared/schema";
 import { getStockData, acquireYfinanceSlot, releaseYfinanceSlot } from "./services/stockData";
 import { getMarketSentiment, getMostActiveStocks, RealTimeSentiment } from "./services/marketSentiment";
 import { getHistoricalData } from "./services/yahooFinance";
@@ -33,6 +39,49 @@ const adminAuth = (req: Request, res: Response, next: NextFunction) => {
   
   next();
 };
+
+// Watchlist session cookie (Task #14) ----------------------------------------
+// We don't have auth yet, so the watchlist is scoped by an opaque, server-set
+// UUID stored in a long-lived HttpOnly cookie. This is intentionally minimal:
+// no signing, no expiry rotation — when we add real accounts, the entries
+// already keyed by sessionId can be migrated to userId in one query.
+const WATCHLIST_COOKIE = "wl_session";
+const WATCHLIST_COOKIE_MAX_AGE = 365 * 24 * 60 * 60; // 1 year
+
+function getOrSetSessionId(req: Request, res: Response): string {
+  const raw = req.headers.cookie ?? "";
+  for (const part of raw.split(";")) {
+    const [name, ...rest] = part.trim().split("=");
+    if (name === WATCHLIST_COOKIE) {
+      const value = rest.join("=");
+      // Only accept values that look like our UUIDs to prevent header
+      // injection or accidentally honouring a value the user pasted by hand.
+      if (/^[A-Za-z0-9-]{8,128}$/.test(value)) return value;
+    }
+  }
+  const fresh = randomUUID();
+  res.setHeader(
+    "Set-Cookie",
+    `${WATCHLIST_COOKIE}=${fresh}; Path=/; Max-Age=${WATCHLIST_COOKIE_MAX_AGE}; SameSite=Lax; HttpOnly`,
+  );
+  return fresh;
+}
+
+function toWatchlistResponse(entry: {
+  id: number;
+  symbol: string;
+  marginOfSafety: number;
+  createdAt: Date;
+}): WatchlistEntryResponse {
+  return {
+    id: entry.id,
+    symbol: entry.symbol,
+    marginOfSafety: entry.marginOfSafety,
+    createdAt: entry.createdAt instanceof Date
+      ? entry.createdAt.toISOString()
+      : new Date(entry.createdAt).toISOString(),
+  };
+}
 
 // Cache for sentiment data to prevent excessive API calls
 let sentimentCache: {
@@ -390,6 +439,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error exporting feedback:", error);
       return res.status(500).json({
         message: error instanceof Error ? error.message : 'An unknown error occurred while exporting feedback'
+      });
+    }
+  });
+
+  // Watchlist endpoints (Task #14) ------------------------------------------
+  app.get("/api/watchlist", async (req, res) => {
+    try {
+      const sessionId = getOrSetSessionId(req, res);
+      const entries = await storage.listWatchlistEntries(sessionId);
+      return res.json(entries.map(toWatchlistResponse));
+    } catch (error) {
+      console.error("Error listing watchlist entries:", error);
+      return res.status(500).json({
+        message: error instanceof Error ? error.message : "Failed to list watchlist entries",
+      });
+    }
+  });
+
+  app.post("/api/watchlist", async (req, res) => {
+    try {
+      const sessionId = getOrSetSessionId(req, res);
+      const parsed = insertWatchlistEntrySchema.parse(req.body);
+      const entry = await storage.addWatchlistEntry(
+        sessionId,
+        parsed.symbol,
+        parsed.marginOfSafety,
+      );
+      return res.status(201).json(toWatchlistResponse(entry));
+    } catch (error) {
+      console.error("Error adding watchlist entry:", error);
+      if (error instanceof ZodError) {
+        return res.status(400).json({
+          message: "Invalid watchlist entry",
+          details: error.errors,
+        });
+      }
+      return res.status(500).json({
+        message: error instanceof Error ? error.message : "Failed to add watchlist entry",
+      });
+    }
+  });
+
+  app.delete("/api/watchlist/:id", async (req, res) => {
+    try {
+      const sessionId = getOrSetSessionId(req, res);
+      const id = Number.parseInt(req.params.id, 10);
+      if (!Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({ message: "Invalid watchlist entry id" });
+      }
+      const removed = await storage.removeWatchlistEntry(id, sessionId);
+      if (!removed) {
+        return res.status(404).json({ message: "Watchlist entry not found" });
+      }
+      return res.status(204).end();
+    } catch (error) {
+      console.error("Error removing watchlist entry:", error);
+      return res.status(500).json({
+        message: error instanceof Error ? error.message : "Failed to remove watchlist entry",
       });
     }
   });
