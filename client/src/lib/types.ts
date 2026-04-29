@@ -1,8 +1,8 @@
 export type DataSource =
   | 'yfinance'
   | 'rapidapi'
-  | 'alpha-vantage'
-  | 'web-scrape'
+  | 'alphavantage'
+  | 'scraper'
   | 'fallback'
   | 'unknown';
 

@@ -41,12 +41,11 @@ Recent fixes:
 - `npm run db:push` — push Drizzle migrations.
 
 ### Test & verify (Replit workflows)
-The agent's environment hard-blocks edits to `package.json`, so the test
-runners are wired in as Replit **workflows** instead of npm scripts:
+Two on-demand workflows are configured for the test suite:
 
-- **Test** — runs `npx vitest run` (one-shot, console output).
-- **Verify** — runs `npx tsc --noEmit && npx vitest run` (CI-equivalent
-  pre-deploy gate). Currently **green: 99/99 tests pass in ~2s**.
+- **Test** — `npx vitest run` (one-shot, console output).
+- **Verify** — `npx tsc --noEmit && npx vitest run` (CI-equivalent
+  pre-deploy gate).
 
 Both are non-auto-start: open the Workflows panel and click ▶ to run on
 demand. From the shell you can run them directly:

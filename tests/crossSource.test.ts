@@ -77,7 +77,7 @@ describe('diffPayloads — cross-source divergence detection', () => {
   it('flags multiple divergent fields independently', () => {
     const a = payload({ eps: 5, fcfPerShare: 4, growthRate: 10 });
     const b = payload({ eps: 8, fcfPerShare: 6.5, growthRate: 11 });
-    const diffs = diffPayloads(a, b, 'rapidapi', 'alpha-vantage');
+    const diffs = diffPayloads(a, b, 'rapidapi', 'alphavantage');
     const fields = diffs.map(d => d.field).sort();
     // eps: |5-8|/8 = 37.5%   → flagged
     // fcf: |4-6.5|/6.5 ≈ 38.5% → flagged

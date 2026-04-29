@@ -254,10 +254,22 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
       .catch(() => { /* secondary failures are non-fatal */ });
   }
 
+  // Compare a fallback's output against the most recent cached primary
+  // (if any, even if expired). This is the "fallback succeeded after primary
+  // failure" agreement check — it surfaces when a downgrade source is
+  // returning numbers materially different from what we last knew.
+  const cached = stockDataCache[symbol]?.data;
+  function compareWithCachedPrimary(secondary: StockResponse, secondarySource: DataSource) {
+    if (!cached || !cached.dataSource || cached.dataSource === secondarySource) return;
+    const diffs = diffPayloads(cached, secondary, cached.dataSource, secondarySource);
+    if (diffs.length > 0) logDiscrepancies(diffs);
+  }
+
   // --- 1. yfinance (Python — most reliable for broad symbol coverage) ---
   const yfinanceResult = await trySource('yfinance', () => fetchYfinanceWithQueue(symbol));
   if (yfinanceResult) {
     const stamped = stampProvenance(yfinanceResult, 'yfinance');
+    compareWithCachedPrimary(stamped, 'yfinance');
     stockDataCache[symbol] = { data: stamped, timestamp: now };
     spotCheck(stamped, 'yfinance', 'rapidapi', () => getRapidApiStockData(symbol));
     return stamped;
@@ -267,24 +279,27 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
   const rapidResult = await trySource('RapidAPI', () => getRapidApiStockData(symbol));
   if (rapidResult) {
     const stamped = stampProvenance(rapidResult, 'rapidapi');
+    compareWithCachedPrimary(stamped, 'rapidapi');
     stockDataCache[symbol] = { data: stamped, timestamp: now };
-    spotCheck(stamped, 'rapidapi', 'alpha-vantage', () => getAlphaVantageData(symbol));
+    spotCheck(stamped, 'rapidapi', 'alphavantage', () => getAlphaVantageData(symbol));
     return stamped;
   }
 
   // --- 3. Alpha Vantage (dedicated fundamentals API) ---
   const avResult = await trySource('Alpha Vantage', () => getAlphaVantageData(symbol));
   if (avResult) {
-    const stamped = stampProvenance(avResult, 'alpha-vantage');
+    const stamped = stampProvenance(avResult, 'alphavantage');
+    compareWithCachedPrimary(stamped, 'alphavantage');
     stockDataCache[symbol] = { data: stamped, timestamp: now };
-    spotCheck(stamped, 'alpha-vantage', 'rapidapi', () => getRapidApiStockData(symbol));
+    spotCheck(stamped, 'alphavantage', 'rapidapi', () => getRapidApiStockData(symbol));
     return stamped;
   }
 
   // --- 4. Web scraping ---
   const scrapeResult = await trySource('web scraping', () => scrapeStockData(symbol));
   if (scrapeResult) {
-    const stamped = stampProvenance(scrapeResult, 'web-scrape');
+    const stamped = stampProvenance(scrapeResult, 'scraper');
+    compareWithCachedPrimary(stamped, 'scraper');
     stockDataCache[symbol] = { data: stamped, timestamp: now };
     return stamped;
   }

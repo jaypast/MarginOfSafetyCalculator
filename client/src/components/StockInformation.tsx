@@ -10,8 +10,8 @@ import { Search, RefreshCcw, Database, Clock, AlertTriangle } from 'lucide-react
 const SOURCE_LABELS: Record<string, { label: string; tone: 'fresh' | 'ok' | 'warn' }> = {
   yfinance: { label: 'Yahoo Finance', tone: 'fresh' },
   rapidapi: { label: 'RapidAPI', tone: 'ok' },
-  'alpha-vantage': { label: 'Alpha Vantage', tone: 'ok' },
-  'web-scrape': { label: 'web scrape', tone: 'warn' },
+  'alphavantage': { label: 'Alpha Vantage', tone: 'ok' },
+  'scraper': { label: 'web scrape', tone: 'warn' },
   fallback: { label: 'static fallback', tone: 'warn' },
   unknown: { label: 'unknown', tone: 'warn' },
 };

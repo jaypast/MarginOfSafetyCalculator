@@ -47,8 +47,8 @@ export type Stock = typeof stocks.$inferSelect;
 export const DATA_SOURCES = [
   'yfinance',
   'rapidapi',
-  'alpha-vantage',
-  'web-scrape',
+  'alphavantage',
+  'scraper',
   'fallback',
   'unknown',
 ] as const;

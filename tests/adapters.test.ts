@@ -1,33 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { stockResponseSchema } from '../shared/schema';
 
-// =============================================================================
-// Adapter normalization tests
-//
-// Each provider service (`yahooFinance`, `rapidApiFinance`, `alphaVantage`,
-// `webScraper`) is responsible for two things:
-//   1. Calling its upstream (HTTP, subprocess, scraping)
-//   2. Normalizing whatever shape it gets back into our shared StockResponse.
-//
-// This file exercises the *normalization* contract: given a synthetic
-// upstream payload, the adapter must return a StockResponse object that
-// passes `stockResponseSchema.safeParse`. If a future API change shifts
-// a field name or type, these tests fail loudly instead of silently
-// producing NaN-filled responses to the user.
-// =============================================================================
+// Adapter normalization tests. Each provider service must turn its upstream
+// payload into a StockResponse that passes stockResponseSchema.safeParse.
 
-// -- 1. Alpha Vantage --------------------------------------------------------
-//
-// AlphaVantage uses axios, so we mock axios.get to return canned OVERVIEW
-// and GLOBAL_QUOTE payloads.
-describe('alphaVantage adapter — normalizes OVERVIEW + GLOBAL_QUOTE into StockResponse', () => {
+describe('alphaVantage adapter', () => {
   beforeEach(() => {
     vi.resetModules();
     process.env.ALPHA_VANTAGE_KEY = 'test-key';
-    // Bypass the adapter's 13-second internal rate-limit gate so each
-    // test runs in milliseconds instead of seconds. The rate limiter
-    // does `await new Promise(r => setTimeout(r, …))`, so making
-    // setTimeout fire its callback synchronously short-circuits the wait.
+    // Skip the 13s internal rate-limit gate by making setTimeout fire its
+    // callback on the next microtask.
     vi.stubGlobal('setTimeout', ((fn: any) => {
       Promise.resolve().then(fn);
       return 0 as any;
@@ -87,6 +69,7 @@ describe('alphaVantage adapter — normalizes OVERVIEW + GLOBAL_QUOTE into Stock
   });
 
   it('falls back through the FCF waterfall when OperatingCashflowPerShare is missing', async () => {
+    // Step 2 in the waterfall: EPS-based estimate = EPS × 0.85.
     vi.doMock('axios', () => ({
       default: {
         get: vi.fn().mockImplementation((url: string, opts: any) => {
@@ -118,7 +101,7 @@ describe('alphaVantage adapter — normalizes OVERVIEW + GLOBAL_QUOTE into Stock
     expect(result.fcfPerShare).toBeCloseTo(4.25, 5);
   });
 
-  it('throws when AlphaVantage returns an empty object (unknown symbol)', async () => {
+  it('throws when the upstream returns an empty object', async () => {
     vi.doMock('axios', () => ({
       default: { get: vi.fn().mockResolvedValue({ data: {} }) },
     }));
@@ -128,8 +111,7 @@ describe('alphaVantage adapter — normalizes OVERVIEW + GLOBAL_QUOTE into Stock
   });
 });
 
-// -- 2. RapidAPI Finance -----------------------------------------------------
-describe('rapidApiFinance adapter — normalizes Yahoo-via-RapidAPI payloads', () => {
+describe('rapidApiFinance adapter', () => {
   beforeEach(() => {
     vi.resetModules();
     process.env.RAPIDAPI_KEY = 'test-key';
@@ -140,7 +122,7 @@ describe('rapidApiFinance adapter — normalizes Yahoo-via-RapidAPI payloads', (
     vi.resetModules();
   });
 
-  it('returns a schema-valid StockResponse from the Stock Data API path', async () => {
+  it('normalizes the Stock Data API payload', async () => {
     vi.doMock('axios', () => ({
       default: {
         get: vi.fn().mockImplementation((url: string) => {
@@ -181,7 +163,7 @@ describe('rapidApiFinance adapter — normalizes Yahoo-via-RapidAPI payloads', (
     expect(result.earningsStability).toBe('High');
   });
 
-  it('returns a schema-valid response with safe defaults when fields are missing', async () => {
+  it('uses safe defaults when fields are missing', async () => {
     vi.doMock('axios', () => ({
       default: {
         get: vi.fn().mockImplementation((url: string) => {
@@ -203,7 +185,7 @@ describe('rapidApiFinance adapter — normalizes Yahoo-via-RapidAPI payloads', (
     expect(result.competitivePosition).toBe('Average');
   });
 
-  it('throws (so the upstream caller can fall through to the next source) when both API paths fail', async () => {
+  it('throws when both API paths fail', async () => {
     vi.doMock('axios', () => ({
       default: { get: vi.fn().mockRejectedValue(new Error('network down')) },
     }));
@@ -213,15 +195,14 @@ describe('rapidApiFinance adapter — normalizes Yahoo-via-RapidAPI payloads', (
   });
 });
 
-// -- 3. Yahoo Finance (Python subprocess) ------------------------------------
-describe('yahooFinance adapter — normalizes the Python yfinance subprocess output', () => {
+describe('yahooFinance adapter', () => {
   beforeEach(() => vi.resetModules());
   afterEach(() => {
     vi.restoreAllMocks();
     vi.resetModules();
   });
 
-  it('parses a healthy JSON payload from the Python script and returns a schema-valid StockResponse', async () => {
+  it('parses the Python script JSON payload', async () => {
     const fakePayload = {
       symbol: 'AAPL',
       name: 'Apple Inc.',
@@ -270,22 +251,14 @@ describe('yahooFinance adapter — normalizes the Python yfinance subprocess out
   });
 });
 
-// -- 4. Web Scraper ----------------------------------------------------------
-//
-// The web scraper is the most fragile path (HTML parsing) so the
-// normalization contract is the most important to lock in. We mock both
-// `node-fetch` and the Cheerio-loaded HTML.
-describe('webScraper adapter — normalizes scraped HTML into StockResponse', () => {
+describe('webScraper adapter', () => {
   beforeEach(() => vi.resetModules());
   afterEach(() => {
     vi.restoreAllMocks();
     vi.resetModules();
   });
 
-  it('returns a schema-valid StockResponse when the simple-quote API succeeds', async () => {
-    // The scraper makes multiple fetches: simple quote (JSON), main page
-    // (HTML), key-statistics page (HTML). We return minimal-but-valid
-    // payloads for each so the function reaches its return statement.
+  it('returns schema-valid output from the simple-quote API + minimal HTML', async () => {
     const minimalHtml = '<html><body></body></html>';
 
     vi.doMock('node-fetch', () => {
@@ -315,8 +288,7 @@ describe('webScraper adapter — normalizes scraped HTML into StockResponse', ()
     expect(parsed.success).toBe(true);
     expect(result.symbol).toBe('AAPL');
     expect(result.price).toBe(170.25);
-    // With minimal/empty HTML, missing fields should default to safe zeros
-    // — never NaN or undefined (which would break the schema).
+    // Missing fields must default to numbers, never NaN/undefined.
     expect(Number.isFinite(result.eps)).toBe(true);
     expect(Number.isFinite(result.peRatio)).toBe(true);
     expect(Number.isFinite(result.fcfPerShare)).toBe(true);
