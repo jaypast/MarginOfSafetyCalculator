@@ -130,9 +130,14 @@ def compute_pe_history(ticker):
         except Exception:
             pass
 
-        # For each quarter end, take the next monthly close on/after
-        # that date; using `.asof` would peek backward, which is what
-        # we want — the most recent published close at that point.
+        # For each quarter end, take the most recent monthly close at
+        # or before that date. `pandas.Series.asof(q_end)` performs a
+        # *backward* lookup, returning the latest known value with
+        # index <= q_end — which is exactly what we want, because the
+        # close on the quarter-end day reflects the market's pricing
+        # of all earnings reported up to that point. (We deliberately
+        # do NOT peek forward into post-quarter price action; that
+        # would inject look-ahead bias into the historical P/E series.)
         pe_points = []
         for q_end, ttm_eps in ttm.items():
             try:
