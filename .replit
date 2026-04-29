@@ -27,6 +27,14 @@ author = "agent"
 task = "workflow.run"
 args = "Start application"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Test"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Verify"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -41,6 +49,28 @@ task = "packager.installForAll"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "Test"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx vitest run"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Verify"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx tsc --noEmit && npx vitest run"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 integrations = ["github:1.0.0"]

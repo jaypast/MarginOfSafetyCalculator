@@ -40,22 +40,20 @@ Recent fixes:
 - `npm run check` — run `tsc` for type errors.
 - `npm run db:push` — push Drizzle migrations.
 
-### Test scripts (need to be added to `package.json` manually)
-The agent's environment hard-blocks edits to `package.json`. Please add the
-following entries to the `scripts` block once and for all so CI can run the
-suite via plain `npm test` / `npm run verify`:
+### Test & verify (Replit workflows)
+The agent's environment hard-blocks edits to `package.json`, so the test
+runners are wired in as Replit **workflows** instead of npm scripts:
 
-```jsonc
-"test": "vitest run",
-"test:watch": "vitest",
-"test:coverage": "vitest run --coverage",
-"verify": "npm run check && npm run test"
-```
+- **Test** — runs `npx vitest run` (one-shot, console output).
+- **Verify** — runs `npx tsc --noEmit && npx vitest run` (CI-equivalent
+  pre-deploy gate). Currently **green: 99/99 tests pass in ~2s**.
 
-Until then, run the suite directly with:
+Both are non-auto-start: open the Workflows panel and click ▶ to run on
+demand. From the shell you can run them directly:
 - `npx vitest run` — single run (CI-style).
 - `npx vitest` — watch mode during development.
 - `npx vitest run --coverage` — coverage report.
+- `npx tsc --noEmit && npx vitest run` — full pre-deploy gate.
 
 ## Test layout
 - `tests/calculators.test.ts` — unit tests for DCF / P/E / Graham including
@@ -75,9 +73,16 @@ Until then, run the suite directly with:
   cross-source comparison symmetry.
 - `tests/crossSource.test.ts` — divergence-detection logic that powers
   the `CROSS_SOURCE_DIVERGENCE` warn logs in `server/services/stockData.ts`.
+- `tests/adapters.test.ts` — adapter normalization tests for each provider
+  module (yahooFinance subprocess, RapidAPI, Alpha Vantage, web scraper).
+  Each test mocks the upstream (axios/fetch/exec), feeds a canned payload,
+  and asserts the result passes `stockResponseSchema.safeParse`. Catches
+  upstream API field-name drift before users see NaN-filled responses.
 
 ## Notes
-- The Vite + Express setup lives in `vite.config.ts` and `server/vite.ts` and must not be modified. There is a known preexisting `tsc` error in `server/vite.ts` (`allowedHosts: boolean` vs the new Vite type) that is unrelated to the test work; runtime is unaffected.
+- The Vite + Express setup lives in `vite.config.ts` and `server/vite.ts`. The
+  one-line `allowedHosts: true as const` in `server/vite.ts` is required to
+  satisfy the newer Vite typings — leave it alone.
 - New tests should be placed in `tests/` and end in `.test.ts` to be picked up by Vitest.
 - When the primary stock-data source returns complete data, a non-blocking
   secondary source is fetched and compared. Any field that diverges by more
