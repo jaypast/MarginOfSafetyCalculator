@@ -17,11 +17,11 @@ import {
   CalculationMethod,
   CompanyQualityResult
 } from '@/lib/types';
-import { 
-  calculateDCF, 
-  calculatePE, 
-  calculateGraham, 
-  calculateBuyBelow, 
+import {
+  calculateDCFDetailed,
+  calculatePEDetailed,
+  calculateGrahamDetailed,
+  calculateBuyBelow,
   calculateDiscountPremium,
   calculateAverageValuation,
   calculateBuyBelowStatus
@@ -43,8 +43,9 @@ const MarginOfSafetyCalculator: React.FC = () => {
     dcfTerminalMultiple: 15,
     dcfForecastPeriod: 5,
     
-    // P/E Parameters
-    peType: '5year',
+    // P/E Parameters — defaults to the company's current P/E so the
+    // valuation reflects real per-stock data instead of a hard-coded constant.
+    peType: 'current',
     peCustomValue: 15,
     peAdjustment: 100,
     
@@ -97,53 +98,58 @@ const MarginOfSafetyCalculator: React.FC = () => {
     
     // Calculate values - always use current price for discount calculation
     const price = stockData.price;
-    
+
     // Calculate DCF valuation
-    const dcfValue = calculateDCF(stockData, valuationParams);
-    const dcfBuyBelow = calculateBuyBelow(dcfValue, marginOfSafetyParams.marginOfSafety);
-    const dcfDiscountPremium = calculateDiscountPremium(price, dcfValue);
+    const dcf = calculateDCFDetailed(stockData, valuationParams);
+    const dcfBuyBelow = calculateBuyBelow(dcf.value, marginOfSafetyParams.marginOfSafety);
+    const dcfDiscountPremium = calculateDiscountPremium(price, dcf.value);
     const dcfBuyBelowStatus = calculateBuyBelowStatus(price, dcfBuyBelow);
-    
+
     // Calculate P/E valuation
-    const peValue = calculatePE(stockData, valuationParams);
-    const peBuyBelow = calculateBuyBelow(peValue, marginOfSafetyParams.marginOfSafety);
-    const peDiscountPremium = calculateDiscountPremium(price, peValue);
+    const pe = calculatePEDetailed(stockData, valuationParams);
+    const peBuyBelow = calculateBuyBelow(pe.value, marginOfSafetyParams.marginOfSafety);
+    const peDiscountPremium = calculateDiscountPremium(price, pe.value);
     const peBuyBelowStatus = calculateBuyBelowStatus(price, peBuyBelow);
-    
+
     // Calculate Graham valuation
-    const grahamValue = calculateGraham(stockData, valuationParams);
-    const grahamBuyBelow = calculateBuyBelow(grahamValue, marginOfSafetyParams.marginOfSafety);
-    const grahamDiscountPremium = calculateDiscountPremium(price, grahamValue);
+    const graham = calculateGrahamDetailed(stockData, valuationParams);
+    const grahamBuyBelow = calculateBuyBelow(graham.value, marginOfSafetyParams.marginOfSafety);
+    const grahamDiscountPremium = calculateDiscountPremium(price, graham.value);
     const grahamBuyBelowStatus = calculateBuyBelowStatus(price, grahamBuyBelow);
-    
+
     // Store results
     const results: ValuationResult[] = [
       {
         method: 'DCF Analysis',
-        intrinsicValue: dcfValue,
+        intrinsicValue: dcf.value,
         buyBelow: dcfBuyBelow,
         discountPremium: dcfDiscountPremium,
-        buyBelowStatus: dcfBuyBelowStatus
+        buyBelowStatus: dcfBuyBelowStatus,
+        appliedAdjustments: dcf.appliedAdjustments,
       },
       {
         method: 'P/E Based',
-        intrinsicValue: peValue,
+        intrinsicValue: pe.value,
         buyBelow: peBuyBelow,
         discountPremium: peDiscountPremium,
-        buyBelowStatus: peBuyBelowStatus
+        buyBelowStatus: peBuyBelowStatus,
+        appliedAdjustments: pe.appliedAdjustments,
       },
       {
         method: 'Graham Formula',
-        intrinsicValue: grahamValue,
+        intrinsicValue: graham.value,
         buyBelow: grahamBuyBelow,
         discountPremium: grahamDiscountPremium,
-        buyBelowStatus: grahamBuyBelowStatus
+        buyBelowStatus: grahamBuyBelowStatus,
+        appliedAdjustments: graham.appliedAdjustments,
       }
     ];
-    
-    // Calculate average
-    const avgResult = calculateAverageValuation(results);
-    
+
+    // Calculate average using the actual current price (not reverse-engineered
+    // from discount/premium, which silently produced wrong numbers when one
+    // of the inputs was capped).
+    const avgResult = calculateAverageValuation(results, price);
+
     setValuationResults([...results, avgResult]);
   };
   

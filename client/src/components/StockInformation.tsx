@@ -4,7 +4,31 @@ import { Button } from '@/components/ui/button';
 import { StockData } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
 import { useQueryClient } from '@tanstack/react-query';
-import { Search, RefreshCcw } from 'lucide-react';
+import { Search, RefreshCcw, Database, Clock, AlertTriangle } from 'lucide-react';
+
+// Map upstream source IDs to short, user-friendly labels for the badge.
+const SOURCE_LABELS: Record<string, { label: string; tone: 'fresh' | 'ok' | 'warn' }> = {
+  yfinance: { label: 'Yahoo Finance', tone: 'fresh' },
+  rapidapi: { label: 'RapidAPI', tone: 'ok' },
+  'alpha-vantage': { label: 'Alpha Vantage', tone: 'ok' },
+  'web-scrape': { label: 'web scrape', tone: 'warn' },
+  fallback: { label: 'static fallback', tone: 'warn' },
+  unknown: { label: 'unknown', tone: 'warn' },
+};
+
+function describeFreshness(iso?: string): string {
+  if (!iso) return '';
+  const ts = new Date(iso).getTime();
+  if (Number.isNaN(ts)) return '';
+  const ageMs = Date.now() - ts;
+  if (ageMs < 60_000) return 'just now';
+  const minutes = Math.round(ageMs / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
 
 interface StockInformationProps {
   stockData: StockData | undefined;
@@ -149,6 +173,41 @@ const StockInformation: React.FC<StockInformationProps> = ({
             <p className="text-xs text-neutral-600 mt-1">
               Current Price: <strong>{formatCurrency(stockData.price)}</strong>
             </p>
+
+            {/* Data provenance — shows which upstream API the numbers came
+                from and how stale they are, so investors can judge the
+                trustworthiness of the valuation that follows. */}
+            {(stockData.dataSource || stockData.fetchedAt) && (() => {
+              const meta = stockData.dataSource ? SOURCE_LABELS[stockData.dataSource] : undefined;
+              const tone = meta?.tone ?? 'warn';
+              const toneClasses =
+                tone === 'fresh'
+                  ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                  : tone === 'ok'
+                  ? 'bg-sky-100 text-sky-800 border-sky-200'
+                  : 'bg-amber-100 text-amber-800 border-amber-200';
+              return (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded border ${toneClasses}`}>
+                    <Database className="w-3 h-3 mr-1" />
+                    Source: {meta?.label ?? stockData.dataSource ?? 'unknown'}
+                  </span>
+                  {stockData.fetchedAt && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded border border-neutral-200 bg-neutral-50 text-neutral-700">
+                      <Clock className="w-3 h-3 mr-1" />
+                      Fetched {describeFreshness(stockData.fetchedAt)}
+                    </span>
+                  )}
+                  {stockData.appliedAdjustments && stockData.appliedAdjustments.length > 0 && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-800"
+                      title={stockData.appliedAdjustments.join('\n')}>
+                      <AlertTriangle className="w-3 h-3 mr-1" />
+                      {stockData.appliedAdjustments.length} adjustment{stockData.appliedAdjustments.length === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>

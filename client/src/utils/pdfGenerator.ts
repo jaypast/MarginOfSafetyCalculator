@@ -92,7 +92,10 @@ export const generateCalculationsPDF = (
     }
     text += `P/E Adjustment: ${valuationParams.peAdjustment}%\n\n`;
     
-    // P/E Calculation steps
+    // P/E Calculation steps. Only `current` and `custom` are supported now;
+    // the previous `5year`/`10year`/`industry` constants were removed because
+    // they applied the same hard-coded multiple to every stock regardless of
+    // sector.
     let peValue = 0;
     let adjustedPE = 0;
     switch (valuationParams.peType) {
@@ -103,12 +106,6 @@ export const generateCalculationsPDF = (
       case 'custom':
         adjustedPE = valuationParams.peCustomValue * (valuationParams.peAdjustment / 100);
         peValue = stockData.eps * adjustedPE;
-        break;
-      default:
-        // For 5year, 10year, industry - using the calculated result
-        const peResult = valuationResults.find(r => r.method.includes('P/E'));
-        peValue = peResult?.intrinsicValue || 0;
-        adjustedPE = peValue / stockData.eps;
         break;
     }
     

@@ -132,7 +132,7 @@ const TopSentimentResearch: React.FC = () => {
               dcfForecastPeriod: 5, // 5-year forecast
               
               // P/E Parameters
-              peType: 'current' as 'current' | '5year' | '10year' | 'industry' | 'custom',
+              peType: 'current' as 'current' | 'custom',
               peCustomValue: 15, // Default PE multiple
               peAdjustment: 100, // No adjustment
               

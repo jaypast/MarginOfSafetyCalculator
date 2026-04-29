@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileText, TrendingDown, TrendingUp, Pause } from 'lucide-react';
+import { FileText, TrendingDown, TrendingUp, Pause, Info } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { StockData, ValuationResult, CalculationMethod, ValuationParams, MarginOfSafetyParams } from '@/lib/types';
@@ -312,6 +312,41 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
           </div>
         </div>
         
+        {/* Applied adjustments — surfaces every cap, override, and fallback
+            so the user can see *why* a number is what it is rather than
+            having to trust the model blindly. */}
+        {!isSpecialCase && !etfDetected && (() => {
+          const allAdjustments = valuationResults
+            .filter(r => r.method !== 'Average' && r.appliedAdjustments && r.appliedAdjustments.length > 0)
+            .map(r => ({ method: r.method, items: r.appliedAdjustments! }));
+          if (allAdjustments.length === 0) return null;
+          return (
+            <div className="mt-6 bg-neutral-50 border border-neutral-200 rounded-md p-3">
+              <div className="flex items-center mb-2">
+                <Info className="w-4 h-4 text-neutral-500 mr-2" />
+                <h3 className="text-sm font-medium text-neutral-700">
+                  Applied adjustments
+                </h3>
+              </div>
+              <p className="text-xs text-neutral-500 mb-2">
+                Caps, overrides and fallbacks applied during these calculations.
+              </p>
+              <div className="space-y-2">
+                {allAdjustments.map(({ method, items }) => (
+                  <div key={method}>
+                    <p className="text-xs font-medium text-neutral-600">{method}</p>
+                    <ul className="list-disc list-inside text-xs text-neutral-600 ml-2 space-y-0.5">
+                      {items.map((item, i) => (
+                        <li key={i}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Show Work Button - Display Report in Dialog */}
         {stockData && valuationParams && marginOfSafetyParams && !etfDetected && !isSpecialCase && (
           <div className="mt-6 flex justify-center">

@@ -6,15 +6,15 @@ import { StockData } from "./types";
 export interface AdjustmentFactors {
   // FCF estimation factors
   fcfToEpsRatio: number;        // Used when FCF data is missing/unreliable
-  
+
   // DCF calculation factors
   growthRateCap: number;        // Maximum allowed growth rate
   terminalMultipleCap: number;  // Maximum terminal value multiple
-  
+
   // Valuation caps
   fcfMultipleCap: number;       // Maximum P/FCF multiple
   peMultipleCap: number;        // Maximum P/E multiple for Graham method
-  
+
   // Price-based caps
   priceToCap: number;           // Maximum ratio of intrinsic value to current price
 }
@@ -79,15 +79,15 @@ export const industryAdjustments: Record<string, AdjustmentFactors> = {
  */
 export const specialCases: Record<string, Partial<AdjustmentFactors>> = {
   // Alibaba special handling
-  'BABA': { 
-    fcfToEpsRatio: 0.85, 
-    terminalMultipleCap: 15, 
-    growthRateCap: 15 
+  'BABA': {
+    fcfToEpsRatio: 0.85,
+    terminalMultipleCap: 15,
+    growthRateCap: 15
   },
-  '9988.HK': { 
-    fcfToEpsRatio: 0.85, 
-    terminalMultipleCap: 15, 
-    growthRateCap: 15 
+  '9988.HK': {
+    fcfToEpsRatio: 0.85,
+    terminalMultipleCap: 15,
+    growthRateCap: 15
   },
   // Toyota specific handling
   'TM': {
@@ -100,23 +100,32 @@ export const specialCases: Record<string, Partial<AdjustmentFactors>> = {
     terminalMultipleCap: 12,
     priceToCap: 2.0  // Stricter cap for Japanese listing
   },
-  // Other special cases can be added here
 };
 
 /**
- * Map of company symbols to their industry
+ * Map of company symbols to their industry.
+ * Each symbol must appear at most once — duplicates are detected by the test
+ * suite (`tests/companyAdjustments.test.ts`) so we can't accidentally create a
+ * conflicting mapping.
+ *
+ * Edge case: TSLA. It's an "auto manufacturer" by SEC classification (and that
+ * dominates its margin / cyclicality profile), even though many investors
+ * treat it as a tech stock. We classify it as AUTO_MANUFACTURER for the
+ * conservative caps — this is intentional and is what the previous comment
+ * was hinting at. If you want to reclassify, remove it from
+ * AUTO_MANUFACTURER below before adding to TECHNOLOGY.
  */
 export const companyIndustryMap: Record<string, string> = {
   // Auto manufacturers
   'TM': 'AUTO_MANUFACTURER',
   'F': 'AUTO_MANUFACTURER',
   'GM': 'AUTO_MANUFACTURER',
-  'TSLA': 'AUTO_MANUFACTURER',
+  'TSLA': 'AUTO_MANUFACTURER', // see note above
   'HMC': 'AUTO_MANUFACTURER',
-  '7203.T': 'AUTO_MANUFACTURER',
-  '7267.T': 'AUTO_MANUFACTURER',
-  
-  // Technology companies
+  '7203.T': 'AUTO_MANUFACTURER', // Toyota
+  '7267.T': 'AUTO_MANUFACTURER', // Honda
+
+  // Technology companies (TSLA intentionally excluded — see comment above)
   'AAPL': 'TECHNOLOGY',
   'MSFT': 'TECHNOLOGY',
   'GOOGL': 'TECHNOLOGY',
@@ -124,59 +133,61 @@ export const companyIndustryMap: Record<string, string> = {
   'META': 'TECHNOLOGY',
   'AMZN': 'TECHNOLOGY',
   'NVDA': 'TECHNOLOGY',
-  // Note: TSLA is defined above in AUTO_MANUFACTURER
-  
+
   // Financial companies
   'JPM': 'FINANCIAL',
   'BAC': 'FINANCIAL',
   'WFC': 'FINANCIAL',
   'C': 'FINANCIAL',
   'GS': 'FINANCIAL',
-  
+
   // Retail companies
   'WMT': 'RETAIL',
   'TGT': 'RETAIL',
   'COST': 'RETAIL',
   'HD': 'RETAIL',
   'LOW': 'RETAIL',
-  
+
   // Healthcare companies
   'JNJ': 'HEALTHCARE',
   'PFE': 'HEALTHCARE',
   'UNH': 'HEALTHCARE',
   'MRK': 'HEALTHCARE',
   'ABT': 'HEALTHCARE',
-  
-  // Add more company-to-industry mappings as needed
 };
 
 /**
- * Function to determine industry from symbol and available data
+ * Function to determine industry from symbol and available data.
+ *
+ * Note on the previous heuristic: classifying *every* `7xxx.T` symbol as
+ * AUTO_MANUFACTURER produced false positives for Nintendo (7974.T, gaming),
+ * Mitsubishi Heavy (7011.T, industrial), Hoya (7741.T, optics) and others.
+ * The fix is to only treat a Japanese symbol as auto when its name actually
+ * contains an auto/motor token — pattern-matching on the leading digit of
+ * the local TSE numeric code is unsafe.
  */
 export function determineIndustry(stockData: StockData): string {
   // Try direct mapping from our lookup table first
   if (companyIndustryMap[stockData.symbol]) {
     return companyIndustryMap[stockData.symbol];
   }
-  
-  // If we don't have a direct mapping, we could use sector data
-  // (future enhancement when sector data becomes available)
-  
-  // Check for symbol patterns to detect industry
-  const symbol = stockData.symbol;
-  
-  // Check for Japanese auto manufacturers by pattern
-  if (symbol.endsWith('.T') && 
-      (symbol.startsWith('7') || symbol.includes('AUTO') || symbol.includes('MOTOR'))) {
+
+  const symbol = stockData.symbol.toUpperCase();
+  const name = (stockData.name || '').toUpperCase();
+
+  // Auto manufacturers: only by name/symbol token, not by TSE code prefix
+  if (/\b(AUTO|MOTOR|MOTORS|AUTOMOBILE)\b/.test(name) ||
+      symbol.includes('MOTOR')) {
     return 'AUTO_MANUFACTURER';
   }
-  
-  // Check for financial companies by pattern
-  if (symbol.includes('BANK') || symbol.includes('FINANCIAL') || 
+
+  // Financial companies: name OR symbol contains a finance token
+  if (/\b(BANK|FINANCIAL|INSURANCE|CAPITAL)\b/.test(name) ||
+      symbol.includes('BANK') || symbol.includes('FINANCIAL') ||
       symbol.includes('INSURANCE') || symbol.includes('CAPITAL')) {
     return 'FINANCIAL';
   }
-  
+
   // Default if we can't determine the industry
   return 'DEFAULT';
 }
@@ -184,7 +195,7 @@ export function determineIndustry(stockData: StockData): string {
 /**
  * Function to detect data quality issues
  */
-export function detectDataIssues(stockData: StockData): { 
+export function detectDataIssues(stockData: StockData): {
   hasFcfIssue: boolean,
   hasEpsIssue: boolean,
   hasPeIssue: boolean,
@@ -208,14 +219,14 @@ export function getAdjustmentFactors(stockData: StockData): AdjustmentFactors {
     // Merge with default settings for any missing properties
     return { ...industryAdjustments.DEFAULT, ...specialCase };
   }
-  
+
   // Get industry-based adjustments
   const industry = determineIndustry(stockData);
   const baseAdjustments = industryAdjustments[industry] || industryAdjustments.DEFAULT;
-  
+
   // Detect data issues and modify adjustments if needed
   const dataIssues = detectDataIssues(stockData);
-  
+
   if (dataIssues.hasFcfIssue || dataIssues.hasEpsIssue || dataIssues.hasExtremeFcf) {
     // Apply more conservative adjustments for stocks with data issues
     return {
@@ -225,7 +236,7 @@ export function getAdjustmentFactors(stockData: StockData): AdjustmentFactors {
       fcfMultipleCap: Math.min(baseAdjustments.fcfMultipleCap, 20)
     };
   }
-  
+
   // Handle market-specific adjustments
   if (stockData.symbol.endsWith('.T')) {
     // Japanese market tends to have lower valuations
@@ -234,6 +245,18 @@ export function getAdjustmentFactors(stockData: StockData): AdjustmentFactors {
       priceToCap: Math.min(baseAdjustments.priceToCap, 2.5)
     };
   }
-  
+
   return baseAdjustments;
+}
+
+/**
+ * Returns a human-readable label for the industry classification, to be
+ * surfaced in the UI as part of the "applied adjustments" provenance list.
+ */
+export function describeIndustry(stockData: StockData): string {
+  const industry = determineIndustry(stockData);
+  const isSpecial = !!specialCases[stockData.symbol];
+  return isSpecial
+    ? `special-case adjustments for ${stockData.symbol}`
+    : `industry caps: ${industry}`;
 }

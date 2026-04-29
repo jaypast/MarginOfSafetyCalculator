@@ -77,8 +77,10 @@ export function calculateIntrinsicValue(stockData: StockData): number {
     manualAverage = sum / validValues.length;
   }
   
-  // Use the exact same averaging function as the calculator
-  const avgResult = calculateAverageValuation(validValues);
+  // Use the exact same averaging function as the calculator. Pass the actual
+  // current price so the average's discount/premium is based on real data
+  // rather than reverse-engineered from a capped discountPremium.
+  const avgResult = calculateAverageValuation(validValues, stockData.price);
   
   // Add debugging for GOOGL
   if (stockData.symbol === 'GOOGL') {

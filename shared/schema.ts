@@ -42,6 +42,18 @@ export const insertStockSchema = createInsertSchema(stocks).omit({
 export type InsertStock = z.infer<typeof insertStockSchema>;
 export type Stock = typeof stocks.$inferSelect;
 
+// Recognised upstream data sources (in priority order). Used so the client can
+// surface provenance — e.g. "this came from yfinance, fetched 8 minutes ago".
+export const DATA_SOURCES = [
+  'yfinance',
+  'rapidapi',
+  'alpha-vantage',
+  'web-scrape',
+  'fallback',
+  'unknown',
+] as const;
+export type DataSource = (typeof DATA_SOURCES)[number];
+
 // API Schemas
 export const stockResponseSchema = z.object({
   symbol: z.string(),
@@ -58,6 +70,13 @@ export const stockResponseSchema = z.object({
   earningsStability: z.string(),
   competitivePosition: z.string(),
   lastUpdated: z.string().optional(), // Date when the financial data was last updated
+  // Provenance fields — populated by the server so the UI can render
+  // a "data source · freshness" badge and warn when fallbacks were used.
+  dataSource: z.enum(DATA_SOURCES).optional(),
+  fetchedAt: z.string().optional(), // ISO timestamp of when the server returned this payload
+  // Free-form notes about adjustments applied during normalization
+  // (e.g. "EPS derived from price/PE", "FCF estimated as 0.75 × EPS").
+  appliedAdjustments: z.array(z.string()).optional(),
   error: z.boolean().optional(),
   errorMessage: z.string().optional(),
 });
