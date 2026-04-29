@@ -113,11 +113,6 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, onRemove, isRemoving
       <TableCell className="font-semibold text-[#1A2942]">
         <div className="flex flex-col">
           <span>{entry.symbol}</span>
-          {stockOk && (
-            <span className="text-xs font-normal text-neutral-500 truncate max-w-[180px]">
-              {stock.name}
-            </span>
-          )}
           {stock?.fetchedAt && (
             <span className="text-[10px] font-normal text-neutral-400">
               {describeFreshness(stock.fetchedAt)}
@@ -125,6 +120,15 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, onRemove, isRemoving
             </span>
           )}
         </div>
+      </TableCell>
+      <TableCell className="text-sm text-neutral-700">
+        {stockQuery.isLoading ? (
+          <span className="text-neutral-400">…</span>
+        ) : stockOk ? (
+          <span className="block truncate max-w-[220px]" title={stock.name}>{stock.name}</span>
+        ) : (
+          <span className="text-neutral-400">—</span>
+        )}
       </TableCell>
       <TableCell className="text-right tabular-nums">
         {stockQuery.isLoading ? (
@@ -287,12 +291,13 @@ const Watchlist: React.FC = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[200px]">Ticker</TableHead>
+                  <TableHead className="w-[140px]">Symbol</TableHead>
+                  <TableHead>Name</TableHead>
                   <TableHead className="text-right">Price</TableHead>
-                  <TableHead className="text-right">Buy below</TableHead>
+                  <TableHead className="text-right">Buy Below</TableHead>
                   <TableHead className="text-right">MoS</TableHead>
-                  <TableHead className="text-right">Vs. threshold</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Vs. Threshold</TableHead>
+                  <TableHead>Zone</TableHead>
                   <TableHead className="text-right w-[60px]">
                     <span className="sr-only">Actions</span>
                   </TableHead>
