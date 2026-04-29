@@ -170,14 +170,31 @@ export const companyIndustryMap: Record<string, string> = {
  * P/E rows). When a stock's industry isn't in this map, the calculator's
  * `industry` branch falls back to the current P/E with an explicit
  * adjustment note — never to a hidden constant.
+ *
+ * NOTE — Server / client baseline alignment:
+ * The Python helper `compute_pe_history()` in
+ * `server/services/yfinance_service.py` maintains a parallel `sector_pe`
+ * dict keyed by yfinance/GICS sector strings (`'Technology'`,
+ * `'Financial Services'`, `'Healthcare'`, etc.) and attaches the
+ * resulting baseline as `peHistory.industryAvg` on the StockResponse.
+ * The shared sectors (Technology→28, Financials→14, Healthcare→22) use
+ * IDENTICAL numbers in both tables, so when the server-attached value
+ * IS present the calculator (`industry` branch) uses it; when it ISN'T,
+ * `getIndustryBaselinePE()` falls back here. The server table covers
+ * the wider GICS sector taxonomy (Communication Services, Utilities,
+ * etc.); this client table uses the narrower functional groupings that
+ * `determineIndustry()` produces from symbol/name heuristics. Either
+ * branch is safe — the contract test in `tests/calculators.test.ts`
+ * ("industry mode contract: payload industryAvg takes precedence …")
+ * locks in the precedence semantics so payload value wins when present.
  */
 export const INDUSTRY_PE_BASELINES: Record<string, number> = {
-  TECHNOLOGY: 28,         // S&P 500 Information Technology sector median
-  FINANCIAL: 14,          // S&P 500 Financials sector median
-  HEALTHCARE: 22,         // S&P 500 Health Care sector median
-  RETAIL: 24,             // S&P 500 Consumer Discretionary sector median
-  AUTO_MANUFACTURER: 12,  // Cyclical autos historically trade at low teens
-  DEFAULT: 19,            // S&P 500 broad-market median
+  TECHNOLOGY: 28,         // S&P 500 Information Technology sector median  (server: 'Technology' = 28)
+  FINANCIAL: 14,          // S&P 500 Financials sector median               (server: 'Financial Services' = 14)
+  HEALTHCARE: 22,         // S&P 500 Health Care sector median              (server: 'Healthcare' = 22)
+  RETAIL: 24,             // S&P 500 Consumer Discretionary sector median  (server: 'Consumer Cyclical' = 20 — narrower client group)
+  AUTO_MANUFACTURER: 12,  // Cyclical autos historically trade at low teens (server: 'Consumer Cyclical' = 20 — auto subset)
+  DEFAULT: 19,            // S&P 500 broad-market median                    (server: 'Industrials' = 19)
 };
 
 /**

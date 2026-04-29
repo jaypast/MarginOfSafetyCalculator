@@ -36,11 +36,26 @@ def compute_pe_history(ticker):
     both sides agree). When the sector is unknown the field is left
     None and the frontend calculator's local fallback fires.
     """
-    # S&P sector median P/E baselines, mirroring the client-side
-    # INDUSTRY_PE_BASELINES table in companyAdjustments.ts so the
-    # server-attached value matches what the client would compute
-    # locally as a fallback. Keys use the canonical yfinance/GICS
-    # sector strings as returned by ``Ticker.info['sector']``.
+    # S&P sector median P/E baselines. Keys are the canonical
+    # yfinance/GICS sector strings returned by ``Ticker.info['sector']``.
+    #
+    # Cross-reference with client INDUSTRY_PE_BASELINES
+    # (client/src/lib/companyAdjustments.ts):
+    #   - Shared sectors use IDENTICAL numbers in both tables so the
+    #     server-attached `peHistory.industryAvg` matches what the
+    #     client would compute locally via `getIndustryBaselinePE` as
+    #     a fallback. Specifically:
+    #       Technology=28          ↔ TECHNOLOGY=28
+    #       Financial Services=14  ↔ FINANCIAL=14
+    #       Healthcare=22          ↔ HEALTHCARE=22
+    #       Industrials=19         ↔ DEFAULT=19
+    #   - GICS sectors with no direct client equivalent (Communication
+    #     Services, Consumer Defensive, Utilities, Real Estate, Basic
+    #     Materials) are server-only — when these tickers reach the
+    #     calculator the payload value takes precedence and is used.
+    #   - Precedence is locked by the contract test
+    #     "industry mode contract: payload industryAvg takes precedence
+    #     over local table for the same ticker" in tests/calculators.test.ts
     sector_pe = {
         'Technology': 28.0,
         'Communication Services': 22.0,
