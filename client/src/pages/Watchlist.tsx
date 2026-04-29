@@ -3,6 +3,14 @@ import { Link } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, RefreshCw, Trash2, BookmarkPlus, Loader2 } from 'lucide-react';
 import { StockData, WatchlistEntry } from '@/lib/types';
@@ -49,20 +57,20 @@ function computeAverageBuyBelow(stock: StockData, marginOfSafety: number): numbe
   return Number.isFinite(avg.buyBelow) && avg.buyBelow > 0 ? avg.buyBelow : null;
 }
 
-// Tone classes per buy-zone — keeps the JSX in WatchlistRow tidy.
+// Tone classes per buy-zone — applied to the table row plus the inline pill.
 const ZONE_STYLES: Record<BuyZone, { row: string; pill: string; label: string }> = {
   buy: {
-    row: 'bg-emerald-50 border-emerald-200',
+    row: 'bg-emerald-50 hover:bg-emerald-100/70',
     pill: 'bg-emerald-100 text-emerald-800 border-emerald-300',
     label: 'In buy zone',
   },
   near: {
-    row: 'bg-amber-50 border-amber-200',
+    row: 'bg-amber-50 hover:bg-amber-100/70',
     pill: 'bg-amber-100 text-amber-800 border-amber-300',
     label: 'Near buy zone',
   },
   neutral: {
-    row: 'bg-white border-neutral-200',
+    row: '',
     pill: 'bg-neutral-100 text-neutral-700 border-neutral-300',
     label: 'Above buy-below',
   },
@@ -87,95 +95,82 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, onRemove, isRemoving
   });
 
   const stock = stockQuery.data;
-  const buyBelow = stock && !stock.error ? computeAverageBuyBelow(stock, entry.marginOfSafety) : null;
-  const zone: BuyZone = stock && !stock.error && buyBelow !== null
+  const stockOk = !!stock && !stock.error;
+  const buyBelow = stockOk ? computeAverageBuyBelow(stock, entry.marginOfSafety) : null;
+  const zone: BuyZone = stockOk && buyBelow !== null
     ? classifyBuyZone(stock.price, buyBelow)
     : 'neutral';
-  const headroom = stock && !stock.error && buyBelow !== null
+  const headroom = stockOk && buyBelow !== null
     ? priceVsBuyBelowPct(stock.price, buyBelow)
     : null;
   const styles = ZONE_STYLES[zone];
 
   return (
-    <div
+    <TableRow
       data-testid={`watchlist-row-${entry.symbol}`}
-      className={`rounded-md border p-4 ${styles.row}`}
+      className={styles.row}
     >
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-3 flex-wrap">
-            <span className="text-lg font-semibold text-[#1A2942]">{entry.symbol}</span>
-            {stock && !stock.error && (
-              <span className="text-sm text-neutral-600 truncate">{stock.name}</span>
-            )}
-            <span
-              className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border ${styles.pill}`}
-              data-testid={`watchlist-zone-${entry.symbol}`}
-            >
-              {styles.label}
+      <TableCell className="font-semibold text-[#1A2942]">
+        <div className="flex flex-col">
+          <span>{entry.symbol}</span>
+          {stockOk && (
+            <span className="text-xs font-normal text-neutral-500 truncate max-w-[180px]">
+              {stock.name}
             </span>
-          </div>
-          <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-sm">
-            <div>
-              <div className="text-xs text-neutral-500">Price</div>
-              <div className="font-medium text-neutral-900">
-                {stockQuery.isLoading ? '…' :
-                  stock && !stock.error ? formatCurrency(stock.price) : '—'}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-neutral-500">Buy below</div>
-              <div className="font-medium text-neutral-900">
-                {buyBelow !== null ? formatCurrency(buyBelow) : '—'}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-neutral-500">MoS</div>
-              <div className="font-medium text-neutral-900">{entry.marginOfSafety}%</div>
-            </div>
-            <div>
-              <div className="text-xs text-neutral-500">Vs. threshold</div>
-              <div className="font-medium text-neutral-900">
-                {headroom === null ? '—'
-                  : headroom <= 0 ? `${Math.abs(headroom).toFixed(1)}% below`
-                  : `${headroom.toFixed(1)}% above`}
-              </div>
-            </div>
-          </div>
+          )}
           {stock?.fetchedAt && (
-            <div className="mt-1 text-[11px] text-neutral-500">
-              Last refreshed {describeFreshness(stock.fetchedAt)}
-              {stock.dataSource ? ` · source: ${stock.dataSource}` : ''}
-            </div>
-          )}
-          {stock?.error && (
-            <div className="mt-1 text-xs text-red-600">
-              {stock.errorMessage || 'Could not load latest price.'}
-            </div>
+            <span className="text-[10px] font-normal text-neutral-400">
+              {describeFreshness(stock.fetchedAt)}
+              {stock.dataSource ? ` · ${stock.dataSource}` : ''}
+            </span>
           )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Link
-            href="/"
-            className="text-xs px-2 py-1 rounded border border-neutral-300 text-neutral-700 hover:bg-neutral-50"
-          >
-            Open in calculator
-          </Link>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            data-testid={`button-remove-${entry.symbol}`}
-            disabled={isRemoving}
-            onClick={() => onRemove(entry.id)}
-            className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 px-2"
-            aria-label={`Remove ${entry.symbol} from watchlist`}
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
-        </div>
-      </div>
-    </div>
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {stockQuery.isLoading ? (
+          <span className="text-neutral-400">…</span>
+        ) : stockOk ? (
+          formatCurrency(stock.price)
+        ) : (
+          <span className="text-red-600 text-xs" title={stock?.errorMessage}>error</span>
+        )}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {buyBelow !== null ? formatCurrency(buyBelow) : <span className="text-neutral-400">—</span>}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">{entry.marginOfSafety}%</TableCell>
+      <TableCell className="text-right tabular-nums text-sm text-neutral-700">
+        {headroom === null ? (
+          <span className="text-neutral-400">—</span>
+        ) : headroom <= 0 ? (
+          `${Math.abs(headroom).toFixed(1)}% below`
+        ) : (
+          `${headroom.toFixed(1)}% above`
+        )}
+      </TableCell>
+      <TableCell>
+        <span
+          className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border ${styles.pill}`}
+          data-testid={`watchlist-zone-${entry.symbol}`}
+        >
+          {styles.label}
+        </span>
+      </TableCell>
+      <TableCell className="text-right">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          data-testid={`button-remove-${entry.symbol}`}
+          disabled={isRemoving}
+          onClick={() => onRemove(entry.id)}
+          className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 px-2"
+          aria-label={`Remove ${entry.symbol} from watchlist`}
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
+      </TableCell>
+    </TableRow>
   );
 };
 
@@ -288,15 +283,32 @@ const Watchlist: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
-            {entries.map((entry) => (
-              <WatchlistRow
-                key={entry.id}
-                entry={entry}
-                onRemove={(id) => removeMutation.mutate(id)}
-                isRemoving={removeMutation.isPending && removeMutation.variables === entry.id}
-              />
-            ))}
+          <div className="bg-white rounded-md border border-neutral-200 shadow-sm">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[200px]">Ticker</TableHead>
+                  <TableHead className="text-right">Price</TableHead>
+                  <TableHead className="text-right">Buy below</TableHead>
+                  <TableHead className="text-right">MoS</TableHead>
+                  <TableHead className="text-right">Vs. threshold</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right w-[60px]">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {entries.map((entry) => (
+                  <WatchlistRow
+                    key={entry.id}
+                    entry={entry}
+                    onRemove={(id) => removeMutation.mutate(id)}
+                    isRemoving={removeMutation.isPending && removeMutation.variables === entry.id}
+                  />
+                ))}
+              </TableBody>
+            </Table>
           </div>
         )}
       </div>
