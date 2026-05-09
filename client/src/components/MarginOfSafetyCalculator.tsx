@@ -9,15 +9,16 @@ import ValueInvestorVerdict from './ValueInvestorVerdict';
 import MultibaggerScreener from './MultibaggerScreener';
 import QualityIndicators from './QualityIndicators';
 import EducationalResources from './EducationalResources';
+import DecisionHeadline from './DecisionHeadline';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useStockData } from '@/hooks/useStockData';
 import { useQuery } from '@tanstack/react-query';
 import type { FedRateResponse } from '@/lib/types';
-import { 
-  StockData, 
-  ValuationParams, 
-  MarginOfSafetyParams as MoSParams, 
+import {
+  StockData,
+  ValuationParams,
+  MarginOfSafetyParams as MoSParams,
   ValuationResult,
   CalculationMethod,
   CompanyQualityResult,
@@ -37,13 +38,57 @@ import { getCompanyQuality, getRecommendedMarginOfSafety, getDefaultMarginOfSafe
 
 type FedRateWireResponse = FedRateResponse | { environment: null };
 
+// ---------------------------------------------------------------------------
+// SectionPanel — thin wrapper so every evidence card has identical chrome:
+// white rounded card, trigger header with title + one-line subtitle, chevron.
+// All panels start collapsed (defaultOpen = false) unless told otherwise.
+// ---------------------------------------------------------------------------
+interface SectionPanelProps {
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+  testId?: string;
+}
+
+const SectionPanel: React.FC<SectionPanelProps> = ({
+  title,
+  subtitle,
+  children,
+  defaultOpen = false,
+  testId,
+}) => {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="bg-white rounded-lg shadow-sm border border-neutral-200"
+      data-testid={testId}
+    >
+      <CollapsibleTrigger className="flex items-start justify-between w-full p-4 text-left hover:bg-neutral-50 rounded-lg transition-colors">
+        <div>
+          <h2 className="text-base font-semibold text-[#1A2942]">{title}</h2>
+          <p className="text-xs text-neutral-500 mt-0.5">{subtitle}</p>
+        </div>
+        <div className="rounded-full bg-neutral-100 p-1 ml-3 shrink-0 mt-0.5">
+          {open
+            ? <ChevronUp className="h-4 w-4 text-neutral-500" />
+            : <ChevronDown className="h-4 w-4 text-neutral-500" />}
+        </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="border-t border-neutral-100">
+          {children}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+};
+
 const MarginOfSafetyCalculator: React.FC = () => {
-  // Stock data state from API
   const { stockData, isLoading, isError, error, fetchStockData } = useStockData();
 
-  // Macro context (Task #31). Cached at the calculator level so both the
-  // header badge and the Value-Investor Verdict caution share a single
-  // request. Failures are silent — the badge and caution both hide.
   const { data: fedRateData } = useQuery<FedRateWireResponse>({
     queryKey: ['/api/macro/fed-rate'],
     staleTime: 60 * 60 * 1000,
@@ -55,42 +100,28 @@ const MarginOfSafetyCalculator: React.FC = () => {
       ? (fedRateData as FedRateResponse)
       : null;
 
-  // Calculation method state
   const [activeMethod, setActiveMethod] = useState<CalculationMethod>('dcf');
-  
-  // Valuation parameters state
+
   const [valuationParams, setValuationParams] = useState<ValuationParams>({
-    // DCF Parameters
     dcfGrowthRate: 10,
     dcfDiscountRate: 12,
     dcfTerminalMultiple: 15,
     dcfForecastPeriod: 5,
-    
-    // P/E Parameters — defaults to the company's current P/E so the
-    // valuation reflects real per-stock data instead of a hard-coded constant.
     peType: 'current',
     peCustomValue: 15,
     peAdjustment: 100,
-    
-    // Graham Parameters
     grahamGrowthRate: 11.8,
-    grahamBaseValue: 8.5
+    grahamBaseValue: 8.5,
   });
-  
-  // Margin of Safety parameters state
+
   const [marginOfSafetyParams, setMarginOfSafetyParams] = useState<MoSParams>({
-    marginOfSafety: 25
+    marginOfSafety: 25,
   });
-  
-  // Valuation results state
+
   const [valuationResults, setValuationResults] = useState<ValuationResult[]>([]);
   const [companyQuality, setCompanyQuality] = useState<CompanyQualityResult | null>(null);
-  // Reverse-DCF result lives in its own slot rather than being shoehorned
-  // into the valuation-results table (it's a growth rate, not an intrinsic
-  // value, so the existing columns don't fit).
   const [reverseDCFResult, setReverseDCFResult] = useState<ReverseDCFResult | null>(null);
-  
-  // Update default MoS and automatically calculate when stock data changes
+
   useEffect(() => {
     if (stockData && !stockData.error) {
       const quality = getCompanyQuality(
@@ -99,52 +130,35 @@ const MarginOfSafetyCalculator: React.FC = () => {
         stockData.currentRatio,
         stockData.revenueGrowth,
         stockData.earningsStability,
-        stockData.competitivePosition
+        stockData.competitivePosition,
       );
-      
       const recommendedMoS = getRecommendedMarginOfSafety(quality);
       const defaultMoS = getDefaultMarginOfSafety(quality);
-      
-      setCompanyQuality({
-        quality,
-        recommendedMarginOfSafety: recommendedMoS
-      });
-      
-      setMarginOfSafetyParams({
-        marginOfSafety: defaultMoS
-      });
-      
-      // Automatically calculate intrinsic value when stock data is loaded
+      setCompanyQuality({ quality, recommendedMarginOfSafety: recommendedMoS });
+      setMarginOfSafetyParams({ marginOfSafety: defaultMoS });
       setTimeout(() => calculateIntrinsicValue(), 500);
     }
   }, [stockData]);
-  
-  // Calculate intrinsic value and buy below price
+
   const calculateIntrinsicValue = () => {
     if (!stockData || stockData.error) return;
-    
-    // Calculate values - always use current price for discount calculation
     const price = stockData.price;
 
-    // Calculate DCF valuation
     const dcf = calculateDCFDetailed(stockData, valuationParams);
     const dcfBuyBelow = calculateBuyBelow(dcf.value, marginOfSafetyParams.marginOfSafety);
     const dcfDiscountPremium = calculateDiscountPremium(price, dcf.value);
     const dcfBuyBelowStatus = calculateBuyBelowStatus(price, dcfBuyBelow);
 
-    // Calculate P/E valuation
     const pe = calculatePEDetailed(stockData, valuationParams);
     const peBuyBelow = calculateBuyBelow(pe.value, marginOfSafetyParams.marginOfSafety);
     const peDiscountPremium = calculateDiscountPremium(price, pe.value);
     const peBuyBelowStatus = calculateBuyBelowStatus(price, peBuyBelow);
 
-    // Calculate Graham valuation
     const graham = calculateGrahamDetailed(stockData, valuationParams);
     const grahamBuyBelow = calculateBuyBelow(graham.value, marginOfSafetyParams.marginOfSafety);
     const grahamDiscountPremium = calculateDiscountPremium(price, graham.value);
     const grahamBuyBelowStatus = calculateBuyBelowStatus(price, grahamBuyBelow);
 
-    // Store results
     const results: ValuationResult[] = [
       {
         method: 'DCF Analysis',
@@ -169,190 +183,192 @@ const MarginOfSafetyCalculator: React.FC = () => {
         discountPremium: grahamDiscountPremium,
         buyBelowStatus: grahamBuyBelowStatus,
         appliedAdjustments: graham.appliedAdjustments,
-      }
+      },
     ];
 
-    // Calculate average using the actual current price (not reverse-engineered
-    // from discount/premium, which silently produced wrong numbers when one
-    // of the inputs was capped).
     const avgResult = calculateAverageValuation(results, price);
-
     setValuationResults([...results, avgResult]);
 
-    // Reverse DCF — solve for the growth rate that justifies the current
-    // price under the same DCF model. Computed in its own block so future
-    // refactors of the DCF/PE/Graham trio don't accidentally entangle it.
     const reverse = calculateReverseDCFDetailed(stockData, valuationParams);
     setReverseDCFResult(reverse);
   };
-  
-  // Recalculate when margin of safety or valuation parameters change
+
   useEffect(() => {
     if (stockData && !stockData.error) {
       calculateIntrinsicValue();
     }
   }, [marginOfSafetyParams, valuationParams]);
-  
+
+  const hasResults = stockData && !stockData.error && valuationResults.length > 0;
+
   return (
     <>
-      {/* Header Section */}
-      <header className="mb-8">
+      {/* Header */}
+      <header className="mb-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-[#1A2942] mb-2">Margin of Safety Calculator</h1>
-            <p className="text-neutral-600">Calculate intrinsic value and determine buy-below thresholds following Benjamin Graham's principles</p>
+            <h1 className="text-3xl md:text-4xl font-bold text-[#1A2942] mb-2">
+              Margin of Safety Calculator
+            </h1>
+            <p className="text-neutral-600">
+              Calculate intrinsic value and determine buy-below thresholds following Benjamin Graham's principles
+            </p>
           </div>
           <div className="mt-4 md:mt-0 flex flex-col md:items-end gap-2">
             <FedRateBadge />
-            <a href="#educational-resources" className="text-[#2A3E5C] hover:text-[#1A2942] text-sm flex items-center">
-              <i className="ri-information-line mr-1"></i>
+            <a
+              href="#educational-resources"
+              className="text-[#2A3E5C] hover:text-[#1A2942] text-sm flex items-center"
+            >
+              <i className="ri-information-line mr-1" />
               Learn more about Margin of Safety
             </a>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="grid grid-cols-1 gap-4">
-        {/* Stock Information Section */}
-        <div>
-          <StockInformation 
-            stockData={stockData} 
-            isLoading={isLoading} 
-            onFetchData={fetchStockData}
-            error={isError}
-            errorMessage={error instanceof Error ? error.message : "Could not retrieve stock data. Please try again."}
+      <main className="flex flex-col gap-3">
+        {/* Search box — always visible */}
+        <StockInformation
+          stockData={stockData}
+          isLoading={isLoading}
+          onFetchData={fetchStockData}
+          error={isError}
+          errorMessage={
+            error instanceof Error
+              ? error.message
+              : 'Could not retrieve stock data. Please try again.'
+          }
+          marginOfSafety={marginOfSafetyParams.marginOfSafety}
+        />
+
+        {/* Decision headline — the single most-important answer, always visible
+            once stock data is loaded. Replaces the buried buy-below comparison
+            that used to live inside the ValuationResults card. */}
+        {stockData && !stockData.error && (
+          <DecisionHeadline
+            stockData={stockData}
+            valuationResults={valuationResults}
             marginOfSafety={marginOfSafetyParams.marginOfSafety}
           />
-        </div>
-        
-        {/* Results Section - Made More Prominent */}
-        {stockData && !stockData.error && (
-          <div className="bg-white rounded-lg shadow-md p-4 border border-neutral-200">
-            <div className="mb-3">
-              <h2 className="text-xl font-semibold text-[#1A2942] mb-1">
-                Valuation Results {stockData && <span className="text-sm font-normal">- {stockData.name}</span>}
-              </h2>
-              <p className="text-sm text-neutral-600">Intrinsic value calculation based on multiple methods with applied margin of safety</p>
-            </div>
-            <ValuationResults 
-              valuationResults={valuationResults} 
+        )}
+
+        {/* Evidence panels — all collapsed by default so the headline is the
+            only thing the user sees until they want to drill in. */}
+
+        {hasResults && (
+          <SectionPanel
+            title="Valuation Results"
+            subtitle="DCF · P/E · Graham — intrinsic values, buy-below prices and method comparison"
+            testId="section-valuation-results"
+          >
+            <ValuationResults
+              valuationResults={valuationResults}
               stockData={stockData}
               activeMethod={activeMethod}
               valuationParams={valuationParams}
               marginOfSafetyParams={marginOfSafetyParams}
               reverseDCFResult={reverseDCFResult}
             />
-          </div>
+          </SectionPanel>
         )}
 
-        {/* Value-Investor Verdict — applies the Graham/Klarman/Munger gates
-            (quality, inversion, MoS, reverse-DCF reality check) to the same
-            inputs the valuation card consumes, so the in-app verdict matches
-            what the chat assistant would say. Hidden for ETFs / unmodelable
-            stocks; the component handles those cases internally. */}
-        {stockData && !stockData.error && valuationResults.length > 0 && (
-          <ValueInvestorVerdict
-            stockData={stockData}
-            valuationResults={valuationResults}
-            reverseDCFResult={reverseDCFResult}
-            companyQuality={companyQuality}
-            marginOfSafetyParams={marginOfSafetyParams}
-            fedRateEnvironment={fedRateEnvironment}
-          />
+        {hasResults && (
+          <SectionPanel
+            title="Value-Investor Verdict"
+            subtitle="Buy / Watch / Pass — Graham, Klarman, Munger gates applied to this stock"
+            testId="section-verdict"
+          >
+            <ValueInvestorVerdict
+              stockData={stockData!}
+              valuationResults={valuationResults}
+              reverseDCFResult={reverseDCFResult}
+              companyQuality={companyQuality}
+              marginOfSafetyParams={marginOfSafetyParams}
+              fedRateEnvironment={fedRateEnvironment}
+            />
+          </SectionPanel>
         )}
 
-        {/* Multibagger Screener (Task #33) — descriptive factor-exposure
-            scorecard sourced from Yartseva (2025). Sits below the verdict so
-            the user reads "should I avoid permanent loss?" first and only
-            then layers on "is the expected-return asymmetry favourable?" */}
         {stockData && !stockData.error && (
-          <MultibaggerScreener stockData={stockData} />
+          <SectionPanel
+            title="Multibagger Screener"
+            subtitle="Factor-exposure overlap with historical multibaggers — descriptive, not predictive (Yartseva 2025)"
+            testId="section-screener"
+          >
+            <MultibaggerScreener stockData={stockData} />
+          </SectionPanel>
         )}
-        
-{/* Chart is now integrated with Valuation Results */}
-        
-        {/* Detailed Calculations Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Left Column - Parameters */}
-          <div className="lg:col-span-1 space-y-4">
-            {/* Margin of Safety Parameters - Collapsible */}
-            {stockData && !stockData.error && (
-              <Collapsible className="bg-white rounded-lg shadow-sm border border-neutral-200">
-                <div className="p-3 border-b border-neutral-200">
-                  <CollapsibleTrigger className="flex items-center justify-between w-full">
-                    <h2 className="text-lg font-medium text-[#1A2942]">
-                      Margin of Safety {stockData && <span className="text-sm font-normal">- {stockData.name}</span>}
-                    </h2>
-                    <div className="rounded-full bg-neutral-100 p-1">
-                      <ChevronDown className="h-4 w-4 text-neutral-500" />
-                    </div>
-                  </CollapsibleTrigger>
-                </div>
-                <CollapsibleContent>
-                  <div className="p-3">
-                    <MarginOfSafetyParams 
-                      marginOfSafetyParams={marginOfSafetyParams}
-                      setMarginOfSafetyParams={setMarginOfSafetyParams}
-                      companyQuality={companyQuality}
-                      onCalculate={calculateIntrinsicValue}
-                      stockData={stockData}
-                    />
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            )}
-            
-            {/* Valuation Method - Collapsible */}
-            {stockData && !stockData.error && (
-              <Collapsible className="bg-white rounded-lg shadow-sm border border-neutral-200">
-                <div className="p-3 border-b border-neutral-200">
-                  <CollapsibleTrigger className="flex items-center justify-between w-full">
-                    <h2 className="text-lg font-medium text-[#1A2942]">
-                      Valuation Method {stockData && <span className="text-sm font-normal">- {stockData.name}</span>}
-                    </h2>
-                    <div className="rounded-full bg-neutral-100 p-1">
-                      <ChevronDown className="h-4 w-4 text-neutral-500" />
-                    </div>
-                  </CollapsibleTrigger>
-                </div>
-                <CollapsibleContent>
-                  <div className="p-3">
-                    <ValuationMethod 
-                      activeMethod={activeMethod}
-                      setActiveMethod={setActiveMethod}
-                      valuationParams={valuationParams}
-                      setValuationParams={setValuationParams}
-                      stockData={stockData}
-                      onCalculate={calculateIntrinsicValue}
-                    />
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            )}
-            
-            {/* Key Metrics Section */}
-            {((stockData && !stockData.error) || isLoading) && (
+
+        {stockData && !stockData.error && (
+          <SectionPanel
+            title="Margin of Safety"
+            subtitle={`Adjust your required discount — currently ${marginOfSafetyParams.marginOfSafety}%`}
+            testId="section-mos-params"
+          >
+            <div className="p-4">
+              <MarginOfSafetyParams
+                marginOfSafetyParams={marginOfSafetyParams}
+                setMarginOfSafetyParams={setMarginOfSafetyParams}
+                companyQuality={companyQuality}
+                onCalculate={calculateIntrinsicValue}
+                stockData={stockData}
+              />
+            </div>
+          </SectionPanel>
+        )}
+
+        {stockData && !stockData.error && (
+          <SectionPanel
+            title="Valuation Method"
+            subtitle="Adjust DCF, P/E, or Graham formula parameters"
+            testId="section-method"
+          >
+            <div className="p-4">
+              <ValuationMethod
+                activeMethod={activeMethod}
+                setActiveMethod={setActiveMethod}
+                valuationParams={valuationParams}
+                setValuationParams={setValuationParams}
+                stockData={stockData}
+                onCalculate={calculateIntrinsicValue}
+              />
+            </div>
+          </SectionPanel>
+        )}
+
+        {((stockData && !stockData.error) || isLoading) && (
+          <SectionPanel
+            title="Key Metrics"
+            subtitle="EPS · FCF/share · P/E · ROE · growth rate — raw inputs driving the valuation"
+            testId="section-key-metrics"
+          >
+            <div className="p-4">
               <KeyMetrics
                 stockData={stockData}
                 isLoading={isLoading}
                 companyQuality={companyQuality?.quality}
               />
-            )}
-          </div>
-          
-          {/* Right Column - Quality and Education */}
-          <div className="lg:col-span-2 space-y-4">
-            {stockData && !stockData.error && companyQuality && (
-              <QualityIndicators 
-                stockData={stockData}
-                companyQuality={companyQuality}
-              />
-            )}
-            
-            {/* Educational Resources Section */}
-            <EducationalResources />
-          </div>
+            </div>
+          </SectionPanel>
+        )}
+
+        {stockData && !stockData.error && companyQuality && (
+          <SectionPanel
+            title="Quality Indicators"
+            subtitle="Financial strength · earnings stability · competitive position · recommended MoS"
+            testId="section-quality"
+          >
+            <QualityIndicators
+              stockData={stockData}
+              companyQuality={companyQuality}
+            />
+          </SectionPanel>
+        )}
+
+        {/* Educational resources — always visible at the bottom */}
+        <div id="educational-resources">
+          <EducationalResources />
         </div>
       </main>
     </>
