@@ -136,3 +136,7 @@ If a section genuinely doesn't apply (e.g. ETF, negative EPS makes Graham N/A), 
 - **Skipping inversion.** If you can't list three ways the thesis dies, you haven't done the work. Go back.
 - **Recency bias from one quarter.** A single earnings miss or beat is noise. Demand a multi-year pattern before updating quality or moat assessment.
 - **Following the watchlist alert blindly.** "In buy zone" means MoS is mathematically met given today's inputs — it does not replace the framework above.
+
+## Sibling skill: multibagger empirics
+
+This skill captures the *qualitative* framework — Graham's discipline, Klarman's risk-first stance, Munger's quality-and-inversion lens. It answers "is the price wrong, and would I survive being wrong?". For the *empirically validated* return-asymmetry view — which factors actually predicted next-year risk-adjusted returns in the Yartseva (2025) panel of 464 U.S. multibaggers, with explicit signs and magnitudes — read `.agents/skills/multibagger-empirics/SKILL.md`. The two skills coexist and sometimes disagree (e.g. the empirical evidence does not support "earnings growth predicts returns" or "P/E predicts returns"). When they disagree, that skill explains how the app's verdict logic resolves the tension: filters-against-ruin (this skill) vs. signals-of-upside (the empirics skill).
