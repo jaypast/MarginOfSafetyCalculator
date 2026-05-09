@@ -192,7 +192,7 @@ describe('buildDecisionHeadline — zone = neutral', () => {
   });
 
   it('sentence mentions above and buy-below price', () => {
-    const stock = makeStack({ price: 200 });
+    const stock = makeStock({ price: 200 });
     const r = buildDecisionHeadline(stock, makeResults(130, 97.5), 25);
     expect(r.available).toBe(true);
     if (!r.available) return;
@@ -232,7 +232,3 @@ describe('buildDecisionHeadline — sentence', () => {
   });
 });
 
-// Alias for the neutral test that accidentally used an undefined helper
-function makeStack(overrides: Partial<StockData> = {}): StockData {
-  return makeStock(overrides);
-}
