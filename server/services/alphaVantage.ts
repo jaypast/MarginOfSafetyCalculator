@@ -144,6 +144,11 @@ export async function getAlphaVantageData(symbol: string): Promise<StockResponse
     // history to compute trailing-twelve-month medians reliably.
     // Emit explicit null so the API contract stays uniform (Task #15).
     peHistory: null,
+    // Alpha Vantage's free tier doesn't expose freeCashflow / 52w
+    // bounds / balance-sheet history reliably enough for the
+    // multibagger gates — emit explicit null so adapters stay
+    // contract-uniform (Task #30).
+    multibaggerSignals: null,
   };
 
   console.log(`Alpha Vantage data for ${symbol}: price=${price}, eps=${eps}, growth=${growthRate}%`);

@@ -163,7 +163,11 @@ async function getStockDataApiInfo(symbol: string): Promise<StockResponse> {
     // RapidAPI's Stock Data endpoint doesn't expose enough quarterly
     // EPS history to compute trailing-twelve-month medians. Emit
     // explicit null so the API contract stays uniform (Task #15).
-    peHistory: null
+    peHistory: null,
+    // RapidAPI's Stock Data endpoint doesn't expose FCF / 52w bounds
+    // / balance-sheet rollups consistently enough for the multibagger
+    // gates — emit explicit null (Task #30).
+    multibaggerSignals: null
   };
   
   console.log(`Successfully received Stock Data API data for ${symbol}`);
@@ -223,7 +227,10 @@ async function getYahooFinanceApiInfo(symbol: string): Promise<StockResponse> {
     lastUpdated: new Date().toISOString(),
     // Yahoo's RapidAPI quote endpoint doesn't return historical
     // quarterly EPS — emit explicit null for uniform contract (Task #15).
-    peHistory: null
+    peHistory: null,
+    // Yahoo's RapidAPI quote endpoint doesn't return balance-sheet
+    // history; emit explicit null for the multibagger gates (Task #30).
+    multibaggerSignals: null
   };
   
   console.log(`Successfully received Yahoo Finance API data for ${symbol}`);

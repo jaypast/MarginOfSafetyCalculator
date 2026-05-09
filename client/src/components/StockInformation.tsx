@@ -243,6 +243,35 @@ const StockInformation: React.FC<StockInformationProps> = ({
             <p className="text-xs text-neutral-600 mt-1">
               Current Price: <strong>{formatCurrency(stockData.price)}</strong>
             </p>
+            {/* FCF yield top-line (Task #30 — Yartseva 2025 multibagger
+                empirics, primary cash-quality gate). Prefer the upstream
+                computation, fall back to fcfPerShare/price so we always
+                surface a number when one is computable. */}
+            {(() => {
+              const upstream = stockData.multibaggerSignals?.fcfYield;
+              const fallback =
+                stockData.price > 0 && Number.isFinite(stockData.fcfPerShare)
+                  ? (stockData.fcfPerShare / stockData.price) * 100
+                  : null;
+              const fcfYieldPct =
+                upstream != null && Number.isFinite(upstream) ? upstream : fallback;
+              if (fcfYieldPct === null) return null;
+              const tone =
+                fcfYieldPct > 5
+                  ? 'text-emerald-700'
+                  : fcfYieldPct <= 0
+                  ? 'text-rose-700'
+                  : 'text-amber-700';
+              return (
+                <p
+                  className="text-xs text-neutral-600 mt-1"
+                  data-testid="stock-info-fcf-yield"
+                >
+                  FCF yield:{' '}
+                  <strong className={tone}>{fcfYieldPct.toFixed(1)}%</strong>
+                </p>
+              );
+            })()}
 
             {/* Data provenance — shows which upstream API the numbers came
                 from and how stale they are, so investors can judge the

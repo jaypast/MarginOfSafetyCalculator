@@ -59,8 +59,25 @@ export interface StockData {
   crossSourceDivergence?: CrossSourceDivergence | null;
   // Per-ticker historical P/E series (null when adapter doesn't compute it).
   peHistory?: PeHistory | null;
+  // Multibagger empirics (Task #30). Independently nullable; the verdict
+  // skips any check whose inputs are missing rather than guessing.
+  multibaggerSignals?: MultibaggerSignals | null;
   error?: boolean;
   errorMessage?: string;
+}
+
+// Multibagger empirics block (Task #30 — Yartseva 2025). Mirrors
+// ``shared/schema.ts``'s ``multibaggerSignalsSchema``. ``fcfYield`` is
+// a percent (e.g. 5.2 means 5.2%); ``assetGrowth`` and ``ebitdaGrowth``
+// are YoY percents; ``week52High`` / ``week52Low`` are in the same
+// currency as ``StockData.price`` (the server converts them when the
+// listing currency != USD).
+export interface MultibaggerSignals {
+  fcfYield: number | null;
+  assetGrowth: number | null;
+  ebitdaGrowth: number | null;
+  week52High: number | null;
+  week52Low: number | null;
 }
 
 // P/E modes (Task #15). The `5year` / `10year` modes consume the upstream

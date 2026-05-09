@@ -5,6 +5,9 @@ import {
   decideVerdict,
   isOutsideCircleSignal,
   buildInversionRisks,
+  evaluateCashQuality,
+  evaluateInvestmentAffordability,
+  evaluate52WeekRange,
 } from '@/components/ValueInvestorVerdict';
 import type { StockData, ValuationResult, ReverseDCFResult } from '@/lib/types';
 
@@ -270,6 +273,282 @@ describe('ValueInvestorVerdict — gate logic', () => {
       };
       const risks = buildInversionRisks(makeStock(), makeAvg(100, 70), reverse, 'Good', false);
       expect(risks.some(r => r.label.toLowerCase().includes('heroic'))).toBe(true);
+    });
+  });
+
+  // -----------------------------------------------------------------
+  // Task #30 — Yartseva (2025) multibagger empirics
+  // -----------------------------------------------------------------
+  describe('evaluateCashQuality (FCF gate)', () => {
+    const withSignals = (fcfYield: number | null) =>
+      makeStock({
+        multibaggerSignals: {
+          fcfYield,
+          assetGrowth: null,
+          ebitdaGrowth: null,
+          week52High: null,
+          week52Low: null,
+        },
+      });
+
+    it('classifies fcfYield > 5% as strong', () => {
+      expect(evaluateCashQuality(withSignals(6.0)).status).toBe('strong');
+    });
+
+    it('classifies fcfYield ≤ 0 as negative (boundary at 0)', () => {
+      expect(evaluateCashQuality(withSignals(0)).status).toBe('negative');
+      expect(evaluateCashQuality(withSignals(-2.5)).status).toBe('negative');
+    });
+
+    it('classifies positive yield ≤ 5% as neutral (boundary at 5)', () => {
+      expect(evaluateCashQuality(withSignals(5.0)).status).toBe('neutral');
+      expect(evaluateCashQuality(withSignals(3.5)).status).toBe('neutral');
+    });
+
+    it('falls back to fcfPerShare/price when multibaggerSignals.fcfYield is missing', () => {
+      // 6 / 100 = 6% → strong
+      const stock = makeStock({ price: 100, fcfPerShare: 6, multibaggerSignals: null });
+      expect(evaluateCashQuality(stock).status).toBe('strong');
+    });
+
+    it('returns unknown when nothing is computable', () => {
+      const stock = makeStock({ price: 0, fcfPerShare: 0, multibaggerSignals: null });
+      expect(evaluateCashQuality(stock).status).toBe('unknown');
+      expect(evaluateCashQuality(stock).fcfYieldPct).toBeNull();
+    });
+  });
+
+  describe('evaluateInvestmentAffordability', () => {
+    const withGrowth = (assetGrowth: number | null, ebitdaGrowth: number | null) =>
+      makeStock({
+        multibaggerSignals: {
+          fcfYield: null,
+          assetGrowth,
+          ebitdaGrowth,
+          week52High: null,
+          week52Low: null,
+        },
+      });
+
+    it('flags chip when assetGrowth > ebitdaGrowth', () => {
+      expect(evaluateInvestmentAffordability(withGrowth(12, 5))).not.toBeNull();
+    });
+
+    it('returns null when assetGrowth <= ebitdaGrowth', () => {
+      expect(evaluateInvestmentAffordability(withGrowth(5, 10))).toBeNull();
+      expect(evaluateInvestmentAffordability(withGrowth(5, 5))).toBeNull();
+    });
+
+    it('returns null when either growth value is missing', () => {
+      expect(evaluateInvestmentAffordability(withGrowth(null, 5))).toBeNull();
+      expect(evaluateInvestmentAffordability(withGrowth(12, null))).toBeNull();
+      expect(evaluateInvestmentAffordability(makeStock({ multibaggerSignals: null }))).toBeNull();
+    });
+  });
+
+  describe('evaluate52WeekRange', () => {
+    const ranged = (price: number, low = 50, high = 150) =>
+      makeStock({
+        price,
+        multibaggerSignals: {
+          fcfYield: null,
+          assetGrowth: null,
+          ebitdaGrowth: null,
+          week52High: high,
+          week52Low: low,
+        },
+      });
+
+    it('flags chip when price is in the upper 80%+ of the range (boundary at 80%)', () => {
+      // 140 → (140-50)/(150-50) = 90% → flag
+      expect(evaluate52WeekRange(ranged(140)).chip).not.toBeNull();
+      // 100% (at the 52w-high) → flag
+      expect(evaluate52WeekRange(ranged(150)).chip).not.toBeNull();
+    });
+
+    it('does not flag at or below 80% of the range', () => {
+      // 130 → exactly 80% → no flag
+      expect(evaluate52WeekRange(ranged(130)).chip).toBeNull();
+      // 100 → 50% → no flag
+      expect(evaluate52WeekRange(ranged(100)).chip).toBeNull();
+      // 50 → 0% (at the 52w-low) → no flag
+      expect(evaluate52WeekRange(ranged(50)).chip).toBeNull();
+    });
+
+    it('returns null rangePct when 52-week values are missing or degenerate', () => {
+      expect(evaluate52WeekRange(makeStock()).rangePct).toBeNull();
+      expect(evaluate52WeekRange(makeStock({ multibaggerSignals: null })).rangePct).toBeNull();
+      // high <= low is degenerate
+      expect(
+        evaluate52WeekRange(
+          makeStock({
+            multibaggerSignals: {
+              fcfYield: null,
+              assetGrowth: null,
+              ebitdaGrowth: null,
+              week52High: 100,
+              week52Low: 100,
+            },
+          }),
+        ).chip,
+      ).toBeNull();
+    });
+  });
+
+  describe('decideVerdict — Yartseva FCF gate + chip downgrades', () => {
+    const methods = makeMethods([100, 100, 100]);
+
+    it('downgrades a base BUY to WATCH when FCF yield is non-positive', () => {
+      const v = decideVerdict(
+        'Good',
+        'adequate',
+        'reasonable',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'negative',
+        0,
+      );
+      expect(v.action).toBe('WATCH');
+      expect(v.rationale.toLowerCase()).toContain('cash');
+    });
+
+    it('does not escalate a PASS or WATCH when cash quality is negative', () => {
+      const passVerdict = decideVerdict(
+        'Speculative',
+        'adequate',
+        'heroic',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'negative',
+        0,
+      );
+      expect(passVerdict.action).toBe('PASS');
+    });
+
+    it('promotes a base WATCH to BUY when FCF yield is strong, MoS adequate, no chips, non-Speculative', () => {
+      // Good quality + adequate MoS + aggressive reverse-DCF → base WATCH
+      const v = decideVerdict(
+        'Good',
+        'adequate',
+        'aggressive',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'strong',
+        0,
+      );
+      expect(v.action).toBe('BUY');
+      expect(v.rationale.toLowerCase()).toContain('multibagger');
+    });
+
+    it('does not promote a Speculative WATCH', () => {
+      const v = decideVerdict(
+        'Speculative',
+        'adequate',
+        'reasonable',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'strong',
+        0,
+      );
+      expect(v.action).toBe('WATCH');
+    });
+
+    it('does not promote when modifier chips are active', () => {
+      const v = decideVerdict(
+        'Good',
+        'adequate',
+        'aggressive',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'strong',
+        1,
+      );
+      expect(v.action).toBe('WATCH');
+    });
+
+    it('does not promote when MoS is inadequate (Graham principle wins)', () => {
+      const v = decideVerdict(
+        'Good',
+        'inadequate',
+        'reasonable',
+        makeAvg(100, 90),
+        methods,
+        false,
+        false,
+        'strong',
+        0,
+      );
+      expect(v.action).toBe('WATCH');
+    });
+
+    it('does not promote when reverse-DCF is heroic', () => {
+      const v = decideVerdict(
+        'Good',
+        'adequate',
+        'heroic',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'strong',
+        0,
+      );
+      // Heroic + adequate + Good → WATCH base; promotion is blocked by heroic gate.
+      expect(v.action).toBe('WATCH');
+    });
+
+    it('downgrades a base BUY to WATCH when ≥1 modifier chip is active', () => {
+      const v = decideVerdict(
+        'Good',
+        'adequate',
+        'reasonable',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'unknown',
+        1,
+      );
+      expect(v.action).toBe('WATCH');
+      expect(v.rationale.toLowerCase()).toContain('modifier');
+    });
+
+    it('chips never escalate a WATCH or PASS', () => {
+      const v = decideVerdict(
+        'Exceptional',
+        'inadequate',
+        'reasonable',
+        makeAvg(100, 90),
+        methods,
+        false,
+        false,
+        'unknown',
+        2,
+      );
+      expect(v.action).toBe('WATCH');
+    });
+
+    it('default trailing args (cashQuality=unknown, chips=0) preserve the legacy 7-arg behavior', () => {
+      const legacy = decideVerdict(
+        'Good',
+        'adequate',
+        'reasonable',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+      );
+      expect(legacy.action).toBe('BUY');
     });
   });
 });

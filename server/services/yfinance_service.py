@@ -218,6 +218,85 @@ def compute_pe_history(ticker):
         return empty
 
 
+def _compute_multibagger_signals(ticker, info, currency, rate):
+    """
+    Yartseva (2025) multibagger empirics — surface the three signal
+    families consumed by the Value-Investor Verdict's cash-quality
+    gate (Option A: FCF yield) and the two modifier chips
+    (investment affordability, 52-week-range momentum).
+
+    Each field is independently nullable: any extraction failure
+    returns None for that field rather than raising. The 52-week
+    bounds are converted into the same currency as ``price`` (the
+    server multiplies by ``rate`` when the listing currency != USD)
+    so the UI can compute (price - low) / (high - low) without
+    cross-currency artefacts. Asset/EBITDA growth percentages are
+    unitless and need no conversion.
+    """
+    out = {
+        "fcfYield": None,
+        "assetGrowth": None,
+        "ebitdaGrowth": None,
+        "week52High": None,
+        "week52Low": None,
+    }
+
+    try:
+        free_cashflow = info.get('freeCashflow')
+        market_cap = info.get('marketCap')
+        if free_cashflow is not None and market_cap and float(market_cap) > 0:
+            out["fcfYield"] = round((float(free_cashflow) / float(market_cap)) * 100, 2)
+    except (TypeError, ValueError, ZeroDivisionError):
+        pass
+
+    try:
+        high = info.get('fiftyTwoWeekHigh')
+        if high is not None:
+            out["week52High"] = float(high) * (rate if currency != 'USD' else 1.0)
+    except (TypeError, ValueError):
+        pass
+    try:
+        low = info.get('fiftyTwoWeekLow')
+        if low is not None:
+            out["week52Low"] = float(low) * (rate if currency != 'USD' else 1.0)
+    except (TypeError, ValueError):
+        pass
+
+    def _yoy_pct(series):
+        try:
+            vals = [v for v in series.dropna().tolist()[:2]]
+            if len(vals) < 2:
+                return None
+            prev = float(vals[1])
+            if prev == 0:
+                return None
+            return round(((float(vals[0]) - prev) / abs(prev)) * 100, 2)
+        except Exception:
+            return None
+
+    try:
+        bs = ticker.balance_sheet
+        if bs is not None and not bs.empty:
+            for label in ('Total Assets', 'TotalAssets'):
+                if label in bs.index:
+                    out["assetGrowth"] = _yoy_pct(bs.loc[label])
+                    break
+    except Exception:
+        pass
+
+    try:
+        fin = ticker.financials
+        if fin is not None and not fin.empty:
+            for label in ('EBITDA', 'Normalized EBITDA', 'NormalizedEbitda'):
+                if label in fin.index:
+                    out["ebitdaGrowth"] = _yoy_pct(fin.loc[label])
+                    break
+    except Exception:
+        pass
+
+    return out
+
+
 def get_stock_data(symbol):
     """
     Fetch stock data using the yfinance package
@@ -527,7 +606,8 @@ def get_stock_data(symbol):
             "earningsStability": earnings_stability,
             "competitivePosition": competitive_position,
             "lastUpdated": current_time,
-            "peHistory": pe_history
+            "peHistory": pe_history,
+            "multibaggerSignals": _compute_multibagger_signals(ticker, info, currency, rate)
         }
         
         # Return as JSON string

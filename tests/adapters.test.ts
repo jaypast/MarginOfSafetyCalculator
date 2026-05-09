@@ -267,6 +267,49 @@ describe('yahooFinance adapter', () => {
     expect(result.peHistory?.industryAvg).toBe(28.0);
   });
 
+  // Adapter-level contract test for Task #30: when the Python helper
+  // emits a populated `multibaggerSignals` block (Yartseva 2025
+  // empirics), the TS adapter must pass it straight through.
+  it('passes through multibaggerSignals (fcfYield/assetGrowth/ebitdaGrowth/52w) from the Python payload', async () => {
+    const payload = {
+      symbol: 'MSFT',
+      name: 'Microsoft Corp.',
+      price: 380,
+      eps: 11.0,
+      peRatio: 34.5,
+      fcfPerShare: 9.5,
+      growthRate: 14,
+      roe: 35,
+      debtToEquity: 0.5,
+      currentRatio: 1.8,
+      revenueGrowth: 12,
+      earningsStability: 'High',
+      competitivePosition: 'Strong',
+      multibaggerSignals: {
+        fcfYield: 6.2,
+        assetGrowth: 4.1,
+        ebitdaGrowth: 9.8,
+        week52High: 420.0,
+        week52Low: 290.0,
+      },
+    };
+
+    vi.doMock('child_process', () => ({
+      exec: (cmd: string, cb: any) =>
+        cb(null, { stdout: JSON.stringify(payload), stderr: '' }),
+    }));
+
+    const { getYahooFinanceData } = await import('../server/services/yahooFinance');
+    const result = await getYahooFinanceData('MSFT');
+    expect(stockResponseSchema.safeParse(result).success).toBe(true);
+    expect(result.multibaggerSignals).toBeDefined();
+    expect(result.multibaggerSignals?.fcfYield).toBe(6.2);
+    expect(result.multibaggerSignals?.assetGrowth).toBe(4.1);
+    expect(result.multibaggerSignals?.ebitdaGrowth).toBe(9.8);
+    expect(result.multibaggerSignals?.week52High).toBe(420.0);
+    expect(result.multibaggerSignals?.week52Low).toBe(290.0);
+  });
+
   it('throws when the Python script reports an error', async () => {
     vi.doMock('child_process', () => ({
       exec: (cmd: string, cb: any) =>

@@ -28,6 +28,30 @@ Every `/api/stock/:symbol` response is stamped with:
 
 The UI surfaces these as badges on the search card so the user can judge how trustworthy the headline numbers are.
 
+## Multibagger empirics (Task #30 — Yartseva 2025)
+The Value-Investor Verdict ingests three new server-derived signals
+shipped in the `multibaggerSignals` block of every `/api/stock/:symbol`
+response (yfinance populates them from `ticker.info` + balance-sheet
+/ financials; other adapters emit explicit `null`):
+
+- **`fcfYield`** (`free cash flow / market cap`, percent) drives the
+  primary cash-quality gate (Option A). `≤ 0` downgrades a base BUY
+  to WATCH ("the business is consuming cash, not generating it");
+  `> 5%` promotes a borderline WATCH to BUY *only* when MoS is
+  adequate, reverse-DCF isn't heroic, quality isn't Speculative, and
+  no modifier chips fire — the Graham cushion principle still wins.
+  Falls back to `fcfPerShare / price` for adapters without a server
+  computation.
+- **`assetGrowth` vs. `ebitdaGrowth`** powers the
+  *investment-affordability* modifier chip (capital deployed faster
+  than earnings can support → flag).
+- **`week52High` / `week52Low`** powers the *near-52-week-high*
+  momentum chip (price > 80 % of the trailing range → flag). Both
+  bounds are converted into the same currency as `price`.
+
+Modifier chips only ever downgrade a base BUY to WATCH; they never
+force a Pass and never escalate an existing WATCH/PASS.
+
 ## Valuation hardening (Task #9 / #15)
 Recent fixes:
 - Removed hard-coded `5year=18.6 / 10year=16.2 / industry=22.5` P/E branches in Task #9. Task #15 restored the three modes — backed by per-ticker `peHistory` (TTM-P/E medians from yfinance) and a published `INDUSTRY_PE_BASELINES` table — never the magic constants. Each mode falls back to current P/E with an explicit note when its data source is missing.

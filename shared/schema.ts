@@ -85,6 +85,29 @@ export const peHistorySchema = z.object({
 });
 export type PeHistory = z.infer<typeof peHistorySchema>;
 
+// Multibagger empirics block (Task #30). Each field is independently
+// nullable so an adapter with partial coverage can return what it has.
+//   - fcfYield: free-cash-flow yield, expressed as a *percent* (e.g.
+//     5.2 means 5.2%). Yartseva (2025) Option A uses this as the
+//     primary cash-quality gate: ≤0 blocks Buy→Watch, >5 promotes
+//     borderline Watch→Buy.
+//   - assetGrowth / ebitdaGrowth: YoY growth in *percent*. The
+//     investment-affordability dummy fires when assetGrowth >
+//     ebitdaGrowth — capital is being deployed faster than earnings
+//     can support. Modifier chip only; never forces a Pass.
+//   - week52High / week52Low: bounds of the trailing 52-week range,
+//     in the same currency as ``price`` (the server converts both
+//     when the listing currency != USD). The momentum chip fires
+//     when current price is more than 80% of the way up the range.
+export const multibaggerSignalsSchema = z.object({
+  fcfYield: z.number().nullable(),
+  assetGrowth: z.number().nullable(),
+  ebitdaGrowth: z.number().nullable(),
+  week52High: z.number().nullable(),
+  week52Low: z.number().nullable(),
+});
+export type MultibaggerSignals = z.infer<typeof multibaggerSignalsSchema>;
+
 // API Schemas
 export const stockResponseSchema = z.object({
   symbol: z.string(),
@@ -122,6 +145,16 @@ export const stockResponseSchema = z.object({
   // adapters with partial coverage can return what they have. Adapters
   // without any historical visibility omit the field entirely.
   peHistory: peHistorySchema.nullable().optional(),
+  // Multibagger empirics block (Task #30 — Yartseva 2025). Surfaced to
+  // the Value-Investor Verdict's cash-quality gate (fcfYield primary
+  // gate, Option A) and the two modifier chips (asset-growth >
+  // EBITDA-growth investment-unaffordability dummy, and 52-week-range
+  // momentum). Each field is independently nullable so adapters with
+  // partial coverage can return what they have; the verdict component
+  // skips any check whose inputs are missing rather than guessing.
+  // Append-only block — keep adjacent to the other parallel-task
+  // additions so future merges stay mechanical.
+  multibaggerSignals: multibaggerSignalsSchema.nullable().optional(),
 });
 
 export type StockResponse = z.infer<typeof stockResponseSchema>;

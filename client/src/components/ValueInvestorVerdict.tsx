@@ -33,6 +33,17 @@ export type VerdictAction = 'BUY' | 'WATCH' | 'PASS' | 'OUTSIDE_CIRCLE';
 export type MoSStatus = 'adequate' | 'inadequate' | 'negative';
 export type ReverseDcfRealityCheck = 'reasonable' | 'aggressive' | 'heroic' | 'pessimistic' | 'unavailable';
 
+// Yartseva (2025) multibagger empirics — Option A (FCF yield as the
+// primary cash-quality gate). 'unknown' means we could not compute
+// it (no fcfYield, no fcfPerShare, or zero price), in which case the
+// gate stays silent rather than guessing.
+export type CashQualityStatus = 'negative' | 'neutral' | 'strong' | 'unknown';
+
+export interface ModifierChip {
+  label: string;
+  detail: string;
+}
+
 interface Risk {
   label: string;
   detail: string;
@@ -354,7 +365,165 @@ export const isOutsideCircleSignal = (
   return false;
 };
 
+// Yartseva (2025) cash-quality gate (Option A). Prefers the upstream
+// `multibaggerSignals.fcfYield` (computed server-side as freeCashflow
+// / marketCap, in percent) and falls back to a per-share derivation
+// from `fcfPerShare / price` so adapters that only emit per-share
+// figures still feed the gate. Returns 'unknown' when nothing is
+// computable so the gate can stay silent rather than guess.
+export const evaluateCashQuality = (
+  stockData: StockData,
+): { status: CashQualityStatus; fcfYieldPct: number | null; rationale: string } => {
+  const upstream = stockData.multibaggerSignals?.fcfYield;
+  let fcfYieldPct: number | null = null;
+  if (upstream != null && Number.isFinite(upstream)) {
+    fcfYieldPct = upstream;
+  } else if (
+    Number.isFinite(stockData.price) &&
+    stockData.price > 0 &&
+    Number.isFinite(stockData.fcfPerShare)
+  ) {
+    fcfYieldPct = (stockData.fcfPerShare / stockData.price) * 100;
+  }
+
+  if (fcfYieldPct === null) {
+    return { status: 'unknown', fcfYieldPct: null, rationale: 'FCF yield could not be computed.' };
+  }
+  if (fcfYieldPct <= 0) {
+    return {
+      status: 'negative',
+      fcfYieldPct,
+      rationale: `FCF yield is ${fcfYieldPct.toFixed(1)}% — the business is consuming cash, not generating it.`,
+    };
+  }
+  if (fcfYieldPct > 5) {
+    return {
+      status: 'strong',
+      fcfYieldPct,
+      rationale: `FCF yield of ${fcfYieldPct.toFixed(1)}% clears the 5% multibagger threshold (Yartseva 2025).`,
+    };
+  }
+  return {
+    status: 'neutral',
+    fcfYieldPct,
+    rationale: `FCF yield of ${fcfYieldPct.toFixed(1)}% is positive but below the 5% multibagger threshold.`,
+  };
+};
+
+// Investment-affordability dummy: when a business' total assets grow
+// faster than its EBITDA, capital is being deployed faster than
+// earnings can support it — a Yartseva (2025) negative empirical
+// signal. Modifier chip only; never forces a Pass.
+export const evaluateInvestmentAffordability = (stockData: StockData): ModifierChip | null => {
+  const a = stockData.multibaggerSignals?.assetGrowth;
+  const e = stockData.multibaggerSignals?.ebitdaGrowth;
+  if (a == null || e == null || !Number.isFinite(a) || !Number.isFinite(e)) {
+    return null;
+  }
+  if (a > e) {
+    return {
+      label: 'Investment unaffordability',
+      detail: `Asset growth (${a.toFixed(1)}%) outpaces EBITDA growth (${e.toFixed(1)}%) — capital is being deployed faster than earnings can support.`,
+    };
+  }
+  return null;
+};
+
+// 52-week-range modifier: when current price sits in the upper 80%+
+// of the trailing 52-week range, the multibagger empirics suggest
+// momentum has compressed the asymmetry of the setup. Modifier chip
+// only; never forces a Pass.
+export const evaluate52WeekRange = (
+  stockData: StockData,
+): { chip: ModifierChip | null; rangePct: number | null } => {
+  const high = stockData.multibaggerSignals?.week52High;
+  const low = stockData.multibaggerSignals?.week52Low;
+  if (
+    high == null ||
+    low == null ||
+    !Number.isFinite(high) ||
+    !Number.isFinite(low) ||
+    high <= low
+  ) {
+    return { chip: null, rangePct: null };
+  }
+  const rangePct = ((stockData.price - low) / (high - low)) * 100;
+  if (rangePct > 80) {
+    return {
+      chip: {
+        label: 'Near 52-week high',
+        detail: `Price sits at ${rangePct.toFixed(0)}% of the 52-week range — momentum has compressed the margin of safety.`,
+      },
+      rangePct,
+    };
+  }
+  return { chip: null, rangePct };
+};
+
 export const decideVerdict = (
+  quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative' | undefined,
+  mosStatus: MoSStatus,
+  realityCheck: ReverseDcfRealityCheck,
+  averageResult: ValuationResult | undefined,
+  valuationResults: ValuationResult[],
+  heavyAdjustments: boolean,
+  hasSourceDivergence: boolean,
+  // New trailing optional args (Task #30). Defaults preserve the
+  // pre-Yartseva 7-arg call sites and tests untouched.
+  cashQuality: CashQualityStatus = 'unknown',
+  modifierChipCount: number = 0,
+): { action: VerdictAction; rationale: string } => {
+  const base = computeBaseVerdict(
+    quality,
+    mosStatus,
+    realityCheck,
+    averageResult,
+    valuationResults,
+    heavyAdjustments,
+    hasSourceDivergence,
+  );
+
+  // Yartseva (2025) cash-quality gate (Option A). Negative FCF
+  // downgrades a base BUY to WATCH; never escalates a WATCH/PASS to
+  // anything worse. Strong FCF (>5% yield) promotes a borderline
+  // WATCH to BUY only when MoS is adequate, the market isn't heroic,
+  // quality isn't Speculative, and no modifier chips are flagged —
+  // the cardinal Graham principle (require an adequate cushion)
+  // still wins over the empirical promotion rule.
+  if (cashQuality === 'negative' && base.action === 'BUY') {
+    return {
+      action: 'WATCH',
+      rationale: `${base.rationale} However, free cash flow is non-positive — the cash-quality gate downgrades to Watch until the business is generating cash.`,
+    };
+  }
+  if (
+    cashQuality === 'strong' &&
+    base.action === 'WATCH' &&
+    mosStatus === 'adequate' &&
+    realityCheck !== 'heroic' &&
+    quality !== 'Speculative' &&
+    modifierChipCount === 0
+  ) {
+    return {
+      action: 'BUY',
+      rationale: `${base.rationale} FCF yield clears the 5% multibagger threshold (Yartseva 2025), no modifier chips flagged — promotion to Buy.`,
+    };
+  }
+
+  // Modifier chips (asset-growth > EBITDA-growth, near-52w-high)
+  // only ever downgrade a base BUY to WATCH. They never force a
+  // PASS, and they never override an existing WATCH/PASS upward.
+  if (modifierChipCount >= 1 && base.action === 'BUY') {
+    return {
+      action: 'WATCH',
+      rationale: `${base.rationale} Secondary modifier${modifierChipCount > 1 ? 's' : ''} flagged — downgrade to Watch.`,
+    };
+  }
+
+  return base;
+};
+
+const computeBaseVerdict = (
   quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative' | undefined,
   mosStatus: MoSStatus,
   realityCheck: ReverseDcfRealityCheck,
@@ -597,6 +766,15 @@ const ValueInvestorVerdict: React.FC<ValueInvestorVerdictProps> = ({
 
   const mos = evaluateMarginOfSafety(averageResult, recommendedMosNumeric);
   const reality = evaluateReverseDcf(stockData, reverseDCFResult);
+
+  // Yartseva (2025) multibagger empirics — cash-quality gate + chips.
+  const cashQuality = evaluateCashQuality(stockData);
+  const affordabilityChip = evaluateInvestmentAffordability(stockData);
+  const range52w = evaluate52WeekRange(stockData);
+  const modifierChips: ModifierChip[] = [affordabilityChip, range52w.chip].filter(
+    (c): c is ModifierChip => c !== null,
+  );
+
   const verdict = decideVerdict(
     quality,
     mos.status,
@@ -605,6 +783,8 @@ const ValueInvestorVerdict: React.FC<ValueInvestorVerdictProps> = ({
     valuationResults,
     heavyAdjustments,
     hasSourceDivergence,
+    cashQuality.status,
+    modifierChips.length,
   );
   const style = verdictStyles[verdict.action];
 
@@ -725,6 +905,39 @@ const ValueInvestorVerdict: React.FC<ValueInvestorVerdictProps> = ({
             </div>
           </div>
 
+          {/* Cash quality (Yartseva 2025 — primary FCF gate) */}
+          {cashQuality.status !== 'unknown' && (
+            <div
+              className="bg-neutral-50 border border-neutral-200 rounded-md p-3"
+              data-testid="verdict-cash-quality"
+            >
+              <div className="flex items-center mb-2">
+                <Activity className="w-4 h-4 text-neutral-600 mr-2" />
+                <h3 className="text-sm font-semibold text-neutral-800">
+                  Cash quality (FCF gate)
+                </h3>
+              </div>
+              <p className="text-sm text-neutral-700">
+                FCF yield:{' '}
+                <span
+                  className={`font-semibold ${
+                    cashQuality.status === 'strong'
+                      ? 'text-emerald-700'
+                      : cashQuality.status === 'negative'
+                      ? 'text-rose-700'
+                      : 'text-amber-700'
+                  }`}
+                  data-testid="verdict-fcf-yield"
+                >
+                  {cashQuality.fcfYieldPct !== null
+                    ? `${cashQuality.fcfYieldPct.toFixed(1)}%`
+                    : 'n/a'}
+                </span>
+              </p>
+              <p className="text-xs text-neutral-600 mt-1">{cashQuality.rationale}</p>
+            </div>
+          )}
+
           {/* Reverse-DCF reality check */}
           <div className="bg-neutral-50 border border-neutral-200 rounded-md p-3" data-testid="verdict-reverse-dcf">
             <div className="flex items-center mb-2">
@@ -742,6 +955,29 @@ const ValueInvestorVerdict: React.FC<ValueInvestorVerdictProps> = ({
             <p className="text-xs text-neutral-600 mt-1">{reality.rationale}</p>
           </div>
         </div>
+
+        {/* Multibagger modifier chips (Yartseva 2025) — only render when
+            at least one is active so the panel doesn't add noise. */}
+        {modifierChips.length > 0 && (
+          <div
+            className="mt-4 flex flex-wrap items-start gap-2"
+            data-testid="verdict-modifier-chips"
+          >
+            {modifierChips.map((chip, idx) => (
+              <span
+                key={idx}
+                className="inline-flex items-start px-2 py-1 rounded border border-amber-200 bg-amber-50 text-amber-800 text-xs"
+                title={chip.detail}
+              >
+                <AlertTriangle className="w-3 h-3 mr-1 mt-0.5 flex-shrink-0" />
+                <span>
+                  <span className="font-semibold">{chip.label}.</span>{' '}
+                  <span className="text-amber-700">{chip.detail}</span>
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Circle of competence reminder — the framework's first gate is one
             only the user can answer, so we surface it as an explicit prompt

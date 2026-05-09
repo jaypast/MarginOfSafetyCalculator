@@ -159,7 +159,10 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
       // Web-scrape adapter has no historical-EPS visibility; emit
       // explicit null so the API contract stays uniform across
       // adapters (Task #15).
-      peHistory: null
+      peHistory: null,
+      // Web-scrape adapter has no balance-sheet / FCF visibility;
+      // emit explicit null for the multibagger gates (Task #30).
+      multibaggerSignals: null
     };
     
     // Fill in reasonable defaults for missing values
