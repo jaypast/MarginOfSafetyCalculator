@@ -1,0 +1,303 @@
+import { describe, it, expect } from 'vitest';
+import {
+  scoreTicker,
+  compositeBand,
+  FACTOR_WEIGHTS,
+  type SubScoreKey,
+} from '../client/src/lib/multibaggerScreener';
+import type { StockData } from '../client/src/lib/types';
+
+// Compose a "complete data" stock — every multibagger signal populated, ROE
+// positive, FCF positive, current price strictly inside the 52-week range.
+// Tests then mutate just the field they're exercising so the rest of the
+// scorer stays a no-op.
+function makeStock(overrides: Partial<StockData> = {}): StockData {
+  return {
+    symbol: 'TEST',
+    name: 'Test Co.',
+    price: 50,
+    eps: 3,
+    peRatio: 16,
+    fcfPerShare: 3,
+    growthRate: 8,
+    roe: 15,
+    debtToEquity: 0.5,
+    currentRatio: 2,
+    revenueGrowth: 6,
+    earningsStability: 'High',
+    competitivePosition: 'Strong',
+    multibaggerSignals: {
+      fcfYield: 6,            // > 5% → strong value score
+      assetGrowth: 4,
+      ebitdaGrowth: 8,        // ebitda outpaces assets → 100 investment
+      week52High: 60,
+      week52Low: 40,           // price 50 → 50% of range → 50 score
+    },
+    ...overrides,
+  };
+}
+
+const findScore = (stock: StockData, key: SubScoreKey) =>
+  scoreTicker(stock).subScores.find((s) => s.key === key)!;
+
+describe('multibaggerScreener — scoring math', () => {
+  it('returns five sub-scores keyed in canonical order', () => {
+    const result = scoreTicker(makeStock());
+    expect(result.subScores.map((s) => s.key)).toEqual([
+      'size', 'value', 'profitability', 'investment', 'range',
+    ]);
+  });
+
+  it('weights sum to 1 (renormalisation invariant)', () => {
+    const total = Object.values(FACTOR_WEIGHTS).reduce((s, w) => s + w, 0);
+    expect(total).toBeCloseTo(1, 6);
+  });
+
+  describe('value (FCF yield)', () => {
+    it('hits 100 at ≥10% FCF yield', () => {
+      const stock = makeStock({ multibaggerSignals: { ...makeStock().multibaggerSignals!, fcfYield: 12 } });
+      expect(findScore(stock, 'value').score).toBe(100);
+    });
+
+    it('scales linearly between 0 and 10%', () => {
+      const stock = makeStock({ multibaggerSignals: { ...makeStock().multibaggerSignals!, fcfYield: 5 } });
+      expect(findScore(stock, 'value').score).toBeCloseTo(50, 5);
+    });
+
+    it('scores 0 when FCF yield is non-positive (negative FCF edge case)', () => {
+      const stock = makeStock({
+        multibaggerSignals: { ...makeStock().multibaggerSignals!, fcfYield: -3 },
+      });
+      const sub = findScore(stock, 'value');
+      expect(sub.score).toBe(0);
+      expect(sub.rationale).toMatch(/consuming cash/i);
+    });
+
+    it('falls back to fcfPerShare/price when upstream yield missing', () => {
+      const stock = makeStock({
+        fcfPerShare: 5,
+        price: 100,
+        multibaggerSignals: { ...makeStock().multibaggerSignals!, fcfYield: null },
+      });
+      // 5/100 = 5% → score = 50
+      expect(findScore(stock, 'value').score).toBeCloseTo(50, 5);
+    });
+
+    it('returns null when neither upstream yield nor per-share derivation can be computed', () => {
+      const stock = makeStock({
+        price: 0,
+        fcfPerShare: NaN,
+        multibaggerSignals: { ...makeStock().multibaggerSignals!, fcfYield: null },
+      });
+      expect(findScore(stock, 'value').score).toBeNull();
+    });
+  });
+
+  describe('profitability (ROA proxy via ROE)', () => {
+    it('hits 100 at ROE ≥ 20%', () => {
+      expect(findScore(makeStock({ roe: 25 }), 'profitability').score).toBe(100);
+    });
+
+    it('scales linearly 0..20%', () => {
+      expect(findScore(makeStock({ roe: 10 }), 'profitability').score).toBeCloseTo(50, 5);
+    });
+
+    it('scores 0 when ROE is non-positive (loss-making edge case)', () => {
+      const sub = findScore(makeStock({ roe: -5 }), 'profitability');
+      expect(sub.score).toBe(0);
+    });
+
+    it('rationale flags the ROE → ROA proxy substitution', () => {
+      const sub = findScore(makeStock(), 'profitability');
+      expect(sub.rationale).toMatch(/proxy/i);
+    });
+  });
+
+  describe('investment affordability', () => {
+    it('scores 100 when assets grow no faster than EBITDA', () => {
+      const stock = makeStock({
+        multibaggerSignals: {
+          ...makeStock().multibaggerSignals!,
+          assetGrowth: 5,
+          ebitdaGrowth: 10,
+        },
+      });
+      expect(findScore(stock, 'investment').score).toBe(100);
+    });
+
+    it('subtracts 5 points per pp of asset-over-EBITDA excess', () => {
+      const stock = makeStock({
+        multibaggerSignals: {
+          ...makeStock().multibaggerSignals!,
+          assetGrowth: 14,
+          ebitdaGrowth: 4,           // gap = 10pp → 100 - 50 = 50
+        },
+      });
+      expect(findScore(stock, 'investment').score).toBe(50);
+    });
+
+    it('floors at 0 when the gap is huge', () => {
+      const stock = makeStock({
+        multibaggerSignals: {
+          ...makeStock().multibaggerSignals!,
+          assetGrowth: 50,
+          ebitdaGrowth: 5,
+        },
+      });
+      expect(findScore(stock, 'investment').score).toBe(0);
+    });
+
+    it('returns null when either growth signal is missing', () => {
+      const stock = makeStock({
+        multibaggerSignals: { ...makeStock().multibaggerSignals!, assetGrowth: null },
+      });
+      expect(findScore(stock, 'investment').score).toBeNull();
+    });
+  });
+
+  describe('52-week range', () => {
+    it('scores ~100 at the bottom of the range', () => {
+      const stock = makeStock({ price: 41, multibaggerSignals: { ...makeStock().multibaggerSignals!, week52Low: 40, week52High: 60 } });
+      expect(findScore(stock, 'range').score).toBeGreaterThan(90);
+    });
+
+    it('scores ~0 at the top of the range', () => {
+      const stock = makeStock({ price: 60, multibaggerSignals: { ...makeStock().multibaggerSignals!, week52Low: 40, week52High: 60 } });
+      expect(findScore(stock, 'range').score).toBe(0);
+    });
+
+    it('clamps when price has broken outside the trailing 52w range', () => {
+      const stock = makeStock({ price: 70, multibaggerSignals: { ...makeStock().multibaggerSignals!, week52Low: 40, week52High: 60 } });
+      expect(findScore(stock, 'range').score).toBe(0);
+    });
+
+    it('returns null when high ≤ low (degenerate)', () => {
+      const stock = makeStock({ multibaggerSignals: { ...makeStock().multibaggerSignals!, week52Low: 60, week52High: 60 } });
+      expect(findScore(stock, 'range').score).toBeNull();
+    });
+  });
+
+  describe('size (market cap proxy)', () => {
+    it('returns null when marketCap is not plumbed (current default)', () => {
+      const sub = findScore(makeStock(), 'size');
+      expect(sub.score).toBeNull();
+      expect(sub.rationale).toMatch(/market cap unavailable/i);
+    });
+
+    it('scores 100 for sub-$2B when marketCap is provided via the type bypass', () => {
+      const stock = { ...makeStock(), marketCap: 1.5e9 } as unknown as StockData;
+      expect(findScore(stock, 'size').score).toBe(100);
+    });
+
+    it('penalises mega-caps (>$1T → 0)', () => {
+      const stock = { ...makeStock(), marketCap: 2e12 } as unknown as StockData;
+      expect(findScore(stock, 'size').score).toBe(0);
+    });
+  });
+});
+
+describe('multibaggerScreener — composite & missing-data handling', () => {
+  it('renormalises composite when sub-scores are missing', () => {
+    // Default makeStock has size=null. Composite weights {value, prof, inv, range}
+    // → 0.35 + 0.10 + 0.20 + 0.20 = 0.85.
+    const result = scoreTicker(makeStock());
+    expect(result.missingFactors).toEqual(['size']);
+    // Sanity: composite is finite, between min and max sub-score.
+    const computed = result.subScores.filter((s) => s.score !== null).map((s) => s.score!);
+    expect(result.composite).not.toBeNull();
+    expect(result.composite!).toBeGreaterThanOrEqual(Math.min(...computed) - 0.1);
+    expect(result.composite!).toBeLessThanOrEqual(Math.max(...computed) + 0.1);
+  });
+
+  it('returns null composite when every sub-score is missing', () => {
+    const stock = makeStock({
+      price: 0,
+      fcfPerShare: NaN,
+      roe: NaN,
+      multibaggerSignals: {
+        fcfYield: null,
+        assetGrowth: null,
+        ebitdaGrowth: null,
+        week52High: null,
+        week52Low: null,
+      },
+    });
+    const r = scoreTicker(stock);
+    expect(r.composite).toBeNull();
+    expect(r.missingFactors).toEqual(['size', 'value', 'profitability', 'investment', 'range']);
+  });
+
+  it('handles a near-zero-earnings stock without producing NaN', () => {
+    const stock = makeStock({ eps: 0.01, roe: 0.5 });
+    const r = scoreTicker(stock);
+    expect(r.composite).not.toBeNull();
+    expect(Number.isFinite(r.composite!)).toBe(true);
+  });
+
+  it('handles missing multibaggerSignals block entirely', () => {
+    const stock = makeStock({ multibaggerSignals: null });
+    const r = scoreTicker(stock);
+    // Falls back to fcfPerShare/price for value; investment + range go missing.
+    expect(r.missingFactors).toContain('investment');
+    expect(r.missingFactors).toContain('range');
+    expect(r.composite).not.toBeNull();
+  });
+});
+
+describe('multibaggerScreener — composite band labels', () => {
+  it('labels a strong composite ≥ 65 as "Strong"', () => {
+    expect(compositeBand(80).label).toBe('Strong');
+    expect(compositeBand(80).tone).toBe('positive');
+  });
+  it('labels 40..65 as "Moderate"', () => {
+    expect(compositeBand(50).label).toBe('Moderate');
+  });
+  it('labels < 40 as "Weak"', () => {
+    expect(compositeBand(30).label).toBe('Weak');
+    expect(compositeBand(30).tone).toBe('negative');
+  });
+  it('labels null composite as "Insufficient data"', () => {
+    expect(compositeBand(null).label).toBe('Insufficient data');
+    expect(compositeBand(null).tone).toBe('muted');
+  });
+});
+
+describe('multibaggerScreener — bulk scoring & sort (watchlist path)', () => {
+  // Mirrors how the watchlist page sorts cached entries by composite score.
+  function bulkScoreAndSort(stocks: StockData[]): { symbol: string; composite: number | null }[] {
+    return stocks
+      .map((s) => ({ symbol: s.symbol, composite: scoreTicker(s).composite }))
+      .sort((a, b) => {
+        if (a.composite === null && b.composite === null) return 0;
+        if (a.composite === null) return 1;
+        if (b.composite === null) return -1;
+        return b.composite - a.composite;
+      });
+  }
+
+  it('scores every entry without mutating the inputs', () => {
+    const a = makeStock({ symbol: 'A', multibaggerSignals: { ...makeStock().multibaggerSignals!, fcfYield: 9 } });
+    const b = makeStock({ symbol: 'B', multibaggerSignals: { ...makeStock().multibaggerSignals!, fcfYield: 1 } });
+    const before = JSON.stringify([a, b]);
+    bulkScoreAndSort([a, b]);
+    expect(JSON.stringify([a, b])).toBe(before);
+  });
+
+  it('sorts highest composite first and pushes nulls to the tail', () => {
+    const high = makeStock({ symbol: 'HIGH', roe: 25, multibaggerSignals: { ...makeStock().multibaggerSignals!, fcfYield: 9 } });
+    const mid = makeStock({ symbol: 'MID' });
+    const broken = makeStock({
+      symbol: 'BROKEN',
+      price: 0,
+      fcfPerShare: NaN,
+      roe: NaN,
+      multibaggerSignals: {
+        fcfYield: null, assetGrowth: null, ebitdaGrowth: null,
+        week52High: null, week52Low: null,
+      },
+    });
+    const sorted = bulkScoreAndSort([mid, broken, high]);
+    expect(sorted.map((r) => r.symbol)).toEqual(['HIGH', 'MID', 'BROKEN']);
+    expect(sorted[2].composite).toBeNull();
+  });
+});

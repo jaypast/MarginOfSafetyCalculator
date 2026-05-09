@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
@@ -12,7 +12,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, RefreshCw, Trash2, BookmarkPlus, Loader2 } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Trash2, BookmarkPlus, Loader2, TrendingUp } from 'lucide-react';
 import { StockData, WatchlistEntry } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
 import { classifyBuyZone, priceVsBuyBelowPct, describeFreshness, type BuyZone } from '@/lib/watchlist';
@@ -24,6 +24,7 @@ import {
   calculateAverageValuation,
 } from '@/lib/calculators';
 import type { ValuationParams, ValuationResult } from '@/lib/types';
+import { scoreTicker, compositeBand } from '@/lib/multibaggerScreener';
 
 // Default valuation params used to compute intrinsic value for each watchlist
 // row. These mirror the calculator's defaults so the watchlist's "buy-below"
@@ -82,6 +83,14 @@ interface WatchlistRowProps {
   isRemoving: boolean;
 }
 
+// Score-tone styling for the per-row composite chip — mirrors the screener panel.
+const SCORE_TONE: Record<'positive' | 'neutral' | 'negative' | 'muted', string> = {
+  positive: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+  neutral: 'bg-amber-100 text-amber-800 border-amber-300',
+  negative: 'bg-rose-100 text-rose-800 border-rose-300',
+  muted: 'bg-neutral-100 text-neutral-600 border-neutral-300',
+};
+
 const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, onRemove, isRemoving }) => {
   const stockQuery = useQuery<StockData>({
     queryKey: ['/api/stock', entry.symbol],
@@ -104,6 +113,12 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, onRemove, isRemoving
     ? priceVsBuyBelowPct(stock.price, buyBelow)
     : null;
   const styles = ZONE_STYLES[zone];
+
+  // Multibagger composite (Task #33). Computed inline from the same cached
+  // stock payload so we don't double-fetch. Renders as a chip in its own
+  // column; sorting is handled at the parent.
+  const score = stockOk ? scoreTicker(stock).composite : null;
+  const scoreBand = compositeBand(score);
 
   return (
     <TableRow
@@ -161,6 +176,15 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, onRemove, isRemoving
         </span>
       </TableCell>
       <TableCell className="text-right">
+        <span
+          className={`inline-flex items-center text-xs tabular-nums px-2 py-0.5 rounded-full border ${SCORE_TONE[scoreBand.tone]}`}
+          data-testid={`watchlist-score-${entry.symbol}`}
+          title={`${scoreBand.label} multibagger factor exposure (Yartseva 2025)`}
+        >
+          {score === null ? '—' : score.toFixed(0)}
+        </span>
+      </TableCell>
+      <TableCell className="text-right">
         <Button
           type="button"
           variant="ghost"
@@ -178,10 +202,37 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, onRemove, isRemoving
   );
 };
 
+// Look up cached stock data and compute the multibagger composite for a single
+// entry. Returns `null` when the row hasn't been fetched yet, or when the
+// scorer can't compute a composite. Pulled out of the component so the parent
+// can sort using the same helper its child rows render with.
+function lookupComposite(symbol: string): number | null {
+  const stock = queryClient.getQueryData<StockData>(['/api/stock', symbol]);
+  if (!stock || stock.error) return null;
+  return scoreTicker(stock).composite;
+}
+
 const Watchlist: React.FC = () => {
   const { toast } = useToast();
   const watchlistQuery = useQuery<WatchlistEntry[]>({ queryKey: ['/api/watchlist'] });
-  const entries = watchlistQuery.data ?? [];
+  const rawEntries = watchlistQuery.data ?? [];
+
+  // Sort toggle (Task #33). Default order is server-provided (insertion); the
+  // user can flip into "by multibagger composite, descending" with one click.
+  // Entries whose score hasn't computed yet sort last so the user sees the
+  // ranked head of the list immediately and the unfetched tail can fill in
+  // as the per-row queries resolve.
+  const [sortByScore, setSortByScore] = useState(false);
+  const entries = sortByScore
+    ? [...rawEntries].sort((a, b) => {
+        const sa = lookupComposite(a.symbol);
+        const sb = lookupComposite(b.symbol);
+        if (sa === null && sb === null) return 0;
+        if (sa === null) return 1;
+        if (sb === null) return -1;
+        return sb - sa;
+      })
+    : rawEntries;
 
   const removeMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -233,16 +284,30 @@ const Watchlist: React.FC = () => {
               Tickers you're tracking. Rows turn green when price crosses your buy-below threshold.
             </p>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleRefresh}
-            data-testid="button-refresh-watchlist"
-            disabled={watchlistQuery.isLoading}
-            className="h-9"
-          >
-            <RefreshCw className="w-4 h-4 mr-1" /> Refresh
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant={sortByScore ? 'default' : 'outline'}
+              onClick={() => setSortByScore((s) => !s)}
+              data-testid="button-sort-by-score"
+              disabled={entries.length === 0}
+              className="h-9"
+              title="Sort the list by Multibagger composite score (Yartseva 2025)"
+            >
+              <TrendingUp className="w-4 h-4 mr-1" />
+              {sortByScore ? 'Sorted by score' : 'Sort by score'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleRefresh}
+              data-testid="button-refresh-watchlist"
+              disabled={watchlistQuery.isLoading}
+              className="h-9"
+            >
+              <RefreshCw className="w-4 h-4 mr-1" /> Refresh
+            </Button>
+          </div>
         </div>
 
         {entries.length > 0 && (
@@ -298,6 +363,9 @@ const Watchlist: React.FC = () => {
                   <TableHead className="text-right">MoS</TableHead>
                   <TableHead className="text-right">Vs. Threshold</TableHead>
                   <TableHead>Zone</TableHead>
+                  <TableHead className="text-right w-[80px]" title="Multibagger composite (Yartseva 2025)">
+                    Score
+                  </TableHead>
                   <TableHead className="text-right w-[60px]">
                     <span className="sr-only">Actions</span>
                   </TableHead>

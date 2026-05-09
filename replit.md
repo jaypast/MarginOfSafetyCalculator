@@ -15,6 +15,8 @@ A value-investing web app that estimates intrinsic stock value via DCF, P/E, and
 - `client/src/components/MarginOfSafetyCalculator.tsx` — Top-level calculator UI.
 - `client/src/components/StockInformation.tsx` — Search box + data-source / freshness badge.
 - `client/src/components/ValuationResults.tsx` — Method comparison table + "Applied adjustments" panel.
+- `client/src/lib/multibaggerScreener.ts` — pure scoring module (Yartseva 2025 factor exposures) consumed by the Multibagger Screener panel and the Watchlist score column.
+- `client/src/components/MultibaggerScreener.tsx` — descriptive 0–100 sub-score breakdown + composite badge rendered below the Value-Investor Verdict.
 - `client/src/components/ValueInvestorVerdict.tsx` — Graham / Klarman / Munger scorecard panel that turns the same inputs into a Buy / Watch / Pass verdict using the gate order documented in `.agents/skills/value-investing-masters/SKILL.md`. The sibling `.agents/skills/multibagger-empirics/SKILL.md` captures the empirically validated factor signs (Yartseva 2025) that drive the FCF-yield gate, asset-vs-EBITDA chip, 52-week-range chip, and the rising-rate caution.
 - `server/services/stockData.ts` — Tiered data fetch (yfinance → RapidAPI → Alpha Vantage → web scrape → static fallback) with provenance stamping.
 - `shared/schema.ts` — Zod + Drizzle schemas. Source of truth for `StockResponse`, `DATA_SOURCES`, etc.
@@ -78,6 +80,45 @@ the Buy / Watch / Pass verdict.
   pick-current-and-year-ago lookup, and every caution-trigger
   combination.
 
+## Multibagger Screener (Task #33)
+A descriptive factor-exposure scorecard rendered below the Value-Investor
+Verdict on the home page (and as a per-row chip on the Watchlist). Scores any
+ticker against the parsimonious factor set documented in
+`.agents/skills/multibagger-empirics/SKILL.md` (Yartseva 2025 §6.3) — five
+sub-scores (size, value, profitability, investment affordability, 52-week
+range entry) each 0–100 plus a weighted composite. The score is **descriptive
+of the historical multibagger cohort, not predictive** of any single stock's
+forward return.
+
+- **Growth-rate is intentionally excluded** from the score. Yartseva's
+  general-to-specific elimination dropped EBITDA/EPS/FCF growth as
+  insignificant return predictors in dynamic specifications. The screener
+  panel surfaces this caveat inline and links to the empirics skill for the
+  rationale.
+- Weights mirror the paper's coefficient magnitudes — Value (FCF yield) the
+  largest at 35%, then Investment-affordability and 52-week-range at 20%
+  each, Size at 15%, Profitability (ROA proxy via ROE) at 10%. Missing
+  sub-scores are skipped and the composite is renormalised across whatever
+  computed.
+- Single-ticker view: `client/src/components/MultibaggerScreener.tsx` —
+  renders the breakdown card, score bar per factor, and the
+  composite badge ("Strong" ≥65 / "Moderate" 40–65 / "Weak" <40 /
+  "Insufficient data").
+- Watchlist integration: `client/src/pages/Watchlist.tsx` — adds a "Score"
+  column and a "Sort by score" toggle that ranks the list by composite
+  descending (entries whose score hasn't computed yet sort to the tail).
+- Scoring math: `client/src/lib/multibaggerScreener.ts` — pure functions
+  (`scoreTicker`, `compositeBand`, `FACTOR_WEIGHTS`); no React deps so the
+  scorer is trivially unit-testable.
+- Tests: `tests/multibaggerScreener.test.ts` covers each sub-score's
+  boundaries, the missing-data renormalisation path, near-zero-earnings
+  edge cases, and the watchlist bulk-scoring + sort path.
+
+`marketCap` is not yet plumbed through `StockData`, so the size sub-score
+returns `null` for tickers fetched through the live API; the composite
+renormalises across the remaining four factors. Adapters that surface market
+cap will light up the size sub-score automatically — no code change needed.
+
 ## Valuation hardening (Task #9 / #15)
 Recent fixes:
 - Removed hard-coded `5year=18.6 / 10year=16.2 / industry=22.5` P/E branches in Task #9. Task #15 restored the three modes — backed by per-ticker `peHistory` (TTM-P/E medians from yfinance) and a published `INDUSTRY_PE_BASELINES` table — never the magic constants. Each mode falls back to current P/E with an explicit note when its data source is missing.
@@ -123,6 +164,10 @@ demand. From the shell you can run them directly:
   cross-source comparison symmetry.
 - `tests/crossSource.test.ts` — divergence-detection logic that powers
   the `CROSS_SOURCE_DIVERGENCE` warn logs in `server/services/stockData.ts`.
+- `tests/multibaggerScreener.test.ts` — sub-score boundary tests (FCF yield,
+  ROA proxy, investment affordability, 52-week range, size), missing-data
+  renormalisation, near-zero-earnings edge cases, and the watchlist
+  bulk-scoring + sort path.
 - `tests/adapters.test.ts` — adapter normalization tests for each provider
   module (yahooFinance subprocess, RapidAPI, Alpha Vantage, web scraper).
   Each test mocks the upstream (axios/fetch/exec), feeds a canned payload,

@@ -6,6 +6,7 @@ import ValuationMethod from './ValuationMethod';
 import MarginOfSafetyParams from './MarginOfSafetyParams';
 import ValuationResults from './ValuationResults';
 import ValueInvestorVerdict from './ValueInvestorVerdict';
+import MultibaggerScreener from './MultibaggerScreener';
 import QualityIndicators from './QualityIndicators';
 import EducationalResources from './EducationalResources';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -259,6 +260,14 @@ const MarginOfSafetyCalculator: React.FC = () => {
             marginOfSafetyParams={marginOfSafetyParams}
             fedRateEnvironment={fedRateEnvironment}
           />
+        )}
+
+        {/* Multibagger Screener (Task #33) — descriptive factor-exposure
+            scorecard sourced from Yartseva (2025). Sits below the verdict so
+            the user reads "should I avoid permanent loss?" first and only
+            then layers on "is the expected-return asymmetry favourable?" */}
+        {stockData && !stockData.error && (
+          <MultibaggerScreener stockData={stockData} />
         )}
         
 {/* Chart is now integrated with Valuation Results */}
