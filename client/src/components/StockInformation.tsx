@@ -8,6 +8,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { Search, RefreshCcw, Database, Clock, AlertTriangle, AlertOctagon, BookmarkPlus, Check } from 'lucide-react';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { getMultibaggerSignalNotes } from '@/components/ValueInvestorVerdict';
 
 // Map upstream IDs to short, user-friendly labels for the divergence popover.
 const SOURCE_DISPLAY_NAMES: Record<string, string> = {
@@ -266,6 +267,7 @@ const StockInformation: React.FC<StockInformationProps> = ({
                 <p
                   className="text-xs text-neutral-600 mt-1"
                   data-testid="stock-info-fcf-yield"
+                  title="Free cash flow ÷ market cap. Yartseva (2025) found this is the single strongest empirical predictor of forward stock returns. ≤ 0 blocks Buy (cash burn); > 5% can promote a borderline Watch to Buy when other gates pass."
                 >
                   FCF yield:{' '}
                   <strong className={tone}>{fcfYieldPct.toFixed(1)}%</strong>
@@ -297,13 +299,26 @@ const StockInformation: React.FC<StockInformationProps> = ({
                       Fetched {describeFreshness(stockData.fetchedAt)}
                     </span>
                   )}
-                  {stockData.appliedAdjustments && stockData.appliedAdjustments.length > 0 && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-800"
-                      title={stockData.appliedAdjustments.join('\n')}>
-                      <AlertTriangle className="w-3 h-3 mr-1" />
-                      {stockData.appliedAdjustments.length} adjustment{stockData.appliedAdjustments.length === 1 ? '' : 's'}
-                    </span>
-                  )}
+                  {(() => {
+                    // Combine server-side derivation notes with the
+                    // Yartseva (2025) multibagger signal-fire notes so a
+                    // single panel records every reason the headline
+                    // numbers were nudged or gated.
+                    const serverNotes = stockData.appliedAdjustments ?? [];
+                    const signalNotes = getMultibaggerSignalNotes(stockData);
+                    const combined = [...serverNotes, ...signalNotes];
+                    if (combined.length === 0) return null;
+                    return (
+                      <span
+                        className="inline-flex items-center px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-800"
+                        data-testid="badge-applied-adjustments"
+                        title={combined.join('\n')}
+                      >
+                        <AlertTriangle className="w-3 h-3 mr-1" />
+                        {combined.length} adjustment{combined.length === 1 ? '' : 's'}
+                      </span>
+                    );
+                  })()}
                   {stockData.crossSourceDivergence && stockData.crossSourceDivergence.fields.length > 0 && (() => {
                     const div = stockData.crossSourceDivergence;
                     const aLabel = SOURCE_DISPLAY_NAMES[div.sourceA] ?? div.sourceA;

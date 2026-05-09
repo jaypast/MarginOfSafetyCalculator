@@ -423,7 +423,7 @@ export const evaluateInvestmentAffordability = (stockData: StockData): ModifierC
   if (a > e) {
     return {
       label: 'Investment unaffordability',
-      detail: `Asset growth (${a.toFixed(1)}%) outpaces EBITDA growth (${e.toFixed(1)}%) — capital is being deployed faster than earnings can support.`,
+      detail: `Asset growth (${a.toFixed(1)}%) outpaces EBITDA growth (${e.toFixed(1)}%) — capital is being deployed faster than earnings can support (Yartseva 2025: 4–11pp drag on next-year return).`,
     };
   }
   return null;
@@ -458,6 +458,29 @@ export const evaluate52WeekRange = (
     };
   }
   return { chip: null, rangePct };
+};
+
+// Aggregates which Yartseva (2025) multibagger signals fired so the
+// applied-adjustments panel on the search card can record them
+// alongside the server-side derivation notes. One human-readable
+// string per fired signal; empty list when nothing fires.
+export const getMultibaggerSignalNotes = (stockData: StockData): string[] => {
+  const notes: string[] = [];
+  const cq = evaluateCashQuality(stockData);
+  if (cq.status === 'negative' && cq.fcfYieldPct !== null) {
+    notes.push(
+      `Cash-quality gate fired: FCF yield ${cq.fcfYieldPct.toFixed(1)}% ≤ 0 — blocks Buy (Yartseva 2025).`,
+    );
+  } else if (cq.status === 'strong' && cq.fcfYieldPct !== null) {
+    notes.push(
+      `Cash-quality gate: FCF yield ${cq.fcfYieldPct.toFixed(1)}% > 5% — eligible for Watch→Buy promotion (Yartseva 2025).`,
+    );
+  }
+  const aff = evaluateInvestmentAffordability(stockData);
+  if (aff) notes.push(`Modifier chip fired: ${aff.label} — ${aff.detail}`);
+  const range = evaluate52WeekRange(stockData);
+  if (range.chip) notes.push(`Modifier chip fired: ${range.chip.label} — ${range.chip.detail}`);
+  return notes;
 };
 
 export const decideVerdict = (
