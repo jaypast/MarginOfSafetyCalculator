@@ -159,6 +159,31 @@ export const stockResponseSchema = z.object({
 
 export type StockResponse = z.infer<typeof stockResponseSchema>;
 
+// Fed rate environment (Task #31). A small macro-context badge driven
+// by the FRED FEDFUNDS series. Append-only block to keep merges with
+// other parallel tasks mechanical.
+//   - environment: classification of the trailing 12-month change in
+//     the Fed funds target rate. ≥ +50bp YoY = 'rising', ≤ −50bp YoY
+//     = 'falling', otherwise 'stable'.
+//   - currentRate / yearAgoRate: the underlying numbers (percent).
+//   - deltaBp: 100 × (current - yearAgo), rounded to integer bps.
+//   - asOf: ISO date of the latest observation used.
+//   - source: which upstream produced the data ('fred' today; 'cache'
+//     when serving an in-memory copy; 'unavailable' when the fetch
+//     failed and no cache is available).
+export const FED_RATE_ENVIRONMENTS = ['rising', 'stable', 'falling'] as const;
+export type FedRateEnvironment = (typeof FED_RATE_ENVIRONMENTS)[number];
+
+export const fedRateResponseSchema = z.object({
+  environment: z.enum(FED_RATE_ENVIRONMENTS),
+  currentRate: z.number(),
+  yearAgoRate: z.number(),
+  deltaBp: z.number(),
+  asOf: z.string(),
+  source: z.enum(['fred', 'cache', 'unavailable']),
+});
+export type FedRateResponse = z.infer<typeof fedRateResponseSchema>;
+
 // Sean Ellis Product-Market Fit feedback schema
 export const feedback = pgTable("feedback", {
   id: serial("id").primaryKey(),

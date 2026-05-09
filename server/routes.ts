@@ -9,6 +9,7 @@ import {
   type WatchlistEntryResponse,
 } from "@shared/schema";
 import { getStockData, acquireYfinanceSlot, releaseYfinanceSlot } from "./services/stockData";
+import { getFedRateEnvironment } from "./services/fedRate";
 import { getMarketSentiment, getMostActiveStocks, RealTimeSentiment } from "./services/marketSentiment";
 import { getHistoricalData } from "./services/yahooFinance";
 import { getRapidApiHistoricalData } from "./services/rapidApiFinance";
@@ -498,6 +499,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({
         message: error instanceof Error ? error.message : "Failed to remove watchlist entry",
       });
+    }
+  });
+
+  // Macro: Fed rate environment (Task #31) ---------------------------------
+  // Informational badge data. Always returns 200 — when the upstream is
+  // unavailable we respond with `{ environment: null }` so the client can
+  // hide the chip gracefully without an error toast.
+  app.get("/api/macro/fed-rate", async (_req, res) => {
+    try {
+      const payload = await getFedRateEnvironment();
+      if (!payload) return res.json({ environment: null });
+      return res.json(payload);
+    } catch (error) {
+      console.warn(
+        "Fed rate environment fetch failed:",
+        error instanceof Error ? error.message : error,
+      );
+      return res.json({ environment: null });
     }
   });
 

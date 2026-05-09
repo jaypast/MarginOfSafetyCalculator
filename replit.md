@@ -52,6 +52,32 @@ response (yfinance populates them from `ticker.info` + balance-sheet
 Modifier chips only ever downgrade a base BUY to WATCH; they never
 force a Pass and never escalate an existing WATCH/PASS.
 
+## Fed rate environment badge (Task #31)
+A small macro-context chip in the calculator header surfaces the
+trailing-12-month change in the Fed funds rate, classified as Rising
+(≥ +50bp YoY), Stable, or Falling (≤ −50bp YoY). Driven by the public
+FRED `FEDFUNDS` CSV endpoint — no API key — with a 24h server-side
+in-memory cache. Failures are silent: the badge hides gracefully.
+
+When the environment is Rising **and** the stock is growth-tilted
+(low FCF yield < 2%, P/E ≥ 30, or near-52w-high), the Value-Investor
+Verdict appends a single italic caution line about long-duration cash
+flows getting discounted harder. Strictly informational — never gates
+the Buy / Watch / Pass verdict.
+
+- Server: `server/services/fedRate.ts` (fetch + cache + classifier).
+- Route: `GET /api/macro/fed-rate` returns `{ environment, currentRate,
+  yearAgoRate, deltaBp, asOf, source }` or `{ environment: null }` on
+  failure.
+- Client: `client/src/components/FedRateBadge.tsx` renders the chip;
+  `MarginOfSafetyCalculator.tsx` shares one query with the verdict
+  caution helpers (`isGrowthTilted`, `shouldShowFedRateCaution`)
+  exported from `ValueInvestorVerdict.tsx`.
+- Tests: `tests/fedRate.test.ts` covers the ±50bp classifier
+  boundaries, FRED CSV parsing (including `.` sentinels), the
+  pick-current-and-year-ago lookup, and every caution-trigger
+  combination.
+
 ## Valuation hardening (Task #9 / #15)
 Recent fixes:
 - Removed hard-coded `5year=18.6 / 10year=16.2 / industry=22.5` P/E branches in Task #9. Task #15 restored the three modes — backed by per-ticker `peHistory` (TTM-P/E medians from yfinance) and a published `INDUSTRY_PE_BASELINES` table — never the magic constants. Each mode falls back to current P/E with an explicit note when its data source is missing.

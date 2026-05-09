@@ -18,6 +18,7 @@ import {
   ReverseDCFResult,
   CompanyQualityResult,
   MarginOfSafetyParams,
+  FedRateResponse,
 } from '@/lib/types';
 import { isETF, getRecommendedMarginOfSafety } from '@/lib/utils';
 
@@ -27,6 +28,10 @@ interface ValueInvestorVerdictProps {
   reverseDCFResult: ReverseDCFResult | null;
   companyQuality: CompanyQualityResult | null;
   marginOfSafetyParams: MarginOfSafetyParams;
+  // Optional macro-context (Task #31). When env=Rising and the stock is
+  // growth-tilted, we surface a single informational caution. Never gates
+  // Buy/Watch/Pass — purely a sentence-long heads-up.
+  fedRateEnvironment?: FedRateResponse | null;
 }
 
 export type VerdictAction = 'BUY' | 'WATCH' | 'PASS' | 'OUTSIDE_CIRCLE';
@@ -460,6 +465,36 @@ export const evaluate52WeekRange = (
   return { chip: null, rangePct };
 };
 
+// Fed-rate caution (Task #31). When the rate environment is Rising and
+// the stock is growth-tilted (low FCF yield, high P/E, or trading near
+// its 52-week high), surface an informational caution sentence. Pure
+// helper — exported for tests and never modifies the verdict.
+export const isGrowthTilted = (stockData: StockData): boolean => {
+  const fcfYield = stockData.multibaggerSignals?.fcfYield;
+  const fallbackYield =
+    stockData.price > 0 && Number.isFinite(stockData.fcfPerShare)
+      ? (stockData.fcfPerShare / stockData.price) * 100
+      : null;
+  const yieldPct =
+    fcfYield != null && Number.isFinite(fcfYield) ? fcfYield : fallbackYield;
+  if (yieldPct !== null && yieldPct < 2) return true;
+
+  if (Number.isFinite(stockData.peRatio) && stockData.peRatio >= 30) return true;
+
+  const range = evaluate52WeekRange(stockData);
+  if (range.chip !== null) return true;
+
+  return false;
+};
+
+export const shouldShowFedRateCaution = (
+  stockData: StockData,
+  fedRate: FedRateResponse | null | undefined,
+): boolean => {
+  if (!fedRate || fedRate.environment !== 'rising') return false;
+  return isGrowthTilted(stockData);
+};
+
 // Aggregates which Yartseva (2025) multibagger signals fired so the
 // applied-adjustments panel on the search card can record them
 // alongside the server-side derivation notes. One human-readable
@@ -723,6 +758,7 @@ const ValueInvestorVerdict: React.FC<ValueInvestorVerdictProps> = ({
   reverseDCFResult,
   companyQuality,
   marginOfSafetyParams,
+  fedRateEnvironment,
 }) => {
   // ETFs: don't apply single-business framework.
   if (isETF(stockData)) {
@@ -999,6 +1035,29 @@ const ValueInvestorVerdict: React.FC<ValueInvestorVerdictProps> = ({
                 </span>
               </span>
             ))}
+          </div>
+        )}
+
+        {/* Fed rate caution (Task #31). Informational only — surfaces when
+            the macro environment is Rising and the stock is growth-tilted
+            (low FCF yield, high P/E, or near-52w-high). Never gates the
+            Buy/Watch/Pass verdict above. */}
+        {shouldShowFedRateCaution(stockData, fedRateEnvironment) && (
+          <div
+            className="mt-4 flex items-start bg-rose-50 border border-rose-100 rounded-md p-3"
+            data-testid="verdict-fed-rate-caution"
+          >
+            <AlertTriangle className="w-4 h-4 text-rose-600 mr-2 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-rose-800 italic">
+              <span className="font-semibold not-italic">Macro context:</span>{' '}
+              Fed funds rate is rising
+              {fedRateEnvironment
+                ? ` (${fedRateEnvironment.deltaBp > 0 ? '+' : ''}${fedRateEnvironment.deltaBp}bp YoY)`
+                : ''}{' '}
+              and this stock is growth-tilted — long-duration cash flows get
+              discounted harder when rates climb. Informational only; the
+              verdict above is unchanged.
+            </p>
           </div>
         )}
 

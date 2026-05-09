@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import StockInformation from './StockInformation';
+import FedRateBadge from './FedRateBadge';
 import KeyMetrics from './KeyMetrics';
 import ValuationMethod from './ValuationMethod';
 import MarginOfSafetyParams from './MarginOfSafetyParams';
@@ -10,6 +11,8 @@ import EducationalResources from './EducationalResources';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useStockData } from '@/hooks/useStockData';
+import { useQuery } from '@tanstack/react-query';
+import type { FedRateResponse } from '@/lib/types';
 import { 
   StockData, 
   ValuationParams, 
@@ -31,9 +34,25 @@ import {
 } from '@/lib/calculators';
 import { getCompanyQuality, getRecommendedMarginOfSafety, getDefaultMarginOfSafety } from '@/lib/utils';
 
+type FedRateWireResponse = FedRateResponse | { environment: null };
+
 const MarginOfSafetyCalculator: React.FC = () => {
   // Stock data state from API
   const { stockData, isLoading, isError, error, fetchStockData } = useStockData();
+
+  // Macro context (Task #31). Cached at the calculator level so both the
+  // header badge and the Value-Investor Verdict caution share a single
+  // request. Failures are silent — the badge and caution both hide.
+  const { data: fedRateData } = useQuery<FedRateWireResponse>({
+    queryKey: ['/api/macro/fed-rate'],
+    staleTime: 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+  const fedRateEnvironment: FedRateResponse | null =
+    fedRateData && fedRateData.environment != null
+      ? (fedRateData as FedRateResponse)
+      : null;
 
   // Calculation method state
   const [activeMethod, setActiveMethod] = useState<CalculationMethod>('dcf');
@@ -182,7 +201,8 @@ const MarginOfSafetyCalculator: React.FC = () => {
             <h1 className="text-3xl md:text-4xl font-bold text-[#1A2942] mb-2">Margin of Safety Calculator</h1>
             <p className="text-neutral-600">Calculate intrinsic value and determine buy-below thresholds following Benjamin Graham's principles</p>
           </div>
-          <div className="mt-4 md:mt-0">
+          <div className="mt-4 md:mt-0 flex flex-col md:items-end gap-2">
+            <FedRateBadge />
             <a href="#educational-resources" className="text-[#2A3E5C] hover:text-[#1A2942] text-sm flex items-center">
               <i className="ri-information-line mr-1"></i>
               Learn more about Margin of Safety
@@ -237,6 +257,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
             reverseDCFResult={reverseDCFResult}
             companyQuality={companyQuality}
             marginOfSafetyParams={marginOfSafetyParams}
+            fedRateEnvironment={fedRateEnvironment}
           />
         )}
         

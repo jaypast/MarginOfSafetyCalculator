@@ -143,6 +143,20 @@ export interface ReverseDCFResult {
   appliedAdjustments: string[];       // Same provenance pattern as the other valuations
 }
 
+// Fed rate environment (Task #31) — what /api/macro/fed-rate returns when
+// the upstream succeeded. The endpoint also returns `{ environment: null }`
+// when the FRED fetch failed and no cache is available; the client treats
+// that case as "hide the badge".
+export type FedRateEnvironment = 'rising' | 'stable' | 'falling';
+export interface FedRateResponse {
+  environment: FedRateEnvironment;
+  currentRate: number;
+  yearAgoRate: number;
+  deltaBp: number;
+  asOf: string;
+  source: 'fred' | 'cache' | 'unavailable';
+}
+
 // Watchlist entry — what the /api/watchlist endpoint returns. `marginOfSafety`
 // is the whole-number percent the user picked when they added the ticker.
 export interface WatchlistEntry {
