@@ -11,8 +11,11 @@
 
 import type { FedRateEnvironment, FedRateResponse } from "@shared/schema";
 
+// DFEDTARU = Federal Funds Target Range — Upper Limit (daily). Matches the
+// task's "Fed funds target rate" language better than FEDFUNDS (which is the
+// realised effective rate). Falls back through the same cache + classifier.
 const FRED_CSV_URL =
-  "https://fred.stlouisfed.org/graph/fredgraph.csv?id=FEDFUNDS";
+  "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DFEDTARU";
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const FETCH_TIMEOUT_MS = 8_000;

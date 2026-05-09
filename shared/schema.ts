@@ -180,7 +180,12 @@ export const fedRateResponseSchema = z.object({
   yearAgoRate: z.number(),
   deltaBp: z.number(),
   asOf: z.string(),
-  source: z.enum(['fred', 'cache', 'unavailable']),
+  // 'fred' = served from a fresh upstream fetch; 'cache' = served from the
+  // 24h in-memory cache (or a stale fallback after an upstream failure).
+  // The route returns `{ environment: null }` instead of an "unavailable"
+  // payload when the data is missing entirely, so the client can hide the
+  // badge with a single null check.
+  source: z.enum(['fred', 'cache']),
 });
 export type FedRateResponse = z.infer<typeof fedRateResponseSchema>;
 

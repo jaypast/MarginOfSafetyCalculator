@@ -154,7 +154,7 @@ export interface FedRateResponse {
   yearAgoRate: number;
   deltaBp: number;
   asOf: string;
-  source: 'fred' | 'cache' | 'unavailable';
+  source: 'fred' | 'cache';
 }
 
 // Watchlist entry — what the /api/watchlist endpoint returns. `marginOfSafety`
