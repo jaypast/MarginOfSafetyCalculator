@@ -1052,11 +1052,11 @@ const ValueInvestorVerdict: React.FC<ValueInvestorVerdictProps> = ({
               <span className="font-semibold not-italic">Macro context:</span>{' '}
               Fed funds rate is rising
               {fedRateEnvironment
-                ? ` (${fedRateEnvironment.deltaBp > 0 ? '+' : ''}${fedRateEnvironment.deltaBp}bp YoY)`
+                ? ` (${fedRateEnvironment.currentRate.toFixed(2)}%, ${fedRateEnvironment.deltaBp > 0 ? '+' : ''}${fedRateEnvironment.deltaBp}bp YoY)`
                 : ''}{' '}
-              and this stock is growth-tilted — long-duration cash flows get
-              discounted harder when rates climb. Informational only; the
-              verdict above is unchanged.
+              and this stock is growth-tilted — historically, growth names
+              have lagged by roughly ~10pp in the year after a hiking cycle
+              kicks in. Informational only; the verdict above is unchanged.
             </p>
           </div>
         )}

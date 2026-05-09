@@ -52,7 +52,7 @@ const FedRateBadge: React.FC = () => {
       title={`Fed funds rate ${fed.currentRate.toFixed(2)}% (vs. ${fed.yearAgoRate.toFixed(2)}% a year ago, Δ ${sign}${fed.deltaBp}bp). As of ${fed.asOf}. Source: FRED.`}
     >
       <Icon className="w-3 h-3 mr-1" />
-      {style.label} ({sign}
+      {style.label}: {fed.currentRate.toFixed(2)}% ({sign}
       {fed.deltaBp}bp YoY)
     </span>
   );
