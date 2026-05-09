@@ -5,6 +5,7 @@ import {
   FACTOR_WEIGHTS,
   type SubScoreKey,
 } from '../client/src/lib/multibaggerScreener';
+import { sortEntriesByScore } from '../client/src/pages/Watchlist';
 import type { StockData } from '../client/src/lib/types';
 
 // Compose a "complete data" stock — every multibagger signal populated, ROE
@@ -274,6 +275,59 @@ describe('multibaggerScreener — bulk scoring & sort (watchlist path)', () => {
         return b.composite - a.composite;
       });
   }
+
+  // Watchlist parent uses sortEntriesByScore + a closure over useQueries
+  // results. Simulates the async-resolution case the reviewer flagged: we
+  // re-run the sort each time another row's stock data resolves and assert
+  // that the order updates accordingly.
+  it('sortEntriesByScore reorders reactively as per-row data resolves', () => {
+    const entries = [
+      { symbol: 'AAA' },
+      { symbol: 'BBB' },
+      { symbol: 'CCC' },
+    ];
+    const fetched: Record<string, StockData | undefined> = {
+      AAA: undefined,
+      BBB: undefined,
+      CCC: undefined,
+    };
+    // Closure mirrors the parent's `scoreFor` — it reads from a live
+    // mutable map (the useQueries result list in the real component).
+    const scoreFor = (symbol: string): number | null => {
+      const stock = fetched[symbol];
+      if (!stock) return null;
+      return scoreTicker(stock).composite;
+    };
+
+    // First render — nothing fetched yet, all sort to the tail in stable order.
+    expect(sortEntriesByScore(entries, scoreFor).map((e) => e.symbol))
+      .toEqual(['AAA', 'BBB', 'CCC']);
+
+    // BBB resolves first with a strong score.
+    fetched.BBB = makeStock({
+      symbol: 'BBB',
+      roe: 25,
+      multibaggerSignals: { ...makeStock().multibaggerSignals!, fcfYield: 9 },
+    });
+    expect(sortEntriesByScore(entries, scoreFor).map((e) => e.symbol))
+      .toEqual(['BBB', 'AAA', 'CCC']);
+
+    // CCC resolves with a weak score; AAA still pending.
+    fetched.CCC = makeStock({
+      symbol: 'CCC',
+      roe: 2,
+      multibaggerSignals: { ...makeStock().multibaggerSignals!, fcfYield: 0.5 },
+    });
+    const afterCCC = sortEntriesByScore(entries, scoreFor).map((e) => e.symbol);
+    expect(afterCCC[0]).toBe('BBB');           // still strongest
+    expect(afterCCC[afterCCC.length - 1]).toBe('AAA'); // null sorts last
+
+    // AAA finally resolves with a mid-range score — final order should be
+    // BBB > AAA > CCC by composite descending.
+    fetched.AAA = makeStock({ symbol: 'AAA' });
+    expect(sortEntriesByScore(entries, scoreFor).map((e) => e.symbol))
+      .toEqual(['BBB', 'AAA', 'CCC']);
+  });
 
   it('scores every entry without mutating the inputs', () => {
     const a = makeStock({ symbol: 'A', multibaggerSignals: { ...makeStock().multibaggerSignals!, fcfYield: 9 } });

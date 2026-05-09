@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'wouter';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
 import {
@@ -79,6 +79,8 @@ const ZONE_STYLES: Record<BuyZone, { row: string; pill: string; label: string }>
 
 interface WatchlistRowProps {
   entry: WatchlistEntry;
+  stock: StockData | undefined;
+  isLoading: boolean;
   onRemove: (id: number) => void;
   isRemoving: boolean;
 }
@@ -91,19 +93,7 @@ const SCORE_TONE: Record<'positive' | 'neutral' | 'negative' | 'muted', string> 
   muted: 'bg-neutral-100 text-neutral-600 border-neutral-300',
 };
 
-const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, onRemove, isRemoving }) => {
-  const stockQuery = useQuery<StockData>({
-    queryKey: ['/api/stock', entry.symbol],
-    queryFn: async () => {
-      const res = await apiRequest('GET', `/api/stock/${entry.symbol}`, undefined);
-      return res.json();
-    },
-    staleTime: 2 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
-    retry: 1,
-  });
-
-  const stock = stockQuery.data;
+const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, isLoading, onRemove, isRemoving }) => {
   const stockOk = !!stock && !stock.error;
   const buyBelow = stockOk ? computeAverageBuyBelow(stock, entry.marginOfSafety) : null;
   const zone: BuyZone = stockOk && buyBelow !== null
@@ -137,19 +127,19 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, onRemove, isRemoving
         </div>
       </TableCell>
       <TableCell className="text-sm text-neutral-700">
-        {stockQuery.isLoading ? (
+        {isLoading ? (
           <span className="text-neutral-400">…</span>
         ) : stockOk ? (
-          <span className="block truncate max-w-[220px]" title={stock.name}>{stock.name}</span>
+          <span className="block truncate max-w-[220px]" title={stock!.name}>{stock!.name}</span>
         ) : (
           <span className="text-neutral-400">—</span>
         )}
       </TableCell>
       <TableCell className="text-right tabular-nums">
-        {stockQuery.isLoading ? (
+        {isLoading ? (
           <span className="text-neutral-400">…</span>
         ) : stockOk ? (
-          formatCurrency(stock.price)
+          formatCurrency(stock!.price)
         ) : (
           <span className="text-red-600 text-xs" title={stock?.errorMessage}>error</span>
         )}
@@ -202,14 +192,21 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, onRemove, isRemoving
   );
 };
 
-// Look up cached stock data and compute the multibagger composite for a single
-// entry. Returns `null` when the row hasn't been fetched yet, or when the
-// scorer can't compute a composite. Pulled out of the component so the parent
-// can sort using the same helper its child rows render with.
-function lookupComposite(symbol: string): number | null {
-  const stock = queryClient.getQueryData<StockData>(['/api/stock', symbol]);
-  if (!stock || stock.error) return null;
-  return scoreTicker(stock).composite;
+// Sort entries by composite score (descending), with null/missing scores
+// pushed to the tail. Pure function so the watchlist sort path is trivially
+// testable without rendering React.
+export function sortEntriesByScore<T extends { symbol: string }>(
+  entries: readonly T[],
+  scoreFor: (symbol: string) => number | null,
+): T[] {
+  return [...entries].sort((a, b) => {
+    const sa = scoreFor(a.symbol);
+    const sb = scoreFor(b.symbol);
+    if (sa === null && sb === null) return 0;
+    if (sa === null) return 1;
+    if (sb === null) return -1;
+    return sb - sa;
+  });
 }
 
 const Watchlist: React.FC = () => {
@@ -217,22 +214,53 @@ const Watchlist: React.FC = () => {
   const watchlistQuery = useQuery<WatchlistEntry[]>({ queryKey: ['/api/watchlist'] });
   const rawEntries = watchlistQuery.data ?? [];
 
-  // Sort toggle (Task #33). Default order is server-provided (insertion); the
+  // Drive every per-symbol fetch from the parent so the parent re-renders
+  // (and re-sorts) as scores resolve. Children receive the data + loading
+  // flag as props instead of running their own useQuery — a single source
+  // of truth keeps the "Sort by score" toggle reactive.
+  const stockResults = useQueries({
+    queries: rawEntries.map((entry) => ({
+      queryKey: ['/api/stock', entry.symbol] as const,
+      queryFn: async (): Promise<StockData> => {
+        const res = await apiRequest('GET', `/api/stock/${entry.symbol}`, undefined);
+        return res.json();
+      },
+      staleTime: 2 * 60 * 1000,
+      gcTime: 15 * 60 * 1000,
+      retry: 1,
+    })),
+  });
+
+  // Symbol → { stock, isLoading } lookup, recomputed every render so it
+  // stays in sync with whatever useQueries last returned.
+  const stockBySymbol = useMemo(() => {
+    const map = new Map<string, { stock: StockData | undefined; isLoading: boolean }>();
+    rawEntries.forEach((entry, i) => {
+      const r = stockResults[i];
+      map.set(entry.symbol, { stock: r?.data, isLoading: !!r?.isLoading });
+    });
+    return map;
+  }, [rawEntries, stockResults]);
+
+  // Composite-score lookup used by the sort path. Reads from the live
+  // useQueries results above, NOT the React Query cache directly, so the
+  // parent re-renders and re-sorts as new rows resolve.
+  const scoreFor = (symbol: string): number | null => {
+    const entry = stockBySymbol.get(symbol);
+    if (!entry || !entry.stock || entry.stock.error) return null;
+    return scoreTicker(entry.stock).composite;
+  };
+
+  // Sort toggle (Task #33). Default order is server-provided (insertion);
   // user can flip into "by multibagger composite, descending" with one click.
-  // Entries whose score hasn't computed yet sort last so the user sees the
-  // ranked head of the list immediately and the unfetched tail can fill in
-  // as the per-row queries resolve.
+  // Sorting is reactive: as more per-row queries resolve, the parent
+  // re-renders and sortEntriesByScore picks up the freshly computed scores.
   const [sortByScore, setSortByScore] = useState(false);
-  const entries = sortByScore
-    ? [...rawEntries].sort((a, b) => {
-        const sa = lookupComposite(a.symbol);
-        const sb = lookupComposite(b.symbol);
-        if (sa === null && sb === null) return 0;
-        if (sa === null) return 1;
-        if (sb === null) return -1;
-        return sb - sa;
-      })
-    : rawEntries;
+  const entries = sortByScore ? sortEntriesByScore(rawEntries, scoreFor) : rawEntries;
+
+  // Loading hint while at least one row is still resolving and the user has
+  // asked to sort by score — makes the deferred ranking visible.
+  const scoringPending = sortByScore && stockResults.some((r) => r.isLoading);
 
   const removeMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -262,7 +290,7 @@ const Watchlist: React.FC = () => {
   // Counts for the header summary — gives users a glanceable sense of where
   // their list stands ("3 in buy zone, 2 near, 5 above").
   const cachedZones = entries.map((entry) => {
-    const stock = queryClient.getQueryData<StockData>(['/api/stock', entry.symbol]);
+    const stock = stockBySymbol.get(entry.symbol)?.stock;
     if (!stock || stock.error) return 'neutral' as BuyZone;
     const bb = computeAverageBuyBelow(stock, entry.marginOfSafety);
     if (bb === null) return 'neutral' as BuyZone;
@@ -321,6 +349,14 @@ const Watchlist: React.FC = () => {
             <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-neutral-200 bg-neutral-50 text-neutral-700">
               {entries.length} total
             </span>
+            {scoringPending && (
+              <span
+                data-testid="scoring-pending"
+                className="inline-flex items-center px-2 py-0.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700"
+              >
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" /> Scoring watchlist…
+              </span>
+            )}
           </div>
         )}
 
@@ -372,14 +408,19 @@ const Watchlist: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {entries.map((entry) => (
-                  <WatchlistRow
-                    key={entry.id}
-                    entry={entry}
-                    onRemove={(id) => removeMutation.mutate(id)}
-                    isRemoving={removeMutation.isPending && removeMutation.variables === entry.id}
-                  />
-                ))}
+                {entries.map((entry) => {
+                  const r = stockBySymbol.get(entry.symbol);
+                  return (
+                    <WatchlistRow
+                      key={entry.id}
+                      entry={entry}
+                      stock={r?.stock}
+                      isLoading={!!r?.isLoading}
+                      onRemove={(id) => removeMutation.mutate(id)}
+                      isRemoving={removeMutation.isPending && removeMutation.variables === entry.id}
+                    />
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
