@@ -63,6 +63,47 @@ export async function getAlphaVantageData(symbol: string): Promise<StockResponse
     price = high && low ? (high + low) / 2 : 0;
   }
 
+  // Fetch INCOME_STATEMENT for ebitdaGrowth — non-critical, gracefully null on failure.
+  // AV annualReports[0] = most recent year, [1] = prior year.
+  let ebitdaGrowth: number | null = null;
+  try {
+    const incomeStmt = await rateLimitedGet({
+      function: 'INCOME_STATEMENT',
+      symbol,
+      apikey: ALPHA_VANTAGE_KEY,
+    });
+    const reports: Array<Record<string, string>> = incomeStmt?.annualReports ?? [];
+    if (reports.length >= 2) {
+      const curr = parseFloat(reports[0].ebitda ?? '0');
+      const prev = parseFloat(reports[1].ebitda ?? '0');
+      if (curr !== 0 && prev !== 0 && Number.isFinite(curr) && Number.isFinite(prev)) {
+        ebitdaGrowth = parseFloat(((curr - prev) / Math.abs(prev) * 100).toFixed(2));
+      }
+    }
+  } catch {
+    // Non-critical: screener will omit this factor
+  }
+
+  // Fetch BALANCE_SHEET for assetGrowth — non-critical, gracefully null on failure.
+  let assetGrowth: number | null = null;
+  try {
+    const balanceSheet = await rateLimitedGet({
+      function: 'BALANCE_SHEET',
+      symbol,
+      apikey: ALPHA_VANTAGE_KEY,
+    });
+    const reports: Array<Record<string, string>> = balanceSheet?.annualReports ?? [];
+    if (reports.length >= 2) {
+      const curr = parseFloat(reports[0].totalAssets ?? '0');
+      const prev = parseFloat(reports[1].totalAssets ?? '0');
+      if (curr !== 0 && prev !== 0 && Number.isFinite(curr) && Number.isFinite(prev)) {
+        assetGrowth = parseFloat(((curr - prev) / Math.abs(prev) * 100).toFixed(2));
+      }
+    }
+  } catch {
+    // Non-critical: screener will omit this factor
+  }
+
   const eps = parseFloat(overview.EPS ?? '0') || 0;
   const peRatio = parseFloat(overview.PERatio ?? '0') || 0;
   const sharesOutstanding = parseFloat(overview.SharesOutstanding ?? '0') || 0;
@@ -158,14 +199,15 @@ export async function getAlphaVantageData(symbol: string): Promise<StockResponse
     // history to compute trailing-twelve-month medians reliably.
     // Emit explicit null so the API contract stays uniform (Task #15).
     peHistory: null,
-    // AV OVERVIEW exposes 52WeekHigh/Low; wire them into the partial
-    // multibaggerSignals block so the screener's range sub-score works
-    // even when yfinance is rate-limited. FCF / balance-sheet fields
-    // are not reliably available from the free tier (Task #30 / #38).
+    // multibaggerSignals: populated from four AV endpoints.
+    // - week52High/Low: from OVERVIEW (always present)
+    // - ebitdaGrowth: from INCOME_STATEMENT annual reports (YoY EBITDA %)
+    // - assetGrowth: from BALANCE_SHEET annual reports (YoY Total Assets %)
+    // - fcfYield: not directly available from AV free-tier; remains null
     multibaggerSignals: {
       fcfYield: null,
-      assetGrowth: null,
-      ebitdaGrowth: null,
+      assetGrowth,
+      ebitdaGrowth,
       week52High,
       week52Low,
     },

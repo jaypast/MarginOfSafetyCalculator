@@ -288,25 +288,83 @@ def _compute_multibagger_signals(ticker, info, currency, rate):
         except Exception:
             return None
 
+    import sys as _sys
+
     try:
         bs = ticker.balance_sheet
+        # Newer yfinance sometimes returns an empty annual sheet but has
+        # quarterly data; try it as a fallback.
+        if bs is None or bs.empty:
+            try:
+                bs = ticker.quarterly_balance_sheet
+            except Exception:
+                bs = None
         if bs is not None and not bs.empty:
-            for label in ('Total Assets', 'TotalAssets'):
+            for label in ('Total Assets', 'TotalAssets', 'totalAssets'):
                 if label in bs.index:
                     out["assetGrowth"] = _yoy_pct(bs.loc[label])
                     break
-    except Exception:
-        pass
+            if out["assetGrowth"] is None:
+                print(
+                    f"[multibagger] balance_sheet fetched but 'Total Assets' not found. "
+                    f"Available labels: {list(bs.index[:10])}",
+                    file=_sys.stderr,
+                )
+        else:
+            print("[multibagger] balance_sheet empty or unavailable", file=_sys.stderr)
+    except Exception as _e:
+        print(f"[multibagger] balance_sheet error: {_e}", file=_sys.stderr)
 
     try:
-        fin = ticker.financials
+        # `income_stmt` is the canonical name in yfinance >= 0.2; fall back
+        # to `financials` for older installations.
+        fin = None
+        try:
+            fin = ticker.income_stmt
+        except AttributeError:
+            pass
+        if fin is None or fin.empty:
+            fin = ticker.financials
+        # If still empty, try the quarterly sheet which is fetched separately.
+        if fin is None or fin.empty:
+            try:
+                fin = ticker.quarterly_income_stmt
+            except AttributeError:
+                pass
+        if fin is None or fin.empty:
+            try:
+                fin = ticker.quarterly_financials
+            except AttributeError:
+                pass
+
         if fin is not None and not fin.empty:
-            for label in ('EBITDA', 'Normalized EBITDA', 'NormalizedEbitda'):
+            for label in ('EBITDA', 'Normalized EBITDA', 'NormalizedEbitda', 'Ebitda'):
                 if label in fin.index:
                     out["ebitdaGrowth"] = _yoy_pct(fin.loc[label])
                     break
-    except Exception:
-        pass
+            # EBITDA is often absent; fall back to Operating Income (EBIT)
+            # as a reasonable growth-trend proxy.
+            if out["ebitdaGrowth"] is None:
+                for label in (
+                    'Operating Income',
+                    'OperatingIncome',
+                    'EBIT',
+                    'Total Operating Income As Reported',
+                    'Operating Income Loss',
+                ):
+                    if label in fin.index:
+                        out["ebitdaGrowth"] = _yoy_pct(fin.loc[label])
+                        break
+            if out["ebitdaGrowth"] is None:
+                print(
+                    f"[multibagger] financials fetched but EBITDA/EBIT not found. "
+                    f"Available labels: {list(fin.index[:10])}",
+                    file=_sys.stderr,
+                )
+        else:
+            print("[multibagger] financials empty or unavailable", file=_sys.stderr)
+    except Exception as _e:
+        print(f"[multibagger] financials error: {_e}", file=_sys.stderr)
 
     return out
 
