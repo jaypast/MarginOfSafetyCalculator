@@ -176,6 +176,7 @@ describe('rapidApiFinance adapter', () => {
                 currentRatio: 1.05,
                 grossMargin: 0.4,
                 operatingMargin: 0.3,
+                marketCap: 2_748_967_000_000,
               },
             });
           }
@@ -197,6 +198,8 @@ describe('rapidApiFinance adapter', () => {
     expect(result.fcfPerShare).toBe(7.2);
     expect(result.competitivePosition).toBe('Strong');
     expect(result.earningsStability).toBe('High');
+    // Task #37: marketCap passes through when the upstream provides it.
+    expect(result.marketCap).toBe(2_748_967_000_000);
   });
 
   it('uses safe defaults when fields are missing', async () => {
@@ -219,6 +222,8 @@ describe('rapidApiFinance adapter', () => {
     expect(result.fcfPerShare).toBe(0);
     expect(result.earningsStability).toBe('Low');
     expect(result.competitivePosition).toBe('Average');
+    // Task #37: marketCap must be null (not undefined/NaN) when absent.
+    expect(result.marketCap).toBeNull();
   });
 
   it('throws when both API paths fail', async () => {
@@ -438,6 +443,39 @@ describe('webScraper adapter', () => {
     expect(Number.isFinite(result.eps)).toBe(true);
     expect(Number.isFinite(result.peRatio)).toBe(true);
     expect(Number.isFinite(result.fcfPerShare)).toBe(true);
+    // Task #37: with no Market Cap row in the HTML, must be null not undefined.
+    expect(result.marketCap).toBeNull();
+  });
+
+  it('parses marketCap from the key-statistics HTML (Task #37)', async () => {
+    // Simulate a stats page that has a "Market Cap" row with a value.
+    const statsHtml = `<html><body><table><tr><td>Market Cap</td><td>2.89T</td></tr></table></body></html>`;
+
+    vi.doMock('node-fetch', () => {
+      const mockFetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('query1.finance.yahoo.com')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({
+              chart: {
+                result: [{ meta: { regularMarketPrice: 170.25, shortName: 'Apple Inc.' } }],
+              },
+            }),
+          });
+        }
+        if (url.includes('key-statistics')) {
+          return Promise.resolve({ ok: true, text: () => Promise.resolve(statsHtml) });
+        }
+        return Promise.resolve({ ok: true, text: () => Promise.resolve('<html></html>') });
+      });
+      return { default: mockFetch };
+    });
+
+    const { scrapeStockData } = await import('../server/services/webScraper');
+    const result = await scrapeStockData('AAPL');
+    expect(stockResponseSchema.safeParse(result).success).toBe(true);
+    // 2.89T = 2.89 × 1e12
+    expect(result.marketCap).toBeCloseTo(2.89e12, -9);
   });
 
   it('throws when the simple-quote API itself fails', async () => {
