@@ -179,20 +179,30 @@ describe('multibaggerScreener — scoring math', () => {
   });
 
   describe('size (market cap proxy)', () => {
-    it('returns null when marketCap is not plumbed (current default)', () => {
+    it('returns null when marketCap is absent (adapter did not supply it)', () => {
       const sub = findScore(makeStock(), 'size');
       expect(sub.score).toBeNull();
       expect(sub.rationale).toMatch(/market cap unavailable/i);
     });
 
-    it('scores 100 for sub-$2B when marketCap is provided via the type bypass', () => {
-      const stock = { ...makeStock(), marketCap: 1.5e9 } as unknown as StockData;
+    it('scores 100 for sub-$2B market cap', () => {
+      const stock = makeStock({ marketCap: 1.5e9 });
       expect(findScore(stock, 'size').score).toBe(100);
     });
 
     it('penalises mega-caps (>$1T → 0)', () => {
-      const stock = { ...makeStock(), marketCap: 2e12 } as unknown as StockData;
+      const stock = makeStock({ marketCap: 2e12 });
       expect(findScore(stock, 'size').score).toBe(0);
+    });
+
+    it('returns null when marketCap is null', () => {
+      const stock = makeStock({ marketCap: null });
+      expect(findScore(stock, 'size').score).toBeNull();
+    });
+
+    it('scores mid-range for a $50B market cap', () => {
+      const stock = makeStock({ marketCap: 50e9 });
+      expect(findScore(stock, 'size').score).toBe(50);
     });
   });
 });

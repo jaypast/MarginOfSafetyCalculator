@@ -591,6 +591,16 @@ def get_stock_data(symbol):
         # calculator handles missing data with explicit fallback notes.
         pe_history = compute_pe_history(ticker)
 
+        # Market cap — convert to USD when the listing currency differs so
+        # the client-side Size scorer works consistently across markets.
+        market_cap_raw = info.get('marketCap')
+        market_cap = None
+        if market_cap_raw is not None:
+            try:
+                market_cap = float(market_cap_raw) * (rate if currency != 'USD' else 1.0)
+            except (TypeError, ValueError):
+                market_cap = None
+
         response = {
             "symbol": symbol.upper(),
             "name": name,
@@ -607,7 +617,8 @@ def get_stock_data(symbol):
             "competitivePosition": competitive_position,
             "lastUpdated": current_time,
             "peHistory": pe_history,
-            "multibaggerSignals": _compute_multibagger_signals(ticker, info, currency, rate)
+            "multibaggerSignals": _compute_multibagger_signals(ticker, info, currency, rate),
+            "marketCap": market_cap,
         }
         
         # Return as JSON string

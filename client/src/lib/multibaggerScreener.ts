@@ -52,10 +52,10 @@ const clamp = (v: number, lo = 0, hi = 100): number =>
 // ---------------------------------------------------------------------------
 
 // Size — TEV percentile proxy via market cap. Smaller is better (Yartseva sign
-// is negative). marketCap isn't currently plumbed through `StockData`, so this
-// returns `null` whenever it's missing; the composite renormalises.
+// is negative). marketCap is plumbed through StockData (Task #37); adapters
+// that don't expose it emit null, so the composite renormalises.
 function scoreSize(stock: StockData): SubScore {
-  const mc = (stock as unknown as { marketCap?: number | null }).marketCap;
+  const mc = stock.marketCap;
   if (mc == null || !Number.isFinite(mc) || mc <= 0) {
     return {
       key: 'size',

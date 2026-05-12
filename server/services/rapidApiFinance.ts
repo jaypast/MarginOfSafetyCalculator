@@ -138,6 +138,12 @@ async function getStockDataApiInfo(symbol: string): Promise<StockResponse> {
     console.warn(`Couldn't fetch company profile for ${symbol}, using limited data`);
   }
   
+  // Market cap — the Stock Data API exposes marketCap as a raw number.
+  const marketCap: number | null =
+    typeof data.marketCap === 'number' && data.marketCap > 0
+      ? data.marketCap
+      : null;
+
   // Combine and transform the data to match our StockResponse schema
   const stockData: StockResponse = {
     symbol: symbol,
@@ -167,7 +173,9 @@ async function getStockDataApiInfo(symbol: string): Promise<StockResponse> {
     // RapidAPI's Stock Data endpoint doesn't expose FCF / 52w bounds
     // / balance-sheet rollups consistently enough for the multibagger
     // gates — emit explicit null (Task #30).
-    multibaggerSignals: null
+    multibaggerSignals: null,
+    // Market cap from the Stock Data API price response (Task #37).
+    marketCap,
   };
   
   console.log(`Successfully received Stock Data API data for ${symbol}`);
@@ -201,6 +209,12 @@ async function getYahooFinanceApiInfo(symbol: string): Promise<StockResponse> {
   const financialData = quoteData.financialData || {};
   const defaultKeyStatistics = quoteData.defaultKeyStatistics || {};
   
+  // Market cap from the Yahoo Finance summary price block (Task #37).
+  const yahooMarketCap: number | null =
+    typeof price.marketCap?.raw === 'number' && price.marketCap.raw > 0
+      ? price.marketCap.raw
+      : null;
+
   // Combine and transform the data to match our StockResponse schema
   const stockData: StockResponse = {
     symbol: symbol,
@@ -230,7 +244,9 @@ async function getYahooFinanceApiInfo(symbol: string): Promise<StockResponse> {
     peHistory: null,
     // Yahoo's RapidAPI quote endpoint doesn't return balance-sheet
     // history; emit explicit null for the multibagger gates (Task #30).
-    multibaggerSignals: null
+    multibaggerSignals: null,
+    // Market cap from Yahoo Finance price block (Task #37).
+    marketCap: yahooMarketCap,
   };
   
   console.log(`Successfully received Yahoo Finance API data for ${symbol}`);

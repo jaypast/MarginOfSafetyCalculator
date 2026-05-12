@@ -140,6 +140,16 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
     const earningsStability = evaluateEarningsStability(metricsMap);
     const competitivePosition = evaluateCompetitivePosition(roe, currentRatio, metricsMap);
     
+    // Market cap — parse from the key-statistics page when available
+    // (Task #37). The stats page renders it as e.g. "2.89T", "234.5B".
+    const marketCapRaw = metricsMap['Market Cap'] || '';
+    const marketCap: number | null = marketCapRaw
+      ? (() => {
+          const v = parseNumber(marketCapRaw);
+          return v > 0 ? v : null;
+        })()
+      : null;
+
     // Use the data from the simpler API which is more likely to work
     const stockData: StockResponse = {
       symbol,
@@ -162,7 +172,9 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
       peHistory: null,
       // Web-scrape adapter has no balance-sheet / FCF visibility;
       // emit explicit null for the multibagger gates (Task #30).
-      multibaggerSignals: null
+      multibaggerSignals: null,
+      // Market cap scraped from the key-statistics page (Task #37).
+      marketCap,
     };
     
     // Fill in reasonable defaults for missing values

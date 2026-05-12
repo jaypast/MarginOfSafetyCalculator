@@ -125,6 +125,14 @@ export async function getAlphaVantageData(symbol: string): Promise<StockResponse
   else if (roe > 12 && operatingMargin > 0.08) competitivePosition = 'Good';
   else competitivePosition = 'Average';
 
+  // Market cap — Alpha Vantage OVERVIEW exposes MarketCapitalization as a
+  // dollar integer string (e.g. "2748967000000"). Parse it directly; no
+  // currency conversion needed since AV always reports in USD.
+  const marketCapRaw = parseInt(overview.MarketCapitalization ?? '0', 10);
+  const marketCap = Number.isFinite(marketCapRaw) && marketCapRaw > 0
+    ? marketCapRaw
+    : null;
+
   const result: StockResponse = {
     symbol: overview.Symbol || symbol,
     name: overview.Name || symbol,
@@ -149,6 +157,8 @@ export async function getAlphaVantageData(symbol: string): Promise<StockResponse
     // multibagger gates — emit explicit null so adapters stay
     // contract-uniform (Task #30).
     multibaggerSignals: null,
+    // Market cap parsed from OVERVIEW.MarketCapitalization (Task #37).
+    marketCap,
   };
 
   console.log(`Alpha Vantage data for ${symbol}: price=${price}, eps=${eps}, growth=${growthRate}%`);

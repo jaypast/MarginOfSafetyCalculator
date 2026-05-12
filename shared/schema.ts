@@ -155,6 +155,11 @@ export const stockResponseSchema = z.object({
   // Append-only block — keep adjacent to the other parallel-task
   // additions so future merges stay mechanical.
   multibaggerSignals: multibaggerSignalsSchema.nullable().optional(),
+  // Market capitalisation in USD (Task #37). Used by the Multibagger
+  // Screener's Size sub-score (Yartseva 2025 §6.3 TEV proxy). Each
+  // adapter populates this when the upstream exposes it; others emit
+  // null so the composite renormalises across the remaining factors.
+  marketCap: z.number().nullable().optional(),
 });
 
 export type StockResponse = z.infer<typeof stockResponseSchema>;

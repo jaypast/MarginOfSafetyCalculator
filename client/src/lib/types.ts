@@ -62,6 +62,9 @@ export interface StockData {
   // Multibagger empirics (Task #30). Independently nullable; the verdict
   // skips any check whose inputs are missing rather than guessing.
   multibaggerSignals?: MultibaggerSignals | null;
+  // Market capitalisation in USD (Task #37). Powers the Size sub-score
+  // in the Multibagger Screener. Null when the upstream doesn't expose it.
+  marketCap?: number | null;
   error?: boolean;
   errorMessage?: string;
 }

@@ -101,6 +101,42 @@ describe('alphaVantage adapter', () => {
     expect(result.fcfPerShare).toBeCloseTo(4.25, 5);
   });
 
+  it('parses MarketCapitalization into marketCap (Task #37)', async () => {
+    vi.doMock('axios', () => ({
+      default: {
+        get: vi.fn().mockImplementation((url: string, opts: any) => {
+          if (opts.params.function === 'OVERVIEW') {
+            return Promise.resolve({
+              data: {
+                Symbol: 'AAPL',
+                Name: 'Apple Inc.',
+                EPS: '6.10',
+                PERatio: '28.50',
+                OperatingCashflowPerShare: '7.20',
+                QuarterlyEarningsGrowthYOY: '0.10',
+                ReturnOnEquityTTM: '0.45',
+                ProfitMargin: '0.25',
+                OperatingMarginTTM: '0.30',
+                Beta: '1.2',
+                BookValue: '4.50',
+                CurrentRatio: '1.05',
+                MarketCapitalization: '2748967000000',
+              },
+            });
+          }
+          return Promise.resolve({
+            data: { 'Global Quote': { '05. price': '170.25' } },
+          });
+        }),
+      },
+    }));
+
+    const { getAlphaVantageData } = await import('../server/services/alphaVantage');
+    const result = await getAlphaVantageData('AAPL');
+    expect(stockResponseSchema.safeParse(result).success).toBe(true);
+    expect(result.marketCap).toBe(2748967000000);
+  });
+
   it('throws when the upstream returns an empty object', async () => {
     vi.doMock('axios', () => ({
       default: { get: vi.fn().mockResolvedValue({ data: {} }) },
@@ -265,6 +301,37 @@ describe('yahooFinance adapter', () => {
     expect(result.peHistory?.fiveYearAvg).toBe(31.2);
     expect(result.peHistory?.tenYearAvg).toBe(27.8);
     expect(result.peHistory?.industryAvg).toBe(28.0);
+  });
+
+  // Adapter-level contract test for Task #37: when the Python helper
+  // emits a `marketCap` field the TS adapter must pass it through.
+  it('passes through marketCap from the Python payload', async () => {
+    const payload = {
+      symbol: 'AAPL',
+      name: 'Apple Inc.',
+      price: 170.25,
+      eps: 6.1,
+      peRatio: 28.5,
+      fcfPerShare: 7.2,
+      growthRate: 10,
+      roe: 45,
+      debtToEquity: 1.5,
+      currentRatio: 1.05,
+      revenueGrowth: 8,
+      earningsStability: 'High',
+      competitivePosition: 'Strong',
+      marketCap: 2_748_967_000_000,
+    };
+
+    vi.doMock('child_process', () => ({
+      exec: (cmd: string, cb: any) =>
+        cb(null, { stdout: JSON.stringify(payload), stderr: '' }),
+    }));
+
+    const { getYahooFinanceData } = await import('../server/services/yahooFinance');
+    const result = await getYahooFinanceData('AAPL');
+    expect(stockResponseSchema.safeParse(result).success).toBe(true);
+    expect(result.marketCap).toBe(2_748_967_000_000);
   });
 
   // Adapter-level contract test for Task #30: when the Python helper
