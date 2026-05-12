@@ -251,12 +251,26 @@ def _compute_multibagger_signals(ticker, info, currency, rate):
 
     try:
         high = info.get('fiftyTwoWeekHigh')
+        if high is None:
+            # yfinance sometimes omits fiftyTwoWeekHigh from ticker.info
+            # (depends on version and ticker coverage). Try fast_info which
+            # is fetched via a different, lighter endpoint and is more
+            # consistently populated.
+            try:
+                high = ticker.fast_info.year_high
+            except Exception:
+                high = None
         if high is not None:
             out["week52High"] = float(high) * (rate if currency != 'USD' else 1.0)
     except (TypeError, ValueError):
         pass
     try:
         low = info.get('fiftyTwoWeekLow')
+        if low is None:
+            try:
+                low = ticker.fast_info.year_low
+            except Exception:
+                low = None
         if low is not None:
             out["week52Low"] = float(low) * (rate if currency != 'USD' else 1.0)
     except (TypeError, ValueError):

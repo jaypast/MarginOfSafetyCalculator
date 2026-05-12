@@ -137,6 +137,75 @@ describe('alphaVantage adapter', () => {
     expect(result.marketCap).toBe(2748967000000);
   });
 
+  it('wires 52WeekHigh/Low into multibaggerSignals (Task #38)', async () => {
+    vi.doMock('axios', () => ({
+      default: {
+        get: vi.fn().mockImplementation((url: string, opts: any) => {
+          if (opts.params.function === 'OVERVIEW') {
+            return Promise.resolve({
+              data: {
+                Symbol: 'AAPL',
+                Name: 'Apple Inc.',
+                EPS: '6.10',
+                PERatio: '28.50',
+                OperatingCashflowPerShare: '7.20',
+                ReturnOnEquityTTM: '0.45',
+                ProfitMargin: '0.25',
+                OperatingMarginTTM: '0.30',
+                '52WeekHigh': '199.61',
+                '52WeekLow': '164.08',
+              },
+            });
+          }
+          return Promise.resolve({
+            data: { 'Global Quote': { '05. price': '170.25' } },
+          });
+        }),
+      },
+    }));
+
+    const { getAlphaVantageData } = await import('../server/services/alphaVantage');
+    const result = await getAlphaVantageData('AAPL');
+    expect(stockResponseSchema.safeParse(result).success).toBe(true);
+    expect(result.multibaggerSignals?.week52High).toBeCloseTo(199.61, 2);
+    expect(result.multibaggerSignals?.week52Low).toBeCloseTo(164.08, 2);
+    // FCF/balance-sheet fields remain null for AV (free tier).
+    expect(result.multibaggerSignals?.fcfYield).toBeNull();
+    expect(result.multibaggerSignals?.assetGrowth).toBeNull();
+  });
+
+  it('emits null week52High/Low when 52WeekHigh/Low are absent (Task #38)', async () => {
+    vi.doMock('axios', () => ({
+      default: {
+        get: vi.fn().mockImplementation((url: string, opts: any) => {
+          if (opts.params.function === 'OVERVIEW') {
+            return Promise.resolve({
+              data: {
+                Symbol: 'TEST',
+                Name: 'Test Co',
+                EPS: '5.00',
+                PERatio: '15.00',
+                ReturnOnEquityTTM: '0.10',
+                ProfitMargin: '0.05',
+                OperatingMarginTTM: '0.05',
+                // 52WeekHigh/Low deliberately absent
+              },
+            });
+          }
+          return Promise.resolve({
+            data: { 'Global Quote': { '05. price': '75.00' } },
+          });
+        }),
+      },
+    }));
+
+    const { getAlphaVantageData } = await import('../server/services/alphaVantage');
+    const result = await getAlphaVantageData('TEST');
+    expect(stockResponseSchema.safeParse(result).success).toBe(true);
+    expect(result.multibaggerSignals?.week52High).toBeNull();
+    expect(result.multibaggerSignals?.week52Low).toBeNull();
+  });
+
   it('throws when the upstream returns an empty object', async () => {
     vi.doMock('axios', () => ({
       default: { get: vi.fn().mockResolvedValue({ data: {} }) },
@@ -224,6 +293,33 @@ describe('rapidApiFinance adapter', () => {
     expect(result.competitivePosition).toBe('Average');
     // Task #37: marketCap must be null (not undefined/NaN) when absent.
     expect(result.marketCap).toBeNull();
+  });
+
+  it('wires fiftyTwoWeekHigh/Low from Stock Data API into multibaggerSignals (Task #38)', async () => {
+    vi.doMock('axios', () => ({
+      default: {
+        get: vi.fn().mockImplementation((url: string) => {
+          if (url.includes('/price')) {
+            return Promise.resolve({
+              data: {
+                regularMarketPrice: 170.25,
+                epsTrailingTwelveMonths: 6.1,
+                fiftyTwoWeekHigh: 199.61,
+                fiftyTwoWeekLow: 164.08,
+              },
+            });
+          }
+          return Promise.resolve({ data: { companyName: 'Apple Inc.' } });
+        }),
+      },
+    }));
+
+    const { getRapidApiStockData } = await import('../server/services/rapidApiFinance');
+    const result = await getRapidApiStockData('AAPL');
+    expect(stockResponseSchema.safeParse(result).success).toBe(true);
+    expect(result.multibaggerSignals?.week52High).toBeCloseTo(199.61, 2);
+    expect(result.multibaggerSignals?.week52Low).toBeCloseTo(164.08, 2);
+    expect(result.multibaggerSignals?.fcfYield).toBeNull();
   });
 
   it('throws when both API paths fail', async () => {
@@ -445,6 +541,39 @@ describe('webScraper adapter', () => {
     expect(Number.isFinite(result.fcfPerShare)).toBe(true);
     // Task #37: with no Market Cap row in the HTML, must be null not undefined.
     expect(result.marketCap).toBeNull();
+  });
+
+  it('parses 52 Week Range from key-statistics HTML into multibaggerSignals (Task #38)', async () => {
+    const statsHtml = `<html><body><table>
+      <tr><td>52 Week Range</td><td>164.08 - 199.61</td></tr>
+    </table></body></html>`;
+
+    vi.doMock('node-fetch', () => {
+      const mockFetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('query1.finance.yahoo.com')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({
+              chart: {
+                result: [{ meta: { regularMarketPrice: 170.25, shortName: 'Apple Inc.' } }],
+              },
+            }),
+          });
+        }
+        if (url.includes('key-statistics')) {
+          return Promise.resolve({ ok: true, text: () => Promise.resolve(statsHtml) });
+        }
+        return Promise.resolve({ ok: true, text: () => Promise.resolve('<html></html>') });
+      });
+      return { default: mockFetch };
+    });
+
+    const { scrapeStockData } = await import('../server/services/webScraper');
+    const result = await scrapeStockData('AAPL');
+    expect(stockResponseSchema.safeParse(result).success).toBe(true);
+    expect(result.multibaggerSignals?.week52High).toBeCloseTo(199.61, 2);
+    expect(result.multibaggerSignals?.week52Low).toBeCloseTo(164.08, 2);
+    expect(result.multibaggerSignals?.fcfYield).toBeNull();
   });
 
   it('parses marketCap from the key-statistics HTML (Task #37)', async () => {

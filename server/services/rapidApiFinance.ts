@@ -144,6 +144,17 @@ async function getStockDataApiInfo(symbol: string): Promise<StockResponse> {
       ? data.marketCap
       : null;
 
+  // 52-week range — wire into multibaggerSignals when the endpoint
+  // provides it (field presence varies by ticker / plan) (Task #38).
+  const sdWeek52High: number | null =
+    typeof data.fiftyTwoWeekHigh === 'number' && data.fiftyTwoWeekHigh > 0
+      ? data.fiftyTwoWeekHigh
+      : null;
+  const sdWeek52Low: number | null =
+    typeof data.fiftyTwoWeekLow === 'number' && data.fiftyTwoWeekLow > 0
+      ? data.fiftyTwoWeekLow
+      : null;
+
   // Combine and transform the data to match our StockResponse schema
   const stockData: StockResponse = {
     symbol: symbol,
@@ -170,10 +181,15 @@ async function getStockDataApiInfo(symbol: string): Promise<StockResponse> {
     // EPS history to compute trailing-twelve-month medians. Emit
     // explicit null so the API contract stays uniform (Task #15).
     peHistory: null,
-    // RapidAPI's Stock Data endpoint doesn't expose FCF / 52w bounds
-    // / balance-sheet rollups consistently enough for the multibagger
-    // gates — emit explicit null (Task #30).
-    multibaggerSignals: null,
+    // Stock Data API exposes fiftyTwoWeekHigh/Low when available;
+    // wire into multibaggerSignals for the range sub-score (Task #38).
+    multibaggerSignals: {
+      fcfYield: null,
+      assetGrowth: null,
+      ebitdaGrowth: null,
+      week52High: sdWeek52High,
+      week52Low: sdWeek52Low,
+    },
     // Market cap from the Stock Data API price response (Task #37).
     marketCap,
   };
@@ -242,9 +258,19 @@ async function getYahooFinanceApiInfo(symbol: string): Promise<StockResponse> {
     // Yahoo's RapidAPI quote endpoint doesn't return historical
     // quarterly EPS — emit explicit null for uniform contract (Task #15).
     peHistory: null,
-    // Yahoo's RapidAPI quote endpoint doesn't return balance-sheet
-    // history; emit explicit null for the multibagger gates (Task #30).
-    multibaggerSignals: null,
+    // Yahoo Finance summary exposes fiftyTwoWeekHigh/Low in
+    // defaultKeyStatistics; wire them for the range sub-score (Task #38).
+    multibaggerSignals: {
+      fcfYield: null,
+      assetGrowth: null,
+      ebitdaGrowth: null,
+      week52High: typeof defaultKeyStatistics.fiftyTwoWeekHigh?.raw === 'number' && defaultKeyStatistics.fiftyTwoWeekHigh.raw > 0
+        ? defaultKeyStatistics.fiftyTwoWeekHigh.raw
+        : null,
+      week52Low: typeof defaultKeyStatistics.fiftyTwoWeekLow?.raw === 'number' && defaultKeyStatistics.fiftyTwoWeekLow.raw > 0
+        ? defaultKeyStatistics.fiftyTwoWeekLow.raw
+        : null,
+    },
     // Market cap from Yahoo Finance price block (Task #37).
     marketCap: yahooMarketCap,
   };

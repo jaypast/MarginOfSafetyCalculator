@@ -170,9 +170,26 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
       // explicit null so the API contract stays uniform across
       // adapters (Task #15).
       peHistory: null,
-      // Web-scrape adapter has no balance-sheet / FCF visibility;
-      // emit explicit null for the multibagger gates (Task #30).
-      multibaggerSignals: null,
+      // Parse 52-week range from the stats page metricsMap (Task #38).
+      // Handles "164.08 - 199.61" combined format and separate labels.
+      multibaggerSignals: (() => {
+        let high: number | null = null;
+        let low: number | null = null;
+        const rangeStr = metricsMap['52 Week Range'] || metricsMap['52-Week Range'] || '';
+        if (rangeStr.includes(' - ')) {
+          const [rawLow, rawHigh] = rangeStr.split(' - ');
+          const parsedLow = parseFloat(rawLow.replace(/,/g, ''));
+          const parsedHigh = parseFloat(rawHigh.replace(/,/g, ''));
+          if (parsedHigh > 0) high = parsedHigh;
+          if (parsedLow > 0) low = parsedLow;
+        } else {
+          const rawHigh = parseFloat((metricsMap['52-Week High'] || metricsMap['52 Week High'] || '').replace(/,/g, ''));
+          const rawLow = parseFloat((metricsMap['52-Week Low'] || metricsMap['52 Week Low'] || '').replace(/,/g, ''));
+          if (rawHigh > 0) high = rawHigh;
+          if (rawLow > 0) low = rawLow;
+        }
+        return { fcfYield: null, assetGrowth: null, ebitdaGrowth: null, week52High: high, week52Low: low };
+      })(),
       // Market cap scraped from the key-statistics page (Task #37).
       marketCap,
     };

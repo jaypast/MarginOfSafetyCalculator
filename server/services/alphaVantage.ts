@@ -133,6 +133,12 @@ export async function getAlphaVantageData(symbol: string): Promise<StockResponse
     ? marketCapRaw
     : null;
 
+  // 52-week range — AV OVERVIEW exposes 52WeekHigh and 52WeekLow as
+  // dollar strings. Wire these into multibaggerSignals so the screener's
+  // 52-week range sub-score computes even when yfinance is rate-limited.
+  const week52High = parseFloat(overview['52WeekHigh'] ?? '0') || null;
+  const week52Low = parseFloat(overview['52WeekLow'] ?? '0') || null;
+
   const result: StockResponse = {
     symbol: overview.Symbol || symbol,
     name: overview.Name || symbol,
@@ -152,11 +158,17 @@ export async function getAlphaVantageData(symbol: string): Promise<StockResponse
     // history to compute trailing-twelve-month medians reliably.
     // Emit explicit null so the API contract stays uniform (Task #15).
     peHistory: null,
-    // Alpha Vantage's free tier doesn't expose freeCashflow / 52w
-    // bounds / balance-sheet history reliably enough for the
-    // multibagger gates — emit explicit null so adapters stay
-    // contract-uniform (Task #30).
-    multibaggerSignals: null,
+    // AV OVERVIEW exposes 52WeekHigh/Low; wire them into the partial
+    // multibaggerSignals block so the screener's range sub-score works
+    // even when yfinance is rate-limited. FCF / balance-sheet fields
+    // are not reliably available from the free tier (Task #30 / #38).
+    multibaggerSignals: {
+      fcfYield: null,
+      assetGrowth: null,
+      ebitdaGrowth: null,
+      week52High,
+      week52Low,
+    },
     // Market cap parsed from OVERVIEW.MarketCapitalization (Task #37).
     marketCap,
   };
