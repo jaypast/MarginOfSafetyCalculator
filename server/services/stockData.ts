@@ -269,6 +269,11 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
     return attachDivergence(symbol, stockDataCache[symbol].data);
   }
 
+  // Track the best live price seen across all sources even when fundamentals
+  // are incomplete. Used to patch static fallback data so the price shown
+  // is current even when EPS/FCF could not be fetched.
+  let bestPartialPrice: number | null = null;
+
   // Helper: try a source, derive missing metrics, check quality gate
   async function trySource(
     label: string,
@@ -278,6 +283,11 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
       console.log(`[${symbol}] Trying ${label}...`);
       let data = await fetcher();
       data = deriveMetrics(data);
+      // Preserve any live price even if fundamentals are missing — used to
+      // patch the static fallback price so users never see a years-old price.
+      if (data.price > 0) {
+        bestPartialPrice = data.price;
+      }
       if (isDataComplete(data)) {
         console.log(`[${symbol}] ${label} returned complete data ✓`);
         return data;
@@ -379,17 +389,43 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
     return attachDivergence(symbol, stamped);
   }
 
-  // --- 5. Static fallback (5 common stocks) ---
+  // --- 5. Static fallback ---
+  // Fundamentals (EPS, ROE, D/E, currentRatio) from the curated static
+  // dataset are slow-moving and valid for months. The price, however, can
+  // change dramatically. If any earlier source returned a valid live price
+  // (even without full fundamentals), patch the static entry with it so
+  // the user never sees a years-old stale price.
   const fallbackData = getFallbackStockData(symbol);
   if (fallbackData) {
-    const derived = deriveMetrics(fallbackData);
+    const patched = { ...fallbackData };
+    // Explicit type annotation required: TypeScript cannot track closure-writes
+    // to `bestPartialPrice` from inside `trySource`, so without the annotation
+    // it infers the ternary as `null` and narrows to `never` inside the if-block.
+    const livePrice: number | null = (bestPartialPrice !== null && bestPartialPrice > 0)
+      ? bestPartialPrice
+      : null;
+    if (livePrice !== null) {
+      const oldPrice = patched.price;
+      patched.price = livePrice;
+      // Recalculate P/E with the live price so the ratio stays coherent.
+      const eps = patched.eps ?? 0;
+      if (eps > 0) {
+        patched.peRatio = Math.round((livePrice / eps) * 100) / 100;
+      }
+      // Round to 2dp for display without calling .toFixed() — TS can't narrow
+      // bestPartialPrice through the closure so livePrice looks like `never` there.
+      const livePriceRounded = Math.round(livePrice * 100) / 100;
+      const adj = `Price updated from live source ($${oldPrice} → $${livePriceRounded}); fundamentals from static dataset`;
+      patched.appliedAdjustments = [...(patched.appliedAdjustments ?? []), adj];
+      console.log(`[${symbol}] Fallback: patching stale price $${oldPrice} → live $${livePriceRounded}`);
+    } else {
+      patched.appliedAdjustments = [...(patched.appliedAdjustments ?? []), 'Price from static dataset — all live sources failed'];
+      console.log(`[${symbol}] Using static fallback data (no live price available)`);
+    }
+    const derived = deriveMetrics(patched);
     const stamped = stampProvenance(derived, 'fallback');
-    console.log(`[${symbol}] Using static fallback data`);
-    // Compare the downgrade against the most recent cached primary — if the
-    // static numbers are materially out of sync with the last live fetch,
-    // surface that on the response so the user knows the figures are stale.
     const divergence = compareWithCachedPrimary(stamped, 'fallback');
-    // Cache as if it expired 15 minutes ago, so a real source is retried sooner.
+    // Cache as if it expired 15 minutes ago so a live source is retried sooner.
     stockDataCache[symbol] = { data: stamped, timestamp: now - (15 * 60 * 1000), divergence };
     return attachDivergence(symbol, stamped);
   }
