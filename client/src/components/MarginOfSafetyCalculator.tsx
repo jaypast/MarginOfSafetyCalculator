@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import StockInformation from './StockInformation';
-import FedRateBadge from './FedRateBadge';
 import KeyMetrics from './KeyMetrics';
 import ValuationMethod from './ValuationMethod';
 import MarginOfSafetyParams from './MarginOfSafetyParams';
@@ -215,7 +214,6 @@ const MarginOfSafetyCalculator: React.FC = () => {
             </p>
           </div>
           <div className="mt-4 md:mt-0 flex flex-col md:items-end gap-2">
-            <FedRateBadge />
             <a
               href="#educational-resources"
               className="text-[#2A3E5C] hover:text-[#1A2942] text-sm flex items-center"
