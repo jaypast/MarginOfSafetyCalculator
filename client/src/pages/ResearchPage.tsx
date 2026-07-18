@@ -166,7 +166,7 @@ const ResearchPage: React.FC = () => {
                       <TableCell><Skeleton className="h-6 w-24" /></TableCell>
                     </TableRow>
                   ))
-                ) : stocks.length === 0 ? (
+                ) : stocks.length < 3 ? (
                   <TableRow>
                     <TableCell colSpan={6}>
                       <div className="py-12 text-center">
