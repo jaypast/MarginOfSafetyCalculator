@@ -201,7 +201,7 @@ const ResearchPage: React.FC = () => {
                       <TableCell><Skeleton className="h-6 w-24" /></TableCell>
                     </TableRow>
                   ))
-                ) : stocks.length < 3 ? (
+                ) : stocks.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6}>
                       <div className="py-12 text-center">
@@ -235,6 +235,12 @@ const ResearchPage: React.FC = () => {
               </TableBody>
             </Table>
           </div>
+
+          {!isLoading && stocks.length > 0 && stocks.length < 3 && (
+            <div className="mt-4 rounded-md bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+              <strong>Slim pickings:</strong> only {stocks.length} {stocks.length === 1 ? 'company' : 'companies'} in the Russell 3000 currently meet both the quality and ≥{MIN_DISCOUNT_PCT}% discount criteria. This typically means markets are broadly valued. More opportunities tend to appear after corrections.
+            </div>
+          )}
 
           <div className="mt-6 text-xs text-neutral-500 space-y-1">
             {lastUpdated && <p>Last updated: {lastUpdated}</p>}
