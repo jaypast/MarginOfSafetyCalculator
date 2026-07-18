@@ -48,6 +48,7 @@ export const DATA_SOURCES = [
   'yfinance',
   'rapidapi',
   'alphavantage',
+  'fmp',
   'scraper',
   'fallback',
   'unknown',

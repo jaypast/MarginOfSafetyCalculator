@@ -2,6 +2,7 @@ export type DataSource =
   | 'yfinance'
   | 'rapidapi'
   | 'alphavantage'
+  | 'fmp'
   | 'scraper'
   | 'fallback'
   | 'unknown';

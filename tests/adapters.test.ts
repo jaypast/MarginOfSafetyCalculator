@@ -616,3 +616,176 @@ describe('webScraper adapter', () => {
     await expect(scrapeStockData('AAPL')).rejects.toThrow();
   });
 });
+
+describe('fmpFinance adapter', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    process.env.FINANCIAL_MODELING_PREP_API_KEY = 'test-key';
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.resetModules();
+    delete process.env.FINANCIAL_MODELING_PREP_API_KEY;
+  });
+
+  it('returns a schema-valid StockResponse for a healthy company payload', async () => {
+    vi.doMock('axios', () => ({
+      default: {
+        get: vi.fn().mockImplementation((url: string) => {
+          if (url.includes('/profile/')) {
+            return Promise.resolve({
+              data: [{
+                symbol: 'FIG',
+                companyName: 'Figma Inc.',
+                price: 32.5,
+                beta: 1.1,
+                mktCap: 15_800_000_000,
+                range: '24.10-58.75',
+              }],
+            });
+          }
+          if (url.includes('/key-metrics-ttm/')) {
+            return Promise.resolve({
+              data: [{
+                netIncomePerShareTTM: 1.25,
+                peRatioTTM: 26.0,
+                freeCashFlowPerShareTTM: 1.6,
+                roeTTM: 0.18,
+                debtToEquityTTM: 0.35,
+                currentRatioTTM: 2.1,
+                freeCashFlowYieldTTM: 0.049,
+              }],
+            });
+          }
+          // income-statement (latest first)
+          return Promise.resolve({
+            data: [
+              { revenue: 820_000_000, netIncome: 95_000_000, operatingIncome: 120_000_000, ebitda: 150_000_000, epsdiluted: 1.2 },
+              { revenue: 650_000_000, netIncome: 70_000_000, operatingIncome: 90_000_000, ebitda: 110_000_000, epsdiluted: 0.9 },
+            ],
+          });
+        }),
+      },
+    }));
+
+    const { getFmpData } = await import('../server/services/fmpFinance');
+    const result = await getFmpData('FIG');
+    const parsed = stockResponseSchema.safeParse(result);
+    expect(parsed.success).toBe(true);
+    expect(result.symbol).toBe('FIG');
+    expect(result.name).toBe('Figma Inc.');
+    expect(result.price).toBe(32.5);
+    expect(result.eps).toBe(1.25);
+    expect(result.peRatio).toBe(26.0);
+    expect(result.fcfPerShare).toBe(1.6);
+    // roeTTM 0.18 → 18%
+    expect(result.roe).toBeCloseTo(18, 5);
+    expect(result.debtToEquity).toBe(0.35);
+    expect(result.currentRatio).toBe(2.1);
+    // Revenue growth: (820 - 650) / 650 × 100 ≈ 26.15%
+    expect(result.revenueGrowth).toBeCloseTo(26.15, 1);
+    // Earnings growth preferred: (95 - 70) / 70 × 100 ≈ 35.71%
+    expect(result.growthRate).toBeCloseTo(35.71, 1);
+    expect(result.marketCap).toBe(15_800_000_000);
+    // freeCashFlowYieldTTM 0.049 → 4.9%
+    expect(result.multibaggerSignals?.fcfYield).toBeCloseTo(4.9, 5);
+    // EBITDA growth: (150 - 110) / 110 × 100 ≈ 36.36%
+    expect(result.multibaggerSignals?.ebitdaGrowth).toBeCloseTo(36.36, 1);
+    // 52-week range parsed from profile.range "24.10-58.75"
+    expect(result.multibaggerSignals?.week52High).toBeCloseTo(58.75, 2);
+    expect(result.multibaggerSignals?.week52Low).toBeCloseTo(24.1, 2);
+    // Balance-sheet-derived signal stays null (not fetched).
+    expect(result.multibaggerSignals?.assetGrowth).toBeNull();
+    expect(result.peHistory).toBeNull();
+  });
+
+  it('uses safe defaults when key-metrics and income-statement are unavailable', async () => {
+    vi.doMock('axios', () => ({
+      default: {
+        get: vi.fn().mockImplementation((url: string) => {
+          if (url.includes('/profile/')) {
+            return Promise.resolve({
+              data: [{ symbol: 'SPARSE', companyName: 'Sparse Co', price: 50 }],
+            });
+          }
+          // key-metrics-ttm and income-statement both fail upstream
+          return Promise.reject(new Error('403 plan limit'));
+        }),
+      },
+    }));
+
+    const { getFmpData } = await import('../server/services/fmpFinance');
+    const result = await getFmpData('SPARSE');
+    expect(stockResponseSchema.safeParse(result).success).toBe(true);
+    expect(result.price).toBe(50);
+    // Missing numerics must be finite numbers, never NaN/undefined.
+    expect(result.eps).toBe(0);
+    expect(result.peRatio).toBe(0);
+    expect(result.fcfPerShare).toBe(0);
+    expect(result.debtToEquity).toBe(0.5);
+    expect(result.currentRatio).toBe(1.5);
+    expect(result.growthRate).toBe(0);
+    expect(result.revenueGrowth).toBe(0);
+    expect(result.earningsStability).toBe('Low');
+    expect(result.competitivePosition).toBe('Average');
+    // marketCap must be null (not undefined/NaN) when absent.
+    expect(result.marketCap).toBeNull();
+    expect(result.multibaggerSignals?.fcfYield).toBeNull();
+    expect(result.multibaggerSignals?.week52High).toBeNull();
+    expect(result.multibaggerSignals?.week52Low).toBeNull();
+  });
+
+  it('derives EPS from the income statement when TTM key-metrics lack it', async () => {
+    vi.doMock('axios', () => ({
+      default: {
+        get: vi.fn().mockImplementation((url: string) => {
+          if (url.includes('/profile/')) {
+            return Promise.resolve({
+              data: [{ symbol: 'TEST', companyName: 'Test Co', price: 30 }],
+            });
+          }
+          if (url.includes('/key-metrics-ttm/')) {
+            return Promise.resolve({ data: [{}] });
+          }
+          return Promise.resolve({
+            data: [
+              { revenue: 100_000_000, netIncome: 10_000_000, epsdiluted: 2.0 },
+              { revenue: 90_000_000, netIncome: 9_000_000, epsdiluted: 1.8 },
+            ],
+          });
+        }),
+      },
+    }));
+
+    const { getFmpData } = await import('../server/services/fmpFinance');
+    const result = await getFmpData('TEST');
+    expect(stockResponseSchema.safeParse(result).success).toBe(true);
+    expect(result.eps).toBe(2.0);
+    // P/E derived from price ÷ EPS = 30 / 2 = 15
+    expect(result.peRatio).toBeCloseTo(15, 5);
+    // FCF waterfall: EPS-based estimate = 2 × 0.85 = 1.7
+    expect(result.fcfPerShare).toBeCloseTo(1.7, 5);
+    expect(result.appliedAdjustments?.join(' ')).toMatch(/EPS from latest annual income statement/);
+  });
+
+  it('throws when the upstream returns an empty profile array', async () => {
+    vi.doMock('axios', () => ({
+      default: { get: vi.fn().mockResolvedValue({ data: [] }) },
+    }));
+
+    const { getFmpData } = await import('../server/services/fmpFinance');
+    await expect(getFmpData('NOPE')).rejects.toThrow(/no data/i);
+  });
+
+  it('throws immediately when the API key is not configured', async () => {
+    delete process.env.FINANCIAL_MODELING_PREP_API_KEY;
+    const axiosGet = vi.fn();
+    vi.doMock('axios', () => ({ default: { get: axiosGet } }));
+
+    const { getFmpData } = await import('../server/services/fmpFinance');
+    await expect(getFmpData('AAPL')).rejects.toThrow(/not configured/i);
+    // Must not spend an upstream call without a key.
+    expect(axiosGet).not.toHaveBeenCalled();
+  });
+});

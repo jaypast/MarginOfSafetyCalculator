@@ -2,6 +2,7 @@ import { StockResponse, DataSource, CrossSourceDivergence } from '@shared/schema
 import { getYahooFinanceData } from './yahooFinance';
 import { getRapidApiStockData } from './rapidApiFinance';
 import { getAlphaVantageData } from './alphaVantage';
+import { getFmpData } from './fmpFinance';
 import { scrapeStockData } from './webScraper';
 import { getFallbackStockData } from './fallbackData';
 
@@ -380,7 +381,19 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
     return attachDivergence(symbol, stamped);
   }
 
-  // --- 4. Web scraping ---
+  // --- 4. Financial Modeling Prep (fundamentals for mid/small-caps the
+  // higher tiers often miss). Skipped gracefully when the API key is not
+  // configured — the adapter throws immediately and trySource logs it. ---
+  const fmpResult = await trySource('FMP', () => getFmpData(symbol));
+  if (fmpResult) {
+    const stamped = stampProvenance(fmpResult, 'fmp');
+    const divergence = compareWithCachedPrimary(stamped, 'fmp');
+    stockDataCache[symbol] = { data: stamped, timestamp: now, divergence };
+    spotCheck(stamped, 'fmp', 'rapidapi', () => getRapidApiStockData(symbol));
+    return attachDivergence(symbol, stamped);
+  }
+
+  // --- 5. Web scraping ---
   const scrapeResult = await trySource('web scraping', () => scrapeStockData(symbol));
   if (scrapeResult) {
     const stamped = stampProvenance(scrapeResult, 'scraper');
@@ -389,7 +402,7 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
     return attachDivergence(symbol, stamped);
   }
 
-  // --- 5. Static fallback ---
+  // --- 6. Static fallback ---
   // Fundamentals (EPS, ROE, D/E, currentRatio) from the curated static
   // dataset are slow-moving and valid for months. The price, however, can
   // change dramatically. If any earlier source returned a valid live price
