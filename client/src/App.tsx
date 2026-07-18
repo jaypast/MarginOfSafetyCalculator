@@ -13,11 +13,11 @@ function Router() {
   return (
     <>
       <nav className="bg-[#1A2942] text-white p-4">
-        <div className="container mx-auto flex justify-between items-center">
+        <div className="container mx-auto flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center sm:gap-0">
           <Link href="/" className="text-xl font-bold">
             Margin of Safety Calculator
           </Link>
-          <div className="space-x-4">
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
             <Link href="/" className="hover:underline">
               Home
             </Link>
