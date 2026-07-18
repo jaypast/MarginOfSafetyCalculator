@@ -3,7 +3,9 @@ import { getStockData } from './stockData';
 
 const TARGET_MIN_RESULTS = 3;
 const BETWEEN_CALL_DELAY_MS = 2000;
-const CACHE_DURATION_MS = 24 * 60 * 60 * 1000;
+const PER_CALL_TIMEOUT_MS   = 15_000;
+const MAX_SCAN_DURATION_MS  = 8 * 60 * 1000;
+const CACHE_DURATION_MS     = 24 * 60 * 60 * 1000;
 
 export type ScanQuality = 'Exceptional' | 'Good';
 
@@ -35,40 +37,25 @@ export interface ScanState {
 }
 
 // ---------------------------------------------------------------------------
-// Russell 3000 curated pool
-// Sectors that historically produce Exceptional/Good quality businesses:
-// technology, financials, healthcare, consumer staples, industrials.
-// Shuffled on every fresh scan so different companies rotate in.
+// Curated pool — ~45 S&P 500 blue-chips with the highest yfinance reliability
+// in production (large-cap, actively traded, well-covered by Yahoo Finance).
+// Shuffled on every fresh scan so different companies surface over time.
 // ---------------------------------------------------------------------------
-const RUSSELL_3000_POOL: string[] = [
+const SCAN_POOL: string[] = [
   // Technology
-  'MSFT', 'AAPL', 'GOOGL', 'META', 'NVDA', 'ADBE', 'CRM', 'NOW', 'INTU', 'ORCL',
-  'CSCO', 'TXN', 'QCOM', 'AMAT', 'KLAC', 'LRCX', 'SNPS', 'CDNS', 'ANSS', 'FTNT',
-  'PANW', 'ZS', 'CRWD', 'NET', 'DDOG', 'MDB', 'TEAM', 'HUBS', 'TTD', 'PAYC',
-  'ACN', 'IBM', 'HPQ', 'JNPR', 'NTAP', 'WDC', 'STX', 'KEYS', 'TRMB', 'LDOS',
+  'MSFT', 'AAPL', 'GOOGL', 'META', 'NVDA', 'ADBE', 'TXN', 'INTU', 'ORCL', 'CSCO',
   // Financials
-  'V', 'MA', 'JPM', 'SPGI', 'MCO', 'AXP', 'GS', 'MS', 'BLK', 'SCHW',
-  'ICE', 'CME', 'CBOE', 'MSCI', 'FDS', 'VRSK', 'CINF', 'TRV', 'PGR', 'ALL',
-  'WRB', 'AFG', 'ERIE', 'HCI', 'KMPR', 'SIGI', 'UNUM', 'PRU', 'MET', 'LNC',
+  'V', 'MA', 'JPM', 'SPGI', 'MCO', 'AXP', 'BLK', 'GS', 'ICE', 'MSCI',
   // Healthcare
-  'UNH', 'LLY', 'TMO', 'ABT', 'DHR', 'SYK', 'BSX', 'EW', 'ISRG', 'ZBH',
-  'IDXX', 'ALGN', 'PODD', 'HOLX', 'MCK', 'ABC', 'CAH', 'CVS', 'MOH', 'HUM',
-  'CI', 'ELV', 'RGEN', 'NEOG', 'ABMD', 'MASI', 'MMSI', 'NVCR', 'INVA', 'AMED',
+  'UNH', 'LLY', 'ABT', 'DHR', 'SYK', 'EW', 'ISRG', 'TMO', 'MCK', 'CI',
   // Consumer Staples
-  'PG', 'KO', 'COST', 'WMT', 'TGT', 'MNST', 'HSY', 'GIS', 'CPB', 'SJM',
-  'MKC', 'CLX', 'KMB', 'CHD', 'HRL', 'LW', 'POST', 'LANC', 'JJSF', 'DMND',
+  'PG', 'KO', 'COST', 'WMT', 'MNST', 'CHD', 'KMB',
   // Industrials
-  'HON', 'CAT', 'DE', 'EMR', 'ETN', 'ROK', 'ROP', 'FAST', 'GWW', 'HUBB',
-  'FELE', 'AOS', 'MAS', 'FBHS', 'NVT', 'GNRC', 'AIRC', 'AWK', 'RSG', 'WM',
-  'CPRT', 'ODFL', 'SAIA', 'CHRW', 'EXPD', 'JBHT', 'LSTR', 'POOL', 'TXRH', 'CASY',
+  'HON', 'CAT', 'EMR', 'ROP', 'FAST', 'RSG',
   // Consumer Discretionary
-  'HD', 'LOW', 'MCD', 'SBUX', 'NKE', 'DPZ', 'YUM', 'CMG', 'WSM', 'FIVE',
-  'OLLI', 'PRGS', 'MANH', 'PCTY', 'SPSC', 'QTWO', 'LAD', 'ABG', 'PAG', 'AN',
+  'HD', 'LOW', 'MCD', 'NKE', 'SBUX',
   // Energy & Materials
-  'XOM', 'CVX', 'COP', 'APD', 'ECL', 'PPG', 'SHW', 'NUE', 'RS', 'MLM',
-  // Additional Russell 3000 mid-caps known for quality
-  'CELH', 'BWXT', 'CACC', 'CSWI', 'MEDP', 'MGRC', 'OSIS', 'PLXS', 'PRFT', 'SSNC',
-  'AMSF', 'CBSH', 'FFIN', 'FRME', 'HTLF', 'IBCP', 'NBTB', 'PEBO', 'PPBI', 'WSFS',
+  'XOM', 'CVX', 'APD', 'SHW',
 ];
 
 // ---------------------------------------------------------------------------
@@ -81,6 +68,18 @@ function computeQuality(data: StockResponse): ScanQuality | null {
   if (roe > 20 && dte < 0.5 && cr > 1.5) return 'Exceptional';
   if (roe > 15 && dte < 1   && cr > 1.2) return 'Good';
   return null;
+}
+
+// Returns true when the quality metrics we need are present and non-zero.
+// Replaces the old `dataSource === 'fallback'` skip: well-specified fallback
+// entries for large-caps carry valid ROE / D-E / currentRatio and should be
+// scored normally.
+function hasUsableQualityMetrics(data: StockResponse): boolean {
+  return (
+    typeof data.roe === 'number'          && data.roe !== 0 &&
+    typeof data.debtToEquity === 'number' &&
+    typeof data.currentRatio === 'number' && data.currentRatio > 0
+  );
 }
 
 // Server-side intrinsic value estimate — used only as a discount gate during
@@ -123,6 +122,14 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 // ---------------------------------------------------------------------------
 // Singleton scan state
 // ---------------------------------------------------------------------------
@@ -135,7 +142,7 @@ const state: ScanState = {
 };
 
 async function runScan(): Promise<void> {
-  const pool = shuffle(RUSSELL_3000_POOL);
+  const pool = shuffle(SCAN_POOL);
 
   state.status = 'scanning';
   state.scanned = 0;
@@ -150,8 +157,17 @@ async function runScan(): Promise<void> {
   for (const symbol of pool) {
     if (state.found >= TARGET_MIN_RESULTS) break;
 
+    if (Date.now() - (state.startedAt ?? 0) > MAX_SCAN_DURATION_MS) {
+      console.log(`[Research scan] Max duration (${MAX_SCAN_DURATION_MS / 60_000}min) reached after ${state.scanned} symbols — stopping early`);
+      break;
+    }
+
     try {
-      const data = await getStockData(symbol);
+      const data = await withTimeout(
+        getStockData(symbol),
+        PER_CALL_TIMEOUT_MS,
+        symbol,
+      );
       state.scanned++;
 
       if (data.error || !data.price || data.price <= 0) {
@@ -159,9 +175,16 @@ async function runScan(): Promise<void> {
         continue;
       }
 
-      if (data.dataSource === 'fallback') {
+      if (!hasUsableQualityMetrics(data)) {
+        if (data.dataSource === 'fallback') {
+          console.log(`[Research scan] Skipping ${symbol} — fallback data has no quality metrics`);
+        }
         await sleep(BETWEEN_CALL_DELAY_MS);
         continue;
+      }
+
+      if (data.dataSource === 'fallback') {
+        console.log(`[Research scan] Accepting ${symbol} from fallback — quality metrics present`);
       }
 
       const quality = computeQuality(data);
@@ -194,13 +217,18 @@ async function runScan(): Promise<void> {
         discountPct: parseFloat(discountPct.toFixed(1)),
       });
       state.found++;
-      console.log(`[Research scan] Found candidate: ${symbol} (quality=${quality}, discount~${discountPct.toFixed(1)}%)`);
+      console.log(`[Research scan] Found candidate: ${symbol} (quality=${quality}, discount~${discountPct.toFixed(1)}%, source=${data.dataSource})`);
 
       if (state.found < TARGET_MIN_RESULTS) {
         await sleep(BETWEEN_CALL_DELAY_MS);
       }
     } catch (err) {
-      console.error(`[Research scan] Error for ${symbol}:`, err);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.startsWith('Timeout')) {
+        console.log(`[Research scan] ${symbol} timed out after ${PER_CALL_TIMEOUT_MS / 1000}s — skipping`);
+      } else {
+        console.error(`[Research scan] Error for ${symbol}:`, msg);
+      }
       state.scanned++;
       await sleep(BETWEEN_CALL_DELAY_MS);
     }
@@ -208,7 +236,8 @@ async function runScan(): Promise<void> {
 
   state.status = 'done';
   state.completedAt = Date.now();
-  console.log(`[Research scan] Done — scanned ${state.scanned}, found ${state.found}`);
+  const elapsed = ((state.completedAt - (state.startedAt ?? state.completedAt)) / 1000).toFixed(0);
+  console.log(`[Research scan] Done — scanned ${state.scanned}, found ${state.found}, elapsed ${elapsed}s`);
 }
 
 export function getScanState(): ScanState {
@@ -255,3 +284,15 @@ export function _setCompletedForTests(completedAt: number): void {
   state.candidates = [];
   state.startedAt = completedAt - 30_000;
 }
+
+export function _setScanningForTests(startedAt: number): void {
+  state.status = 'scanning';
+  state.scanned = 0;
+  state.poolSize = SCAN_POOL.length;
+  state.found = 0;
+  state.candidates = [];
+  state.startedAt = startedAt;
+  state.completedAt = undefined;
+}
+
+export { SCAN_POOL, MAX_SCAN_DURATION_MS, PER_CALL_TIMEOUT_MS, BETWEEN_CALL_DELAY_MS };
