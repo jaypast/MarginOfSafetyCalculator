@@ -18,13 +18,14 @@ A value-investing web app that estimates intrinsic stock value via DCF, P/E, and
 - `client/src/lib/multibaggerScreener.ts` — pure scoring module (Yartseva 2025 factor exposures) consumed by the Multibagger Screener panel and the Watchlist score column.
 - `client/src/components/MultibaggerScreener.tsx` — descriptive 0–100 sub-score breakdown + composite badge rendered below the Value-Investor Verdict.
 - `client/src/components/ValueInvestorVerdict.tsx` — Graham / Klarman / Munger scorecard panel that turns the same inputs into a Buy / Watch / Pass verdict using the gate order documented in `.agents/skills/value-investing-masters/SKILL.md`. The sibling `.agents/skills/multibagger-empirics/SKILL.md` captures the empirically validated factor signs (Yartseva 2025) that drive the FCF-yield gate, asset-vs-EBITDA chip, 52-week-range chip, and the rising-rate caution.
-- `server/services/stockData.ts` — Tiered data fetch (yfinance → RapidAPI → Alpha Vantage → web scrape → static fallback) with provenance stamping.
+- `server/services/stockData.ts` — Tiered data fetch (yfinance → RapidAPI → Alpha Vantage → FMP → web scrape → static fallback) with provenance stamping.
+- `server/services/fmpFinance.ts` — Financial Modeling Prep adapter (tier 4). Uses the **stable** API (`financialmodelingprep.com/stable/...?symbol=X`) — keys issued after Aug 2025 get 403 "Legacy Endpoint" on the old `/api/v3/` paths. Four calls per ticker (profile, ratios-ttm, key-metrics-ttm, income-statement limit=2); free tier is 250 calls/day. Only the profile is mandatory — some symbols (e.g. recent IPOs like FIG) have premium-gated fundamentals on the free tier and degrade to a price-only partial, which still feeds `bestPartialPrice` for static-fallback patching. Requires `FINANCIAL_MODELING_PREP_API_KEY`; tier is skipped gracefully when absent.
 - `shared/schema.ts` — Zod + Drizzle schemas. Source of truth for `StockResponse`, `DATA_SOURCES`, etc.
 - `tests/*.test.ts` — Vitest suite (calculators, adjustments, research pipeline, storage, schema).
 
 ## Data provenance
 Every `/api/stock/:symbol` response is stamped with:
-- `dataSource` — one of `yfinance | rapidapi | alpha-vantage | web-scrape | fallback | unknown`
+- `dataSource` — one of `yfinance | rapidapi | alpha-vantage | fmp | web-scrape | fallback | unknown`
 - `fetchedAt` — ISO timestamp of when the server returned the payload
 - `appliedAdjustments` — list of human-readable notes about derivations (e.g. `EPS derived from price ÷ P/E`).
 
@@ -169,7 +170,7 @@ demand. From the shell you can run them directly:
   renormalisation, near-zero-earnings edge cases, and the watchlist
   bulk-scoring + sort path.
 - `tests/adapters.test.ts` — adapter normalization tests for each provider
-  module (yahooFinance subprocess, RapidAPI, Alpha Vantage, web scraper).
+  module (yahooFinance subprocess, RapidAPI, Alpha Vantage, FMP, web scraper).
   Each test mocks the upstream (axios/fetch/exec), feeds a canned payload,
   and asserts the result passes `stockResponseSchema.safeParse`. Catches
   upstream API field-name drift before users see NaN-filled responses.

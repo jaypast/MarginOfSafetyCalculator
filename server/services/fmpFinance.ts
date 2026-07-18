@@ -2,21 +2,28 @@ import axios from 'axios';
 import { StockResponse } from '@shared/schema';
 
 // Financial Modeling Prep (FMP) adapter — tier between Alpha Vantage and the
-// web scraper. FMP's key-metrics-ttm endpoint exposes the full fundamental
-// set the calculators need (EPS, P/E, FCF/share, ROE, D/E, current ratio),
-// which is exactly what mid/small-cap tickers are often missing from the
-// higher tiers. Free tier: 250 calls/day (this adapter spends 3 per ticker).
+// web scraper. FMP's TTM ratio/metric endpoints expose the full fundamental
+// set the calculators need (P/E, FCF, ROE, D/E, current ratio), which is
+// exactly what mid/small-cap tickers are often missing from the higher tiers.
+//
+// IMPORTANT: keys issued after August 2025 only work against the "stable"
+// API (https://financialmodelingprep.com/stable/...?symbol=X). The legacy
+// /api/v3/... endpoints return 403 for them. Free tier: 250 calls/day
+// (this adapter spends up to 4 per ticker). Some symbols (e.g. recent
+// IPOs) are premium-gated for fundamentals on the free tier — those still
+// return a profile (live price + market cap + 52-week range), and the
+// missing fields fall back to safe defaults.
 
 const FMP_API_KEY = process.env.FINANCIAL_MODELING_PREP_API_KEY;
-const BASE_URL = 'https://financialmodelingprep.com/api/v3';
+const BASE_URL = 'https://financialmodelingprep.com/stable';
 
 if (!FMP_API_KEY) {
   console.warn('FINANCIAL_MODELING_PREP_API_KEY is not set. FMP fallback tier will be skipped.');
 }
 
-async function fmpGet(path: string): Promise<any> {
+async function fmpGet(path: string, params: Record<string, string>): Promise<any> {
   const response = await axios.get(`${BASE_URL}${path}`, {
-    params: { apikey: FMP_API_KEY },
+    params: { ...params, apikey: FMP_API_KEY },
     timeout: 15000,
   });
   return response.data;
@@ -32,9 +39,8 @@ function num(value: unknown): number | null {
   return null;
 }
 
-// profile.range is a "low-high" string like "164.08-199.62". Symbols can
-// legitimately have negative-free prices only, so a simple split on the
-// last '-' handles the format safely.
+// profile.range is a "low-high" string like "164.08-199.62". A split on the
+// last '-' handles the format safely even if the low is negative.
 function parse52WeekRange(range: unknown): { high: number | null; low: number | null } {
   if (typeof range !== 'string') return { high: null, low: null };
   const idx = range.lastIndexOf('-');
@@ -45,11 +51,14 @@ function parse52WeekRange(range: unknown): { high: number | null; low: number | 
 }
 
 /**
- * Fetch stock fundamentals + price from Financial Modeling Prep.
- * Uses three v3 endpoints:
- *   - /profile/{symbol}          — price, name, market cap, beta, 52-week range
- *   - /key-metrics-ttm/{symbol}  — EPS, P/E, FCF/share, ROE, D/E, current ratio (TTM)
- *   - /income-statement/{symbol} — last two annual statements for growth rates
+ * Fetch stock fundamentals + price from Financial Modeling Prep (stable API).
+ * Uses four endpoints, all keyed by ?symbol=:
+ *   - /profile          — price, name, market cap, beta, 52-week range
+ *   - /ratios-ttm       — P/E, D/E, current ratio, margins, price-to-FCF (TTM)
+ *   - /key-metrics-ttm  — ROE, FCF yield (TTM)
+ *   - /income-statement — last two annual statements for growth rates + EPS
+ * Only the profile is mandatory; the other three degrade to safe defaults
+ * (matching the other adapters' pattern) when unavailable on the free tier.
  */
 export async function getFmpData(symbol: string): Promise<StockResponse> {
   console.log(`Fetching FMP data for ${symbol}`);
@@ -58,11 +67,11 @@ export async function getFmpData(symbol: string): Promise<StockResponse> {
     throw new Error('FINANCIAL_MODELING_PREP_API_KEY not configured');
   }
 
-  const encoded = encodeURIComponent(symbol);
-  const [profileRaw, keyMetricsRaw, incomeRaw] = await Promise.all([
-    fmpGet(`/profile/${encoded}`),
-    fmpGet(`/key-metrics-ttm/${encoded}`).catch(() => null),
-    fmpGet(`/income-statement/${encoded}?limit=2`).catch(() => null),
+  const [profileRaw, ratiosRaw, keyMetricsRaw, incomeRaw] = await Promise.all([
+    fmpGet('/profile', { symbol }),
+    fmpGet('/ratios-ttm', { symbol }).catch(() => null),
+    fmpGet('/key-metrics-ttm', { symbol }).catch(() => null),
+    fmpGet('/income-statement', { symbol, limit: '2' }).catch(() => null),
   ]);
 
   // FMP returns [] for unknown symbols and { "Error Message": ... } for
@@ -76,6 +85,7 @@ export async function getFmpData(symbol: string): Promise<StockResponse> {
   }
 
   const profile = profileRaw[0] ?? {};
+  const ratios = Array.isArray(ratiosRaw) && ratiosRaw.length > 0 ? ratiosRaw[0] : {};
   const km = Array.isArray(keyMetricsRaw) && keyMetricsRaw.length > 0 ? keyMetricsRaw[0] : {};
   const income: any[] = Array.isArray(incomeRaw) ? incomeRaw : [];
   const latestIncome = income[0] ?? {};
@@ -85,30 +95,36 @@ export async function getFmpData(symbol: string): Promise<StockResponse> {
 
   const price = num(profile.price) ?? 0;
 
-  // EPS waterfall: TTM net income per share → latest annual diluted EPS →
-  // derived from price ÷ P/E.
-  let eps = num(km.netIncomePerShareTTM) ?? 0;
-  if (eps === 0) {
-    eps = num(latestIncome.epsdiluted) ?? num(latestIncome.eps) ?? 0;
-    if (eps !== 0) appliedAdjustments.push('EPS from latest annual income statement (TTM unavailable)');
-  }
-  let peRatio = num(km.peRatioTTM) ?? 0;
-  if (peRatio === 0 && eps > 0 && price > 0) {
-    peRatio = Math.round((price / eps) * 100) / 100;
-    appliedAdjustments.push('P/E derived from price ÷ EPS');
+  const peRatio = num(ratios.priceToEarningsRatioTTM) ?? 0;
+
+  // EPS waterfall: derived from price ÷ TTM P/E (gives TTM EPS) →
+  // latest annual diluted EPS from the income statement.
+  let eps = 0;
+  if (peRatio > 0 && price > 0) {
+    eps = Math.round((price / peRatio) * 10000) / 10000;
+    appliedAdjustments.push('EPS derived from price ÷ TTM P/E');
+  } else {
+    eps = num(latestIncome.epsDiluted) ?? num(latestIncome.eps) ?? 0;
+    if (eps !== 0) appliedAdjustments.push('EPS from latest annual income statement');
   }
 
-  // FCF per share: TTM figure preferred; EPS-based estimate (positive EPS
-  // only) as the conservative fallback used by the other adapters.
-  let fcfPerShare = num(km.freeCashFlowPerShareTTM) ?? 0;
-  if (fcfPerShare === 0 && eps > 0) {
+  // FCF per share waterfall: price ÷ price-to-FCF (TTM) → FCF-yield × price →
+  // conservative EPS-based estimate (positive EPS only).
+  let fcfPerShare = 0;
+  const priceToFcf = num(ratios.priceToFreeCashFlowRatioTTM);
+  const fcfYieldRaw = num(km.freeCashFlowYieldTTM);
+  if (priceToFcf !== null && priceToFcf > 0 && price > 0) {
+    fcfPerShare = Math.round((price / priceToFcf) * 10000) / 10000;
+  } else if (fcfYieldRaw !== null && price > 0) {
+    fcfPerShare = Math.round(fcfYieldRaw * price * 10000) / 10000;
+  } else if (eps > 0) {
     fcfPerShare = eps * 0.85;
     appliedAdjustments.push('FCF estimated as 0.85 × EPS');
   }
 
-  const roe = (num(km.roeTTM) ?? 0) * 100;
-  const debtToEquity = num(km.debtToEquityTTM) ?? 0.5;
-  const currentRatio = num(km.currentRatioTTM) ?? 1.5;
+  const roe = (num(km.returnOnEquityTTM) ?? 0) * 100;
+  const debtToEquity = num(ratios.debtToEquityRatioTTM) ?? 0.5;
+  const currentRatio = num(ratios.currentRatioTTM) ?? num(km.currentRatioTTM) ?? 1.5;
 
   // Growth rates from the last two annual income statements.
   const revenueLatest = num(latestIncome.revenue);
@@ -134,16 +150,17 @@ export async function getFmpData(symbol: string): Promise<StockResponse> {
       ? ((ebitdaLatest - ebitdaPrior) / ebitdaPrior) * 100
       : null;
 
-  // Margins for the stability / competitive-position heuristics.
-  const profitMargin =
-    netIncomeLatest !== null && revenueLatest !== null && revenueLatest > 0
-      ? netIncomeLatest / revenueLatest
-      : 0;
+  // Margins (TTM fractions) for the stability / competitive-position
+  // heuristics; fall back to annual income-statement computation.
+  let profitMargin = num(ratios.netProfitMarginTTM) ?? 0;
+  if (profitMargin === 0 && netIncomeLatest !== null && revenueLatest !== null && revenueLatest > 0) {
+    profitMargin = netIncomeLatest / revenueLatest;
+  }
+  let operatingMargin = num(ratios.operatingProfitMarginTTM) ?? 0;
   const operatingIncomeLatest = num(latestIncome.operatingIncome);
-  const operatingMargin =
-    operatingIncomeLatest !== null && revenueLatest !== null && revenueLatest > 0
-      ? operatingIncomeLatest / revenueLatest
-      : 0;
+  if (operatingMargin === 0 && operatingIncomeLatest !== null && revenueLatest !== null && revenueLatest > 0) {
+    operatingMargin = operatingIncomeLatest / revenueLatest;
+  }
   const beta = num(profile.beta) ?? 1;
 
   // Same classification heuristics as the Alpha Vantage adapter, so the
@@ -158,13 +175,12 @@ export async function getFmpData(symbol: string): Promise<StockResponse> {
   else if (roe > 12 && operatingMargin > 0.08) competitivePosition = 'Good';
   else competitivePosition = 'Average';
 
-  const marketCapRaw = num(profile.mktCap);
+  const marketCapRaw = num(profile.marketCap);
   const marketCap = marketCapRaw !== null && marketCapRaw > 0 ? marketCapRaw : null;
 
   // FCF yield (percent) for the verdict's cash-quality gate. FMP exposes it
-  // directly as a ratio; fall back to FCF/share ÷ price.
+  // directly as a TTM fraction; fall back to FCF/share ÷ price.
   let fcfYield: number | null = null;
-  const fcfYieldRaw = num(km.freeCashFlowYieldTTM);
   if (fcfYieldRaw !== null) {
     fcfYield = fcfYieldRaw * 100;
   } else if (fcfPerShare !== 0 && price > 0) {
@@ -194,7 +210,7 @@ export async function getFmpData(symbol: string): Promise<StockResponse> {
     peHistory: null,
     multibaggerSignals: {
       fcfYield,
-      // Balance-sheet fetch would cost a 4th call per ticker; omit.
+      // Balance-sheet fetch would cost a 5th call per ticker; omit.
       assetGrowth: null,
       ebitdaGrowth,
       week52High,

@@ -633,36 +633,44 @@ describe('fmpFinance adapter', () => {
     vi.doMock('axios', () => ({
       default: {
         get: vi.fn().mockImplementation((url: string) => {
-          if (url.includes('/profile/')) {
+          if (url.includes('/profile')) {
             return Promise.resolve({
               data: [{
                 symbol: 'FIG',
                 companyName: 'Figma Inc.',
                 price: 32.5,
                 beta: 1.1,
-                mktCap: 15_800_000_000,
+                marketCap: 15_800_000_000,
                 range: '24.10-58.75',
               }],
             });
           }
-          if (url.includes('/key-metrics-ttm/')) {
+          if (url.includes('/ratios-ttm')) {
             return Promise.resolve({
               data: [{
-                netIncomePerShareTTM: 1.25,
-                peRatioTTM: 26.0,
-                freeCashFlowPerShareTTM: 1.6,
-                roeTTM: 0.18,
-                debtToEquityTTM: 0.35,
+                priceToEarningsRatioTTM: 26.0,
+                debtToEquityRatioTTM: 0.35,
                 currentRatioTTM: 2.1,
+                netProfitMarginTTM: 0.116,
+                operatingProfitMarginTTM: 0.146,
+                priceToFreeCashFlowRatioTTM: 20.3125, // → FCF/share = 32.5 / 20.3125 = 1.6
+              }],
+            });
+          }
+          if (url.includes('/key-metrics-ttm')) {
+            return Promise.resolve({
+              data: [{
+                returnOnEquityTTM: 0.18,
                 freeCashFlowYieldTTM: 0.049,
+                currentRatioTTM: 2.1,
               }],
             });
           }
           // income-statement (latest first)
           return Promise.resolve({
             data: [
-              { revenue: 820_000_000, netIncome: 95_000_000, operatingIncome: 120_000_000, ebitda: 150_000_000, epsdiluted: 1.2 },
-              { revenue: 650_000_000, netIncome: 70_000_000, operatingIncome: 90_000_000, ebitda: 110_000_000, epsdiluted: 0.9 },
+              { revenue: 820_000_000, netIncome: 95_000_000, operatingIncome: 120_000_000, ebitda: 150_000_000, epsDiluted: 1.2 },
+              { revenue: 650_000_000, netIncome: 70_000_000, operatingIncome: 90_000_000, ebitda: 110_000_000, epsDiluted: 0.9 },
             ],
           });
         }),
@@ -676,10 +684,12 @@ describe('fmpFinance adapter', () => {
     expect(result.symbol).toBe('FIG');
     expect(result.name).toBe('Figma Inc.');
     expect(result.price).toBe(32.5);
-    expect(result.eps).toBe(1.25);
+    // EPS derived from price ÷ TTM P/E = 32.5 / 26 = 1.25
+    expect(result.eps).toBeCloseTo(1.25, 4);
     expect(result.peRatio).toBe(26.0);
-    expect(result.fcfPerShare).toBe(1.6);
-    // roeTTM 0.18 → 18%
+    // FCF/share = price ÷ price-to-FCF = 32.5 / 20.3125 = 1.6
+    expect(result.fcfPerShare).toBeCloseTo(1.6, 4);
+    // returnOnEquityTTM 0.18 → 18%
     expect(result.roe).toBeCloseTo(18, 5);
     expect(result.debtToEquity).toBe(0.35);
     expect(result.currentRatio).toBe(2.1);
@@ -700,17 +710,18 @@ describe('fmpFinance adapter', () => {
     expect(result.peHistory).toBeNull();
   });
 
-  it('uses safe defaults when key-metrics and income-statement are unavailable', async () => {
+  it('uses safe defaults when the fundamentals endpoints are premium-gated', async () => {
     vi.doMock('axios', () => ({
       default: {
         get: vi.fn().mockImplementation((url: string) => {
-          if (url.includes('/profile/')) {
+          if (url.includes('/profile')) {
             return Promise.resolve({
               data: [{ symbol: 'SPARSE', companyName: 'Sparse Co', price: 50 }],
             });
           }
-          // key-metrics-ttm and income-statement both fail upstream
-          return Promise.reject(new Error('403 plan limit'));
+          // ratios-ttm, key-metrics-ttm, income-statement all 402 upstream
+          // (free-tier premium gating for some symbols, e.g. recent IPOs).
+          return Promise.reject(new Error('402 premium symbol'));
         }),
       },
     }));
@@ -736,22 +747,22 @@ describe('fmpFinance adapter', () => {
     expect(result.multibaggerSignals?.week52Low).toBeNull();
   });
 
-  it('derives EPS from the income statement when TTM key-metrics lack it', async () => {
+  it('falls back to annual diluted EPS + EPS-based FCF when TTM ratios are missing', async () => {
     vi.doMock('axios', () => ({
       default: {
         get: vi.fn().mockImplementation((url: string) => {
-          if (url.includes('/profile/')) {
+          if (url.includes('/profile')) {
             return Promise.resolve({
               data: [{ symbol: 'TEST', companyName: 'Test Co', price: 30 }],
             });
           }
-          if (url.includes('/key-metrics-ttm/')) {
+          if (url.includes('/ratios-ttm') || url.includes('/key-metrics-ttm')) {
             return Promise.resolve({ data: [{}] });
           }
           return Promise.resolve({
             data: [
-              { revenue: 100_000_000, netIncome: 10_000_000, epsdiluted: 2.0 },
-              { revenue: 90_000_000, netIncome: 9_000_000, epsdiluted: 1.8 },
+              { revenue: 100_000_000, netIncome: 10_000_000, epsDiluted: 2.0 },
+              { revenue: 90_000_000, netIncome: 9_000_000, epsDiluted: 1.8 },
             ],
           });
         }),
@@ -762,8 +773,6 @@ describe('fmpFinance adapter', () => {
     const result = await getFmpData('TEST');
     expect(stockResponseSchema.safeParse(result).success).toBe(true);
     expect(result.eps).toBe(2.0);
-    // P/E derived from price ÷ EPS = 30 / 2 = 15
-    expect(result.peRatio).toBeCloseTo(15, 5);
     // FCF waterfall: EPS-based estimate = 2 × 0.85 = 1.7
     expect(result.fcfPerShare).toBeCloseTo(1.7, 5);
     expect(result.appliedAdjustments?.join(' ')).toMatch(/EPS from latest annual income statement/);
