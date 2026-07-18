@@ -1,10 +1,11 @@
 import { StockResponse } from '@shared/schema';
 import { getStockData } from './stockData';
 
-const TARGET_MIN_RESULTS = 3;
-const BETWEEN_CALL_DELAY_MS = 2000;
-const PER_CALL_TIMEOUT_MS   = 15_000;
-const MAX_SCAN_DURATION_MS  = 8 * 60 * 1000;
+const TARGET_MIN_RESULTS    = 3;
+const PER_CALL_TIMEOUT_MS   = 8_000;       // abort per-symbol fetch after 8s
+const MAX_SCAN_DURATION_MS  = 20 * 60 * 1000; // wall-clock limit (20 min)
+const SUCCESS_DELAY_MS      = 1_500;       // brief pause only after a live-data hit
+const BETWEEN_CALL_DELAY_MS = 2_000;       // kept for test-import compat (unused in hot path)
 const CACHE_DURATION_MS     = 24 * 60 * 60 * 1000;
 
 export type ScanQuality = 'Exceptional' | 'Good';
@@ -37,25 +38,38 @@ export interface ScanState {
 }
 
 // ---------------------------------------------------------------------------
-// Curated pool — ~45 S&P 500 blue-chips with the highest yfinance reliability
-// in production (large-cap, actively traded, well-covered by Yahoo Finance).
-// Shuffled on every fresh scan so different companies surface over time.
+// Russell 3000 pool — sectors that historically produce quality businesses.
+// Shuffled on every fresh scan so the ordering rotates across runs.
 // ---------------------------------------------------------------------------
 const SCAN_POOL: string[] = [
   // Technology
-  'MSFT', 'AAPL', 'GOOGL', 'META', 'NVDA', 'ADBE', 'TXN', 'INTU', 'ORCL', 'CSCO',
+  'MSFT', 'AAPL', 'GOOGL', 'META', 'NVDA', 'ADBE', 'CRM', 'NOW', 'INTU', 'ORCL',
+  'CSCO', 'TXN', 'QCOM', 'AMAT', 'KLAC', 'LRCX', 'SNPS', 'CDNS', 'ANSS', 'FTNT',
+  'PANW', 'ZS', 'CRWD', 'NET', 'DDOG', 'MDB', 'TEAM', 'HUBS', 'TTD', 'PAYC',
+  'ACN', 'IBM', 'HPQ', 'JNPR', 'NTAP', 'WDC', 'STX', 'KEYS', 'TRMB', 'LDOS',
   // Financials
-  'V', 'MA', 'JPM', 'SPGI', 'MCO', 'AXP', 'BLK', 'GS', 'ICE', 'MSCI',
+  'V', 'MA', 'JPM', 'SPGI', 'MCO', 'AXP', 'GS', 'MS', 'BLK', 'SCHW',
+  'ICE', 'CME', 'CBOE', 'MSCI', 'FDS', 'VRSK', 'CINF', 'TRV', 'PGR', 'ALL',
+  'WRB', 'AFG', 'ERIE', 'HCI', 'KMPR', 'SIGI', 'UNUM', 'PRU', 'MET', 'LNC',
   // Healthcare
-  'UNH', 'LLY', 'ABT', 'DHR', 'SYK', 'EW', 'ISRG', 'TMO', 'MCK', 'CI',
+  'UNH', 'LLY', 'TMO', 'ABT', 'DHR', 'SYK', 'BSX', 'EW', 'ISRG', 'ZBH',
+  'IDXX', 'ALGN', 'PODD', 'HOLX', 'MCK', 'ABC', 'CAH', 'CVS', 'MOH', 'HUM',
+  'CI', 'ELV', 'RGEN', 'NEOG', 'ABMD', 'MASI', 'MMSI', 'NVCR', 'INVA', 'AMED',
   // Consumer Staples
-  'PG', 'KO', 'COST', 'WMT', 'MNST', 'CHD', 'KMB',
+  'PG', 'KO', 'COST', 'WMT', 'TGT', 'MNST', 'HSY', 'GIS', 'CPB', 'SJM',
+  'MKC', 'CLX', 'KMB', 'CHD', 'HRL', 'LW', 'POST', 'LANC', 'JJSF', 'DMND',
   // Industrials
-  'HON', 'CAT', 'EMR', 'ROP', 'FAST', 'RSG',
+  'HON', 'CAT', 'DE', 'EMR', 'ETN', 'ROK', 'ROP', 'FAST', 'GWW', 'HUBB',
+  'FELE', 'AOS', 'MAS', 'FBHS', 'NVT', 'GNRC', 'AIRC', 'AWK', 'RSG', 'WM',
+  'CPRT', 'ODFL', 'SAIA', 'CHRW', 'EXPD', 'JBHT', 'LSTR', 'POOL', 'TXRH', 'CASY',
   // Consumer Discretionary
-  'HD', 'LOW', 'MCD', 'NKE', 'SBUX',
+  'HD', 'LOW', 'MCD', 'SBUX', 'NKE', 'DPZ', 'YUM', 'CMG', 'WSM', 'FIVE',
+  'OLLI', 'PRGS', 'MANH', 'PCTY', 'SPSC', 'QTWO', 'LAD', 'ABG', 'PAG', 'AN',
   // Energy & Materials
-  'XOM', 'CVX', 'APD', 'SHW',
+  'XOM', 'CVX', 'COP', 'APD', 'ECL', 'PPG', 'SHW', 'NUE', 'RS', 'MLM',
+  // Russell 3000 mid-caps known for quality
+  'CELH', 'BWXT', 'CACC', 'CSWI', 'MEDP', 'MGRC', 'OSIS', 'PLXS', 'PRFT', 'SSNC',
+  'AMSF', 'CBSH', 'FFIN', 'FRME', 'HTLF', 'IBCP', 'NBTB', 'PEBO', 'PPBI', 'WSFS',
 ];
 
 // ---------------------------------------------------------------------------
@@ -70,10 +84,9 @@ function computeQuality(data: StockResponse): ScanQuality | null {
   return null;
 }
 
-// Returns true when the quality metrics we need are present and non-zero.
-// Replaces the old `dataSource === 'fallback'` skip: well-specified fallback
-// entries for large-caps carry valid ROE / D-E / currentRatio and should be
-// scored normally.
+// Returns true when the quality metrics needed for scoring are present.
+// Accepts fallback data for well-specified large-caps (AAPL, MSFT, V, etc.)
+// which carry valid ROE / D-E / currentRatio in the static dataset.
 function hasUsableQualityMetrics(data: StockResponse): boolean {
   return (
     typeof data.roe === 'number'          && data.roe !== 0 &&
@@ -82,9 +95,8 @@ function hasUsableQualityMetrics(data: StockResponse): boolean {
   );
 }
 
-// Server-side intrinsic value estimate — used only as a discount gate during
-// scanning. The client re-computes the authoritative figure using the full
-// calculator suite (with industry caps, P/E history, etc.).
+// Server-side intrinsic value estimate. Used only as a discount gate;
+// the client re-computes the authoritative figure with the full calculator.
 function estimateIntrinsicValue(data: StockResponse): number {
   const fcf = (data.fcfPerShare && data.fcfPerShare > 0)
     ? data.fcfPerShare
@@ -122,7 +134,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms);
@@ -158,47 +170,40 @@ async function runScan(): Promise<void> {
     if (state.found >= TARGET_MIN_RESULTS) break;
 
     if (Date.now() - (state.startedAt ?? 0) > MAX_SCAN_DURATION_MS) {
-      console.log(`[Research scan] Max duration (${MAX_SCAN_DURATION_MS / 60_000}min) reached after ${state.scanned} symbols — stopping early`);
+      console.log(`[Research scan] Wall-clock limit (${MAX_SCAN_DURATION_MS / 60_000}min) reached after ${state.scanned} symbols — stopping`);
       break;
     }
 
     try {
-      const data = await withTimeout(
-        getStockData(symbol),
-        PER_CALL_TIMEOUT_MS,
-        symbol,
-      );
+      const data = await withTimeout(getStockData(symbol), PER_CALL_TIMEOUT_MS);
       state.scanned++;
 
+      // Error or missing price — skip with no delay.
+      // (Call already cost up to PER_CALL_TIMEOUT_MS or failed fast; adding
+      // another 2s just wastes scan budget with zero rate-limit benefit.)
       if (data.error || !data.price || data.price <= 0) {
-        await sleep(BETWEEN_CALL_DELAY_MS);
         continue;
+      }
+
+      // For live-data successes, wait briefly before the next call so we
+      // don't immediately hammer the API again after a successful hit.
+      const isLiveData = data.dataSource !== 'fallback';
+      if (isLiveData) {
+        await sleep(SUCCESS_DELAY_MS);
+      } else {
+        console.log(`[Research scan] Scoring ${symbol} from fallback data (source=${data.dataSource})`);
       }
 
       if (!hasUsableQualityMetrics(data)) {
-        if (data.dataSource === 'fallback') {
-          console.log(`[Research scan] Skipping ${symbol} — fallback data has no quality metrics`);
-        }
-        await sleep(BETWEEN_CALL_DELAY_MS);
         continue;
-      }
-
-      if (data.dataSource === 'fallback') {
-        console.log(`[Research scan] Accepting ${symbol} from fallback — quality metrics present`);
       }
 
       const quality = computeQuality(data);
-      if (!quality) {
-        await sleep(BETWEEN_CALL_DELAY_MS);
-        continue;
-      }
+      if (!quality) continue;
 
       const iv = estimateIntrinsicValue(data);
       const discountPct = iv > 0 ? ((iv - data.price) / iv) * 100 : 0;
-      if (discountPct < 10) {
-        await sleep(BETWEEN_CALL_DELAY_MS);
-        continue;
-      }
+      if (discountPct < 10) continue;
 
       state.candidates.push({
         symbol: data.symbol,
@@ -219,10 +224,8 @@ async function runScan(): Promise<void> {
       state.found++;
       console.log(`[Research scan] Found candidate: ${symbol} (quality=${quality}, discount~${discountPct.toFixed(1)}%, source=${data.dataSource})`);
 
-      if (state.found < TARGET_MIN_RESULTS) {
-        await sleep(BETWEEN_CALL_DELAY_MS);
-      }
     } catch (err) {
+      // Timeout or unexpected error — no delay, move straight to the next symbol.
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.startsWith('Timeout')) {
         console.log(`[Research scan] ${symbol} timed out after ${PER_CALL_TIMEOUT_MS / 1000}s — skipping`);
@@ -230,14 +233,13 @@ async function runScan(): Promise<void> {
         console.error(`[Research scan] Error for ${symbol}:`, msg);
       }
       state.scanned++;
-      await sleep(BETWEEN_CALL_DELAY_MS);
     }
   }
 
   state.status = 'done';
   state.completedAt = Date.now();
   const elapsed = ((state.completedAt - (state.startedAt ?? state.completedAt)) / 1000).toFixed(0);
-  console.log(`[Research scan] Done — scanned ${state.scanned}, found ${state.found}, elapsed ${elapsed}s`);
+  console.log(`[Research scan] Done — scanned ${state.scanned}/${state.poolSize}, found ${state.found}, elapsed ${elapsed}s`);
 }
 
 export function getScanState(): ScanState {
@@ -263,8 +265,7 @@ export function startScanIfNeeded(forceRefresh = false): void {
   });
 }
 
-// Test-only helpers. Vitest can reset or seed internal state between cases
-// without touching production behaviour.
+// Test-only helpers — reset or seed singleton state without touching production behaviour.
 export function _resetScanStateForTests(): void {
   state.status = 'idle';
   state.scanned = 0;
