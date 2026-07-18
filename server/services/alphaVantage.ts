@@ -63,46 +63,16 @@ export async function getAlphaVantageData(symbol: string): Promise<StockResponse
     price = high && low ? (high + low) / 2 : 0;
   }
 
-  // Fetch INCOME_STATEMENT for ebitdaGrowth — non-critical, gracefully null on failure.
-  // AV annualReports[0] = most recent year, [1] = prior year.
-  let ebitdaGrowth: number | null = null;
-  try {
-    const incomeStmt = await rateLimitedGet({
-      function: 'INCOME_STATEMENT',
-      symbol,
-      apikey: ALPHA_VANTAGE_KEY,
-    });
-    const reports: Array<Record<string, string>> = incomeStmt?.annualReports ?? [];
-    if (reports.length >= 2) {
-      const curr = parseFloat(reports[0].ebitda ?? '0');
-      const prev = parseFloat(reports[1].ebitda ?? '0');
-      if (curr !== 0 && prev !== 0 && Number.isFinite(curr) && Number.isFinite(prev)) {
-        ebitdaGrowth = parseFloat(((curr - prev) / Math.abs(prev) * 100).toFixed(2));
-      }
-    }
-  } catch {
-    // Non-critical: screener will omit this factor
-  }
-
-  // Fetch BALANCE_SHEET for assetGrowth — non-critical, gracefully null on failure.
-  let assetGrowth: number | null = null;
-  try {
-    const balanceSheet = await rateLimitedGet({
-      function: 'BALANCE_SHEET',
-      symbol,
-      apikey: ALPHA_VANTAGE_KEY,
-    });
-    const reports: Array<Record<string, string>> = balanceSheet?.annualReports ?? [];
-    if (reports.length >= 2) {
-      const curr = parseFloat(reports[0].totalAssets ?? '0');
-      const prev = parseFloat(reports[1].totalAssets ?? '0');
-      if (curr !== 0 && prev !== 0 && Number.isFinite(curr) && Number.isFinite(prev)) {
-        assetGrowth = parseFloat(((curr - prev) / Math.abs(prev) * 100).toFixed(2));
-      }
-    }
-  } catch {
-    // Non-critical: screener will omit this factor
-  }
+  // INCOME_STATEMENT and BALANCE_SHEET would supply ebitdaGrowth / assetGrowth
+  // for the Investment Affordability screener sub-score, but each costs one
+  // AV call against the 25/day free-tier quota.  With a 5-stock watchlist
+  // pre-fetch that alone burns 10 calls; adding 2 more per stock would exhaust
+  // the daily budget after ~5 fetches, leaving all other stocks unable to load
+  // at all.  Keeping AV at 2 calls/stock (OVERVIEW + GLOBAL_QUOTE) means the
+  // screener omits that sub-score for AV-sourced results, which is the better
+  // trade-off vs. stocks hard-failing.
+  const ebitdaGrowth: number | null = null;
+  const assetGrowth: number | null = null;
 
   const eps = parseFloat(overview.EPS ?? '0') || 0;
   const peRatio = parseFloat(overview.PERatio ?? '0') || 0;

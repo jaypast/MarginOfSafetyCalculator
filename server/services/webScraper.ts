@@ -1,10 +1,16 @@
 import fetch from 'node-fetch';
+import https from 'https';
 import * as cheerio from 'cheerio';
 import { StockResponse } from '@shared/schema';
 import { HistoricalDataResponse } from './yahooFinance';
 
 // Add delay function to space out requests
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Yahoo Finance now returns very large response headers that exceed node-fetch /
+// Node's default 8 KB parser limit ("Parse Error: Header overflow").
+// Use a custom HTTPS agent with a 32 KB header budget to bypass this.
+const httpsAgent = new https.Agent({ maxHeaderSize: 32 * 1024 } as https.AgentOptions & { maxHeaderSize: number });
 
 // Create more realistic browser headers that change slightly between requests
 function getRandomUserAgent() {
@@ -67,49 +73,62 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
     
     // Add a small delay to space out requests
     await delay(500);
-    
-    // Fetch the summary page for the stock symbol
-    const response = await fetch(`https://finance.yahoo.com/quote/${symbol}`, {
-      headers: {
-        'User-Agent': getRandomUserAgent(),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'Pragma': 'no-cache',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'DNT': '1'
-      }
-    });
-    
+
+    // Fetch the summary page. Wrapped in try/catch so a "Header overflow"
+    // (Yahoo Finance now returns >8 KB response headers) doesn't abort the
+    // whole scrape — we fall back to an empty HTML string and still return
+    // the price + name obtained from getSimpleQuote above.
+    let html = '';
+    try {
+      const response = await fetch(`https://finance.yahoo.com/quote/${symbol}`, {
+        agent: httpsAgent,
+        headers: {
+          'User-Agent': getRandomUserAgent(),
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'Pragma': 'no-cache',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'none',
+          'Sec-Fetch-User': '?1',
+          'DNT': '1'
+        }
+      } as any);
+      if (response.ok) html = await response.text();
+    } catch {
+      // Header overflow or network error — proceed with empty HTML
+    }
+
     // Add another delay before the next request
     await delay(800);
-    
+
     // Get statistics page for more detailed metrics
-    const statsResponse = await fetch(`https://finance.yahoo.com/quote/${symbol}/key-statistics`, {
-      headers: {
-        'User-Agent': getRandomUserAgent(),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'Pragma': 'no-cache',
-        'Referer': `https://finance.yahoo.com/quote/${symbol}`,
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'same-origin',
-        'DNT': '1'
-      }
-    });
-    
-    // Parse the pages if successful
-    const html = response.ok ? await response.text() : '';
+    let statsHtml = '';
+    try {
+      const statsResponse = await fetch(`https://finance.yahoo.com/quote/${symbol}/key-statistics`, {
+        agent: httpsAgent,
+        headers: {
+          'User-Agent': getRandomUserAgent(),
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'Pragma': 'no-cache',
+          'Referer': `https://finance.yahoo.com/quote/${symbol}`,
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'same-origin',
+          'DNT': '1'
+        }
+      } as any);
+      if (statsResponse.ok) statsHtml = await statsResponse.text();
+    } catch {
+      // Header overflow or network error — proceed with empty stats HTML
+    }
+
     const $ = cheerio.load(html);
-    
-    const statsHtml = statsResponse.ok ? await statsResponse.text() : '';
     const stats$ = cheerio.load(statsHtml);
     
     // Extract key metrics from the statistics page
