@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -10,86 +10,113 @@ import { ResearchStock, getCachedResearchData, saveResearchDataToCache, getCache
 import { calculateIntrinsicValue, calculateDiscount, computeStockQuality } from '@/lib/researchCalculations';
 
 const MIN_DISCOUNT_PCT = 10;
+const POLL_INTERVAL_MS = 3000;
 
-const STOCK_SYMBOLS = [
-  'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META',
-  'NVDA', 'JPM', 'V', 'MA', 'BRK-B',
-  'JNJ', 'UNH', 'HD', 'KO', 'ADBE',
-  'CRM', 'PG', 'COST', 'LLY', 'TMO',
-  'ASML', 'TSM', 'NOW', 'INTU', 'SPGI',
-];
+interface ScanCandidate {
+  symbol: string;
+  name: string;
+  price: number;
+  eps: number;
+  peRatio: number;
+  fcfPerShare: number;
+  growthRate: number;
+  roe: number;
+  debtToEquity: number;
+  currentRatio: number;
+  quality: 'Exceptional' | 'Good';
+  dataSource: string;
+}
+
+interface ScanResponse {
+  status: 'idle' | 'scanning' | 'done';
+  scanned: number;
+  poolSize: number;
+  found: number;
+  candidates: ScanCandidate[];
+  startedAt?: number;
+  completedAt?: number;
+}
+
+function candidateToResearchStock(c: ScanCandidate): ResearchStock {
+  const stockData = {
+    symbol: c.symbol,
+    name: c.name,
+    price: c.price,
+    eps: c.eps,
+    peRatio: c.peRatio,
+    fcfPerShare: c.fcfPerShare,
+    growthRate: c.growthRate,
+    roe: c.roe,
+    debtToEquity: c.debtToEquity,
+    currentRatio: c.currentRatio,
+  } as any;
+  const intrinsicValue = calculateIntrinsicValue(stockData);
+  const discount = calculateDiscount(c.price, intrinsicValue);
+  return { symbol: c.symbol, name: c.name, price: c.price, intrinsicValue, discount, quality: c.quality };
+}
 
 const ResearchPage: React.FC = () => {
-  const [loading, setLoading] = useState(true);
+  const [scanData, setScanData] = useState<ScanResponse | null>(null);
   const [stocks, setStocks] = useState<ResearchStock[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [cacheExpiration, setCacheExpiration] = useState<string>('');
-  const [forceRefresh, setForceRefresh] = useState(false);
+  const [bootstrapped, setBootstrapped] = useState(false);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
+  const fetchScan = async (refresh = false) => {
+    try {
+      const url = refresh ? '/api/research/scan?refresh=true' : '/api/research/scan';
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data: ScanResponse = await res.json();
+      setScanData(data);
 
-      try {
-        const { data: cachedData, needsRefresh } = getCachedResearchData();
-
-        if (cachedData && !needsRefresh && !forceRefresh) {
-          setStocks(cachedData);
-          setLastUpdated(getCacheLastUpdated());
-          setCacheExpiration(getCacheExpirationDate());
-          setLoading(false);
-          return;
-        }
-
-        const stockPromises = STOCK_SYMBOLS.map(async (symbol) => {
-          try {
-            const response = await fetch(`/api/stock/${symbol}`);
-            if (!response.ok) return null;
-            const stockData = await response.json();
-            if (stockData.error || !stockData.price) return null;
-
-            const quality = computeStockQuality(stockData);
-            if (quality !== 'Exceptional' && quality !== 'Good') return null;
-
-            const intrinsicValue = calculateIntrinsicValue(stockData);
-            const discount = calculateDiscount(stockData.price, intrinsicValue);
-
-            if (discount < MIN_DISCOUNT_PCT) return null;
-
-            return {
-              symbol: stockData.symbol,
-              name: stockData.name,
-              price: stockData.price,
-              intrinsicValue,
-              discount,
-              quality,
-            } satisfies ResearchStock;
-          } catch {
-            return null;
-          }
-        });
-
-        const results = await Promise.all(stockPromises);
-
-        const qualityBuys = (results.filter(Boolean) as ResearchStock[])
+      if (data.status === 'done' && data.candidates.length > 0) {
+        const converted = data.candidates
+          .map(candidateToResearchStock)
+          .filter(s => s.discount >= MIN_DISCOUNT_PCT)
           .sort((a, b) => b.discount - a.discount)
           .slice(0, 10);
-
-        saveResearchDataToCache(qualityBuys);
-        setStocks(qualityBuys);
+        setStocks(converted);
+        saveResearchDataToCache(converted);
         setLastUpdated(getCacheLastUpdated());
         setCacheExpiration(getCacheExpirationDate());
-
-        if (forceRefresh) setForceRefresh(false);
-      } catch (error) {
-        console.error('Error fetching research data:', error);
-      } finally {
-        setLoading(false);
+      } else if (data.status === 'done') {
+        setStocks([]);
       }
-    };
+    } catch (err) {
+      console.error('Research scan fetch failed:', err);
+    }
+  };
 
-    fetchData();
-  }, [forceRefresh]);
+  useEffect(() => {
+    const { data: cached, needsRefresh } = getCachedResearchData();
+    if (cached && !needsRefresh) {
+      setStocks(cached);
+      setLastUpdated(getCacheLastUpdated());
+      setCacheExpiration(getCacheExpirationDate());
+      setScanData({ status: 'done', scanned: 0, poolSize: 0, found: cached.length, candidates: [] });
+    } else {
+      fetchScan(false);
+    }
+    setBootstrapped(true);
+  }, []);
+
+  useEffect(() => {
+    if (!bootstrapped) return;
+    if (scanData?.status === 'scanning') {
+      pollTimer.current = setTimeout(() => fetchScan(false), POLL_INTERVAL_MS);
+    }
+    return () => { if (pollTimer.current) clearTimeout(pollTimer.current); };
+  }, [scanData, bootstrapped]);
+
+  const handleRefresh = () => {
+    setStocks([]);
+    setScanData(null);
+    fetchScan(true);
+  };
+
+  const isLoading = !bootstrapped || scanData === null || scanData.status === 'idle' || scanData.status === 'scanning';
 
   const getQualityBadgeColor = (quality: string) => {
     switch (quality) {
@@ -101,6 +128,15 @@ const ResearchPage: React.FC = () => {
     }
   };
 
+  const progressLabel = () => {
+    if (!scanData || scanData.status === 'idle') return 'Starting scan…';
+    if (scanData.status === 'scanning') {
+      const pct = scanData.poolSize > 0 ? Math.round((scanData.scanned / scanData.poolSize) * 100) : 0;
+      return `Scanning Russell 3000… checked ${scanData.scanned} of ${scanData.poolSize} (${pct}%) · ${scanData.found} found`;
+    }
+    return '';
+  };
+
   return (
     <div className="container mx-auto py-8 max-w-7xl">
       <header className="mb-8">
@@ -110,29 +146,28 @@ const ResearchPage: React.FC = () => {
 
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center flex-wrap gap-2">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <ShieldCheck className="h-5 w-5 text-green-600" />
                 High-Quality Buy Candidates
               </CardTitle>
               <CardDescription>
-                Exceptional or Good quality businesses with ≥ {MIN_DISCOUNT_PCT}% discount to estimated intrinsic value
+                Exceptional or Good quality businesses with ≥ {MIN_DISCOUNT_PCT}% discount to estimated intrinsic value · Russell 3000 universe
               </CardDescription>
             </div>
-            <div className="flex items-center gap-4">
-              {loading ? (
+            <div className="flex items-center gap-3">
+              {isLoading ? (
                 <div className="flex items-center gap-2 text-sm text-neutral-500">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Scanning {STOCK_SYMBOLS.length} companies…</span>
+                  <span>{progressLabel()}</span>
                 </div>
               ) : (
                 <Button
                   variant="outline"
                   size="sm"
                   className="flex items-center gap-1"
-                  onClick={() => setForceRefresh(true)}
-                  disabled={loading}
+                  onClick={handleRefresh}
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
                   <span>Refresh</span>
@@ -155,7 +190,7 @@ const ResearchPage: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loading ? (
+                {isLoading ? (
                   Array(5).fill(0).map((_, i) => (
                     <TableRow key={i}>
                       <TableCell><Skeleton className="h-6 w-16" /></TableCell>
@@ -172,15 +207,17 @@ const ResearchPage: React.FC = () => {
                       <div className="py-12 text-center">
                         <ShieldCheck className="h-10 w-10 text-neutral-300 mx-auto mb-3" />
                         <p className="font-medium text-neutral-600">No high-quality buys at current prices</p>
-                        <p className="text-sm text-neutral-400 mt-1">
-                          None of the {STOCK_SYMBOLS.length} tracked companies meet both the quality and ≥{MIN_DISCOUNT_PCT}% discount thresholds right now.
-                          Check back when the market pulls back.
+                        <p className="text-sm text-neutral-400 mt-1 max-w-md mx-auto">
+                          {scanData?.poolSize
+                            ? `Scanned ${scanData.scanned} of ${scanData.poolSize} Russell 3000 companies — none currently meet both the quality and ≥${MIN_DISCOUNT_PCT}% discount thresholds.`
+                            : `No companies currently meet both the quality and ≥${MIN_DISCOUNT_PCT}% discount thresholds.`}
+                          {' '}Check back when the market pulls back.
                         </p>
                       </div>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  stocks.map((stock) => (
+                  stocks.map(stock => (
                     <TableRow key={stock.symbol}>
                       <TableCell className="font-medium">{stock.symbol}</TableCell>
                       <TableCell>{stock.name}</TableCell>
@@ -201,10 +238,10 @@ const ResearchPage: React.FC = () => {
 
           <div className="mt-6 text-xs text-neutral-500 space-y-1">
             {lastUpdated && <p>Last updated: {lastUpdated}</p>}
-            {cacheExpiration && <p>Data refreshes automatically: {cacheExpiration}</p>}
+            {cacheExpiration && <p>Next full refresh: {cacheExpiration}</p>}
             <p>Quality: Exceptional = ROE &gt; 20%, D/E &lt; 0.5, current ratio &gt; 1.5 · Good = ROE &gt; 15%, D/E &lt; 1, current ratio &gt; 1.2</p>
             <p>Discount = gap between current price and average DCF / P/E / Graham intrinsic value. Only gaps ≥ {MIN_DISCOUNT_PCT}% shown.</p>
-            <p className="font-medium">Data is cached weekly to minimise API usage. Use Refresh for the latest values.</p>
+            <p className="font-medium">Server scans the Russell 3000 one company at a time to avoid API rate limits. Results are cached for 24 hours.</p>
           </div>
         </CardContent>
       </Card>

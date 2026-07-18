@@ -10,6 +10,7 @@ import {
 } from "@shared/schema";
 import { getStockData, acquireYfinanceSlot, releaseYfinanceSlot } from "./services/stockData";
 import { getFedRateEnvironment } from "./services/fedRate";
+import { getScanState, startScanIfNeeded } from "./services/researchScan";
 import { getMarketSentiment, getMostActiveStocks, RealTimeSentiment } from "./services/marketSentiment";
 import { getHistoricalData } from "./services/yahooFinance";
 import { getRapidApiHistoricalData } from "./services/rapidApiFinance";
@@ -500,6 +501,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: error instanceof Error ? error.message : "Failed to remove watchlist entry",
       });
     }
+  });
+
+  // Research scan (Task #45) ------------------------------------------------
+  // Server-side scan through the Russell 3000 pool, one symbol at a time with
+  // a 2-second gap between yfinance calls. Results are cached 24h server-side.
+  // The client polls this endpoint every 3s while status === 'scanning'.
+  app.get("/api/research/scan", (req, res) => {
+    const forceRefresh = req.query.refresh === 'true';
+    startScanIfNeeded(forceRefresh);
+    return res.json(getScanState());
   });
 
   // Macro: Fed rate environment (Task #31) ---------------------------------

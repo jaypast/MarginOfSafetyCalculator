@@ -8,9 +8,9 @@ export interface ResearchStock {
   quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative';
 }
 
-// Cache key for the research data
-const RESEARCH_CACHE_KEY = 'research_data_cache';
-const RESEARCH_CACHE_TIMESTAMP = 'research_data_timestamp';
+// Cache key for the research data — bump version to invalidate old client caches
+const RESEARCH_CACHE_KEY = 'research_data_cache_v3';
+const RESEARCH_CACHE_TIMESTAMP = 'research_data_timestamp_v3';
 
 // Cache duration in milliseconds (one week)
 const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
