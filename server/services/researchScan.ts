@@ -233,3 +233,25 @@ export function startScanIfNeeded(forceRefresh = false): void {
     state.completedAt = Date.now();
   });
 }
+
+// Test-only helpers. Vitest can reset or seed internal state between cases
+// without touching production behaviour.
+export function _resetScanStateForTests(): void {
+  state.status = 'idle';
+  state.scanned = 0;
+  state.poolSize = 0;
+  state.found = 0;
+  state.candidates = [];
+  state.startedAt = undefined;
+  state.completedAt = undefined;
+}
+
+export function _setCompletedForTests(completedAt: number): void {
+  state.status = 'done';
+  state.completedAt = completedAt;
+  state.scanned = 5;
+  state.poolSize = 10;
+  state.found = 3;
+  state.candidates = [];
+  state.startedAt = completedAt - 30_000;
+}
