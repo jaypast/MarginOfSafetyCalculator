@@ -1,6 +1,31 @@
 import { StockData, ValuationParams, ValuationResult } from './types';
 import { calculateDCF, calculatePE, calculateGraham, calculateAverageValuation, calculateBuyBelow, calculateDiscountPremium, calculateBuyBelowStatus } from './calculators';
 
+export type StockQuality = 'Exceptional' | 'Good' | 'Average' | 'Speculative';
+
+/**
+ * Shared quality scorer used by both the Research page and TopResearch component.
+ * Grades are based on return on equity, debt load, and liquidity.
+ *   Exceptional — ROE > 20%, D/E < 0.5, current ratio > 1.5
+ *   Good        — ROE > 15%, D/E < 1,   current ratio > 1.2
+ *   Speculative — ROE < 10%  OR  D/E > 2  OR  current ratio < 1
+ *   Average     — everything else
+ */
+export function computeStockQuality(stockData: {
+  roe?: number | null;
+  debtToEquity?: number | null;
+  currentRatio?: number | null;
+}): StockQuality {
+  const roe = stockData.roe ?? 0;
+  const dte = stockData.debtToEquity ?? 0;
+  const cr  = stockData.currentRatio ?? 0;
+
+  if (roe > 20 && dte < 0.5 && cr > 1.5) return 'Exceptional';
+  if (roe > 15 && dte < 1   && cr > 1.2) return 'Good';
+  if (roe < 10 || dte > 2   || cr < 1)   return 'Speculative';
+  return 'Average';
+}
+
 /**
  * Calculate intrinsic value using the exact same methods as the Home page
  * This matches what the user sees in the calculator exactly

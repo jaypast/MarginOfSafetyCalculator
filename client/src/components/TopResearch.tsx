@@ -12,13 +12,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronUp, Calendar } from "lucide-react";
 import { formatCurrency } from '@/lib/utils';
+import { computeStockQuality, StockQuality } from '@/lib/researchCalculations';
 
 // Simple research stock interface
 interface ResearchStock {
   symbol: string;
   name: string;
   price: number;
-  quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative';
+  quality: StockQuality;
 }
 
 const TopResearch = () => {
@@ -56,17 +57,8 @@ const TopResearch = () => {
         return null;
       }
       
-      // Determine quality based on financial metrics
-      let quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative' = 'Average';
-      
-      if (data.roe > 20 && data.debtToEquity < 0.5 && data.currentRatio > 1.5) {
-        quality = 'Exceptional';
-      } else if (data.roe > 15 && data.debtToEquity < 1 && data.currentRatio > 1.2) {
-        quality = 'Good';
-      } else if (data.roe < 10 || data.debtToEquity > 2 || data.currentRatio < 1) {
-        quality = 'Speculative';
-      }
-      
+      const quality = computeStockQuality(data);
+
       return {
         symbol: data.symbol,
         name: data.name,
