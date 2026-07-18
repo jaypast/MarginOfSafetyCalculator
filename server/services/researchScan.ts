@@ -20,6 +20,8 @@ export interface ScanCandidate {
   currentRatio: number;
   quality: ScanQuality;
   dataSource: string;
+  intrinsicValue: number;
+  discountPct: number;
 }
 
 export interface ScanState {
@@ -188,6 +190,8 @@ async function runScan(): Promise<void> {
         currentRatio: data.currentRatio ?? 0,
         quality,
         dataSource: data.dataSource || 'unknown',
+        intrinsicValue: parseFloat(iv.toFixed(2)),
+        discountPct: parseFloat(discountPct.toFixed(1)),
       });
       state.found++;
       console.log(`[Research scan] Found candidate: ${symbol} (quality=${quality}, discount~${discountPct.toFixed(1)}%)`);

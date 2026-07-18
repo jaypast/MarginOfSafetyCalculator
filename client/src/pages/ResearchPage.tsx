@@ -7,7 +7,7 @@ import { formatCurrency } from '@/lib/utils';
 import { AlertTriangle, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ResearchStock, getCachedResearchData, saveResearchDataToCache, getCacheExpirationDate, getCacheLastUpdated } from '@/lib/researchCache';
-import { calculateIntrinsicValue, calculateDiscount, computeStockQuality } from '@/lib/researchCalculations';
+import { computeStockQuality } from '@/lib/researchCalculations';
 
 const MIN_DISCOUNT_PCT = 10;
 const POLL_INTERVAL_MS = 3000;
@@ -25,6 +25,8 @@ interface ScanCandidate {
   currentRatio: number;
   quality: 'Exceptional' | 'Good';
   dataSource: string;
+  intrinsicValue: number;
+  discountPct: number;
 }
 
 interface ScanResponse {
@@ -38,21 +40,14 @@ interface ScanResponse {
 }
 
 function candidateToResearchStock(c: ScanCandidate): ResearchStock {
-  const stockData = {
+  return {
     symbol: c.symbol,
     name: c.name,
     price: c.price,
-    eps: c.eps,
-    peRatio: c.peRatio,
-    fcfPerShare: c.fcfPerShare,
-    growthRate: c.growthRate,
-    roe: c.roe,
-    debtToEquity: c.debtToEquity,
-    currentRatio: c.currentRatio,
-  } as any;
-  const intrinsicValue = calculateIntrinsicValue(stockData);
-  const discount = calculateDiscount(c.price, intrinsicValue);
-  return { symbol: c.symbol, name: c.name, price: c.price, intrinsicValue, discount, quality: c.quality };
+    intrinsicValue: c.intrinsicValue,
+    discount: c.discountPct,
+    quality: c.quality,
+  };
 }
 
 const ResearchPage: React.FC = () => {
@@ -74,7 +69,6 @@ const ResearchPage: React.FC = () => {
       if (data.status === 'done' && data.candidates.length > 0) {
         const converted = data.candidates
           .map(candidateToResearchStock)
-          .filter(s => s.discount >= MIN_DISCOUNT_PCT)
           .sort((a, b) => b.discount - a.discount)
           .slice(0, 10);
         setStocks(converted);
