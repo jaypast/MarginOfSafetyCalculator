@@ -3,10 +3,12 @@ import {
   feedback, type Feedback, type InsertFeedback,
   watchlist, type WatchlistEntry,
   fundamentalsCache, type FundamentalsCacheRow,
+  reportJobs, type ReportJob,
+  reportJobResults, type ReportJobResult, type InsertReportJobResult,
   type StockResponse,
 } from "@shared/schema";
 import { db } from "./db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, desc, count, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -44,6 +46,27 @@ export interface IStorage {
     dataSource: string,
     fetchedAt: Date,
   ): Promise<FundamentalsCacheRow>;
+
+  // Report job methods (Task #57)
+  // DB-backed background job for the emailed Russell 3000 report. The count
+  // of persisted result rows is the resume checkpoint, so addReportJobResult
+  // must tolerate duplicate (jobId, symbol) inserts (crash between insert and
+  // the next fetch can replay one ticker).
+  createReportJob(email: string, totalTickers: number, listAsOf: string): Promise<ReportJob>;
+  getReportJob(id: number): Promise<ReportJob | undefined>;
+  // Most recent job still in a live state (queued/running) — used both as the
+  // duplicate-request guard and as the resume-on-boot lookup.
+  getActiveReportJob(): Promise<ReportJob | undefined>;
+  // Most recent job in any state — lets the UI keep showing "sent" after a
+  // run completes.
+  getLatestReportJob(): Promise<ReportJob | undefined>;
+  updateReportJob(
+    id: number,
+    fields: Partial<Pick<ReportJob, "status" | "error" | "completedAt" | "emailedAt">>,
+  ): Promise<ReportJob | undefined>;
+  addReportJobResult(result: InsertReportJobResult): Promise<void>;
+  countReportJobResults(jobId: number): Promise<number>;
+  listReportJobResults(jobId: number): Promise<ReportJobResult[]>;
 }
 
 // Memory storage for fallback when database is not available.
@@ -53,10 +76,14 @@ export class MemStorage implements IStorage {
   private feedbackEntries: Feedback[] = [];
   private watchlistEntries: WatchlistEntry[] = [];
   private fundamentalsCacheRows: Map<string, FundamentalsCacheRow> = new Map();
+  private reportJobRows: ReportJob[] = [];
+  private reportJobResultRows: ReportJobResult[] = [];
   private nextUserId = 1;
   private nextFeedbackId = 1;
   private nextWatchlistId = 1;
   private nextFundamentalsCacheId = 1;
+  private nextReportJobId = 1;
+  private nextReportJobResultId = 1;
   
   // User methods
   async getUser(id: number): Promise<User | undefined> {
@@ -195,6 +222,80 @@ export class MemStorage implements IStorage {
     };
     this.fundamentalsCacheRows.set(upper, row);
     return row;
+  }
+
+  // Report job methods (Task #57) -------------------------------------------
+  async createReportJob(email: string, totalTickers: number, listAsOf: string): Promise<ReportJob> {
+    const job: ReportJob = {
+      id: this.nextReportJobId++,
+      email,
+      status: 'queued',
+      totalTickers,
+      listAsOf,
+      error: null,
+      createdAt: new Date(),
+      completedAt: null,
+      emailedAt: null,
+    };
+    this.reportJobRows.push(job);
+    return job;
+  }
+
+  async getReportJob(id: number): Promise<ReportJob | undefined> {
+    return this.reportJobRows.find(j => j.id === id);
+  }
+
+  async getActiveReportJob(): Promise<ReportJob | undefined> {
+    const live = this.reportJobRows.filter(j => j.status === 'queued' || j.status === 'running');
+    return live.length > 0 ? live[live.length - 1] : undefined;
+  }
+
+  async getLatestReportJob(): Promise<ReportJob | undefined> {
+    return this.reportJobRows.length > 0
+      ? this.reportJobRows[this.reportJobRows.length - 1]
+      : undefined;
+  }
+
+  async updateReportJob(
+    id: number,
+    fields: Partial<Pick<ReportJob, "status" | "error" | "completedAt" | "emailedAt">>,
+  ): Promise<ReportJob | undefined> {
+    const job = this.reportJobRows.find(j => j.id === id);
+    if (!job) return undefined;
+    Object.assign(job, fields);
+    return job;
+  }
+
+  async addReportJobResult(result: InsertReportJobResult): Promise<void> {
+    // Mirror the DB's (jobId, symbol) unique constraint: replays are no-ops.
+    const exists = this.reportJobResultRows.some(
+      r => r.jobId === result.jobId && r.symbol === result.symbol,
+    );
+    if (exists) return;
+    this.reportJobResultRows.push({
+      id: this.nextReportJobResultId++,
+      jobId: result.jobId,
+      symbol: result.symbol,
+      name: result.name,
+      status: result.status,
+      dataSource: result.dataSource ?? null,
+      fundamentalsComplete: result.fundamentalsComplete ?? false,
+      quality: result.quality ?? null,
+      price: result.price ?? null,
+      intrinsicValue: result.intrinsicValue ?? null,
+      discountPct: result.discountPct ?? null,
+      error: result.error ?? null,
+    });
+  }
+
+  async countReportJobResults(jobId: number): Promise<number> {
+    return this.reportJobResultRows.filter(r => r.jobId === jobId).length;
+  }
+
+  async listReportJobResults(jobId: number): Promise<ReportJobResult[]> {
+    return this.reportJobResultRows
+      .filter(r => r.jobId === jobId)
+      .sort((a, b) => a.id - b.id);
   }
 }
 
@@ -382,6 +483,80 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return row;
   }
+
+  // Report job methods (Task #57) -------------------------------------------
+  async createReportJob(email: string, totalTickers: number, listAsOf: string): Promise<ReportJob> {
+    if (!db) throw new Error("Database connection not available");
+    const [job] = await db
+      .insert(reportJobs)
+      .values({ email, totalTickers, listAsOf, status: 'queued' })
+      .returning();
+    return job;
+  }
+
+  async getReportJob(id: number): Promise<ReportJob | undefined> {
+    if (!db) return undefined;
+    const [job] = await db.select().from(reportJobs).where(eq(reportJobs.id, id));
+    return job || undefined;
+  }
+
+  async getActiveReportJob(): Promise<ReportJob | undefined> {
+    if (!db) return undefined;
+    const [job] = await db
+      .select()
+      .from(reportJobs)
+      .where(inArray(reportJobs.status, ['queued', 'running']))
+      .orderBy(desc(reportJobs.id))
+      .limit(1);
+    return job || undefined;
+  }
+
+  async getLatestReportJob(): Promise<ReportJob | undefined> {
+    if (!db) return undefined;
+    const [job] = await db
+      .select()
+      .from(reportJobs)
+      .orderBy(desc(reportJobs.id))
+      .limit(1);
+    return job || undefined;
+  }
+
+  async updateReportJob(
+    id: number,
+    fields: Partial<Pick<ReportJob, "status" | "error" | "completedAt" | "emailedAt">>,
+  ): Promise<ReportJob | undefined> {
+    if (!db) throw new Error("Database connection not available");
+    const [job] = await db
+      .update(reportJobs)
+      .set(fields)
+      .where(eq(reportJobs.id, id))
+      .returning();
+    return job || undefined;
+  }
+
+  async addReportJobResult(result: InsertReportJobResult): Promise<void> {
+    if (!db) throw new Error("Database connection not available");
+    // Duplicate (jobId, symbol) replays after a crash are harmless no-ops.
+    await db.insert(reportJobResults).values(result).onConflictDoNothing();
+  }
+
+  async countReportJobResults(jobId: number): Promise<number> {
+    if (!db) return 0;
+    const [row] = await db
+      .select({ value: count() })
+      .from(reportJobResults)
+      .where(eq(reportJobResults.jobId, jobId));
+    return row?.value ?? 0;
+  }
+
+  async listReportJobResults(jobId: number): Promise<ReportJobResult[]> {
+    if (!db) return [];
+    return await db
+      .select()
+      .from(reportJobResults)
+      .where(eq(reportJobResults.jobId, jobId))
+      .orderBy(reportJobResults.id);
+  }
 }
 
 // Handle the case when errors occur with the database storage
@@ -535,6 +710,102 @@ class SafeStorageWrapper implements IStorage {
       console.error("Database error in upsertFundamentalsCache, falling back to memory storage:", err);
     }
     return this.memStorage.upsertFundamentalsCache(symbol, payload, dataSource, fetchedAt);
+  }
+
+  // Report job methods (Task #57) -------------------------------------------
+  // NOTE: unlike most methods, report-job persistence is the whole point of
+  // the feature (resumability across restarts), so a memory fallback would be
+  // silently lossy. We still fall back — a degraded in-memory job beats a
+  // hard failure — but the engine logs loudly when the DB is unavailable.
+  async createReportJob(email: string, totalTickers: number, listAsOf: string): Promise<ReportJob> {
+    try {
+      if (this.dbStorage) {
+        return await this.dbStorage.createReportJob(email, totalTickers, listAsOf);
+      }
+    } catch (err) {
+      console.error("Database error in createReportJob, falling back to memory storage:", err);
+    }
+    return this.memStorage.createReportJob(email, totalTickers, listAsOf);
+  }
+
+  async getReportJob(id: number): Promise<ReportJob | undefined> {
+    try {
+      if (this.dbStorage) {
+        return await this.dbStorage.getReportJob(id);
+      }
+    } catch (err) {
+      console.error("Database error in getReportJob, falling back to memory storage:", err);
+    }
+    return this.memStorage.getReportJob(id);
+  }
+
+  async getActiveReportJob(): Promise<ReportJob | undefined> {
+    try {
+      if (this.dbStorage) {
+        return await this.dbStorage.getActiveReportJob();
+      }
+    } catch (err) {
+      console.error("Database error in getActiveReportJob, falling back to memory storage:", err);
+    }
+    return this.memStorage.getActiveReportJob();
+  }
+
+  async getLatestReportJob(): Promise<ReportJob | undefined> {
+    try {
+      if (this.dbStorage) {
+        return await this.dbStorage.getLatestReportJob();
+      }
+    } catch (err) {
+      console.error("Database error in getLatestReportJob, falling back to memory storage:", err);
+    }
+    return this.memStorage.getLatestReportJob();
+  }
+
+  async updateReportJob(
+    id: number,
+    fields: Partial<Pick<ReportJob, "status" | "error" | "completedAt" | "emailedAt">>,
+  ): Promise<ReportJob | undefined> {
+    try {
+      if (this.dbStorage) {
+        return await this.dbStorage.updateReportJob(id, fields);
+      }
+    } catch (err) {
+      console.error("Database error in updateReportJob, falling back to memory storage:", err);
+    }
+    return this.memStorage.updateReportJob(id, fields);
+  }
+
+  async addReportJobResult(result: InsertReportJobResult): Promise<void> {
+    try {
+      if (this.dbStorage) {
+        return await this.dbStorage.addReportJobResult(result);
+      }
+    } catch (err) {
+      console.error("Database error in addReportJobResult, falling back to memory storage:", err);
+    }
+    return this.memStorage.addReportJobResult(result);
+  }
+
+  async countReportJobResults(jobId: number): Promise<number> {
+    try {
+      if (this.dbStorage) {
+        return await this.dbStorage.countReportJobResults(jobId);
+      }
+    } catch (err) {
+      console.error("Database error in countReportJobResults, falling back to memory storage:", err);
+    }
+    return this.memStorage.countReportJobResults(jobId);
+  }
+
+  async listReportJobResults(jobId: number): Promise<ReportJobResult[]> {
+    try {
+      if (this.dbStorage) {
+        return await this.dbStorage.listReportJobResults(jobId);
+      }
+    } catch (err) {
+      console.error("Database error in listReportJobResults, falling back to memory storage:", err);
+    }
+    return this.memStorage.listReportJobResults(jobId);
   }
 }
 

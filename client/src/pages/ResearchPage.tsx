@@ -8,6 +8,7 @@ import { AlertTriangle, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ResearchStock, getCachedResearchData, saveResearchDataToCache, getCacheExpirationDate, getCacheLastUpdated } from '@/lib/researchCache';
 import { computeStockQuality } from '@/lib/researchCalculations';
+import EmailReportCard from '@/components/EmailReportCard';
 
 const MIN_DISCOUNT_PCT = 10;
 const POLL_INTERVAL_MS = 3000;
@@ -245,6 +246,8 @@ const ResearchPage: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      <EmailReportCard />
 
       <Card className="mt-8 border-amber-200 bg-amber-50">
         <CardContent className="pt-6">

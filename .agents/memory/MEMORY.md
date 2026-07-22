@@ -1,1 +1,2 @@
 - [Prod-vs-dev bug reports](prod-vs-dev-bug-reports.md) — check the deployed bundle for recent feature markers before chasing "still broken" screenshots taken on the .replit.app domain.
+- [drizzle-zod $type columns](drizzle-zod-enum-columns.md) — createInsertSchema widens `$type<Union>()` varchars to z.string(); override with z.enum in the refinement arg or tsc breaks.

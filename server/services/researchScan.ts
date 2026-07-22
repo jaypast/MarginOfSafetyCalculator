@@ -74,8 +74,10 @@ const SCAN_POOL: string[] = [
 
 // ---------------------------------------------------------------------------
 // Server-side quality scorer — mirrors client/src/lib/researchCalculations.ts
+// Exported for reuse by the emailed Russell 3000 report job (Task #57) so
+// both scans grade companies identically.
 // ---------------------------------------------------------------------------
-function computeQuality(data: StockResponse): ScanQuality | null {
+export function computeQuality(data: StockResponse): ScanQuality | null {
   const roe = data.roe ?? 0;
   const dte = data.debtToEquity ?? 0;
   const cr  = data.currentRatio ?? 0;
@@ -87,7 +89,7 @@ function computeQuality(data: StockResponse): ScanQuality | null {
 // Returns true when the quality metrics needed for scoring are present.
 // Accepts fallback data for well-specified large-caps (AAPL, MSFT, V, etc.)
 // which carry valid ROE / D-E / currentRatio in the static dataset.
-function hasUsableQualityMetrics(data: StockResponse): boolean {
+export function hasUsableQualityMetrics(data: StockResponse): boolean {
   return (
     typeof data.roe === 'number'          && data.roe !== 0 &&
     typeof data.debtToEquity === 'number' &&
@@ -97,7 +99,7 @@ function hasUsableQualityMetrics(data: StockResponse): boolean {
 
 // Server-side intrinsic value estimate. Used only as a discount gate;
 // the client re-computes the authoritative figure with the full calculator.
-function estimateIntrinsicValue(data: StockResponse): number {
+export function estimateIntrinsicValue(data: StockResponse): number {
   const fcf = (data.fcfPerShare && data.fcfPerShare > 0)
     ? data.fcfPerShare
     : (data.eps || 0) * 0.75;

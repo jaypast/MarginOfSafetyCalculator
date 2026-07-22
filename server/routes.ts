@@ -6,11 +6,15 @@ import {
   stockResponseSchema,
   insertFeedbackSchema,
   insertWatchlistEntrySchema,
+  createReportRequestSchema,
   type WatchlistEntryResponse,
 } from "@shared/schema";
 import { getStockData, acquireYfinanceSlot, releaseYfinanceSlot } from "./services/stockData";
 import { getFedRateEnvironment } from "./services/fedRate";
 import { getScanState, startScanIfNeeded } from "./services/researchScan";
+import { kickReportRunner, toStatusPayload } from "./services/reportJob";
+import { buildReportCsv, reportCsvFilename } from "./services/reportCsv";
+import { RUSSELL_3000, RUSSELL_3000_AS_OF } from "./data/russell3000";
 import { getMarketSentiment, getMostActiveStocks, RealTimeSentiment } from "./services/marketSentiment";
 import { getHistoricalData } from "./services/yahooFinance";
 import { getRapidApiHistoricalData } from "./services/rapidApiFinance";
@@ -511,6 +515,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const forceRefresh = req.query.refresh === 'true';
     startScanIfNeeded(forceRefresh);
     return res.json(getScanState());
+  });
+
+  // Emailed Russell 3000 report (Task #57) ----------------------------------
+  // POST kicks off a DB-backed background job that scans all ~3,000 tickers
+  // at a 6s pace (~5h) and emails a summary + CSV when done. Only one job may
+  // be live at a time, globally — the second requester gets a 409.
+  app.post("/api/research/report", async (req, res) => {
+    try {
+      const parsed = createReportRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "A valid email address is required" });
+      }
+
+      const active = await storage.getActiveReportJob();
+      if (active) {
+        return res.status(409).json({
+          message: "A report is already being generated. Please wait for it to finish.",
+          job: await toStatusPayload(active),
+        });
+      }
+
+      const job = await storage.createReportJob(
+        parsed.data.email,
+        RUSSELL_3000.length,
+        RUSSELL_3000_AS_OF,
+      );
+      kickReportRunner(job);
+      return res.status(201).json({ job: await toStatusPayload(job) });
+    } catch (error) {
+      console.error("Failed to create report job:", error);
+      return res.status(500).json({ message: "Failed to start the report" });
+    }
+  });
+
+  // Latest job in any state (active one preferred) so the UI can show
+  // queued / scanning N of M / sent / email_failed and keep showing the
+  // final state after completion. Email is masked — this endpoint is global.
+  app.get("/api/research/report/status", async (_req, res) => {
+    try {
+      const job = (await storage.getActiveReportJob()) ?? (await storage.getLatestReportJob());
+      if (!job) return res.json({ job: null });
+      return res.json({ job: await toStatusPayload(job) });
+    } catch (error) {
+      console.error("Failed to read report status:", error);
+      return res.status(500).json({ message: "Failed to read report status" });
+    }
+  });
+
+  // CSV download — the fallback when email delivery fails, and a convenience
+  // otherwise. Serves whatever rows exist, even for an in-flight job.
+  app.get("/api/research/report/:id/download", async (req, res) => {
+    try {
+      const id = Number.parseInt(req.params.id, 10);
+      if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({ message: "Invalid report id" });
+      }
+      const job = await storage.getReportJob(id);
+      if (!job) return res.status(404).json({ message: "Report not found" });
+
+      const results = await storage.listReportJobResults(id);
+      const csv = buildReportCsv(job, results);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${reportCsvFilename(job)}"`);
+      return res.send(csv);
+    } catch (error) {
+      console.error("Failed to build report CSV:", error);
+      return res.status(500).json({ message: "Failed to build the report CSV" });
+    }
   });
 
   // Macro: Fed rate environment (Task #31) ---------------------------------

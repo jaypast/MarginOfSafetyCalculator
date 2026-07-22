@@ -169,6 +169,43 @@ non-fatal — the pipeline degrades to pre-cache behavior.
 - Note for new test files: anything that exercises `getStockData` must mock
   `../server/storage`, otherwise the suite writes rows into the real dev DB.
 
+## Emailed Russell 3000 report (Task #57)
+"Email Me the Full Report" card on the Research page: user submits an email,
+a DB-backed background job scans **all** ~3,000 Russell 3000 tickers at a 6s
+pace (~5h), then emails a summary + full CSV via the Resend connector.
+
+- Universe: `server/data/russell3000.ts` — top 3000 US common stocks by
+  market cap (Nasdaq screener derived), `RUSSELL_3000_AS_OF` stamped into the
+  CSV metadata line and the status payload.
+- Engine: `server/services/reportJob.ts` — `kickReportRunner` +
+  module-level single-runner guard; one result row per ticker persisted
+  before the next fetch (unique `jobId+symbol`, replay-safe), the row count
+  is the resume cursor; `resumeReportJobsOnBoot()` (hooked in
+  `server/index.ts`) continues interrupted jobs after restarts.
+  `PER_TICKER_TIMEOUT_MS` = 30s — deliberately longer than any adapter
+  tier's own timeout so slow tickers aren't falsely marked failed. A
+  post-run sweep (`pickUpQueuedSuccessor`) closes the TOCTOU race where a
+  concurrent POST leaves a stranded queued job. Email failure → status
+  `email_failed` (CSV stays downloadable); only storage failures → `failed`.
+- CSV: `server/services/reportCsv.ts` — metadata line with as-of date,
+  per-row provenance (source, fundamentals-complete, quality, IV, discount,
+  error), spreadsheet-formula-injection neutralized in `csvEscape`.
+- Email: `server/services/reportEmail.ts` — Resend REST API via the Replit
+  connector (fetches credentials from the connectors sidecar at send time),
+  base64 CSV attachment. Unverified Resend domains can only send to the
+  Resend account owner's address.
+- Routes: `POST /api/research/report` (409 when a job is queued/running —
+  one job globally), `GET /api/research/report/status` (active else latest,
+  email always masked), `GET /api/research/report/:id/download` (CSV).
+- UI: `client/src/components/EmailReportCard.tsx` — shadcn form +
+  `createReportRequestSchema`, 5s status polling while live, progress bar,
+  sent / email_failed / failed banners with CSV download links, 409 toast.
+- Tests: `tests/reportJob.test.ts` (22) — fake-timer pacing, resume from
+  checkpoint, boot resume, per-ticker timeout, failed-ticker rows, email
+  failure, storage failure, stranded-job sweep, CSV escaping + formula
+  injection, maskEmail, summarize, request schema. Mocks storage, stockData,
+  reportEmail AND the ticker list (5 entries).
+
 ## Valuation hardening (Task #9 / #15)
 Recent fixes:
 - Removed hard-coded `5year=18.6 / 10year=16.2 / industry=22.5` P/E branches in Task #9. Task #15 restored the three modes — backed by per-ticker `peHistory` (TTM-P/E medians from yfinance) and a published `INDUSTRY_PE_BASELINES` table — never the magic constants. Each mode falls back to current P/E with an explicit note when its data source is missing.
