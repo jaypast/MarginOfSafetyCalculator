@@ -53,10 +53,6 @@ function Router() {
             </div>
             <div className="text-xs text-gray-400 flex items-center">
               <span>Powered by Value Investing Principles</span>
-              <span className="mx-2">•</span>
-              <Link href="/admin" className="text-gray-400 hover:text-gray-600 transition-colors">
-                Admin
-              </Link>
             </div>
           </div>
         </div>

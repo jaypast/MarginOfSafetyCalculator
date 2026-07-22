@@ -1,0 +1,20 @@
+# Margin of Safety Calculator
+
+A value-investing web application that estimates the intrinsic value of any publicly traded stock using three classic methods — Discounted Cash Flow (DCF), Price-to-Earnings (P/E), and the Benjamin Graham formula — then derives a "buy below" price using a configurable margin of safety.
+
+## Purpose
+
+Help individual investors apply disciplined, quantitative value-investing principles to any ticker, surfacing whether a stock is trading at a meaningful discount to its estimated intrinsic value.
+
+## Key pages
+
+- / — Calculator home: enter a ticker symbol to get DCF, P/E, and Graham valuations plus a Value-Investor Verdict (Buy / Watch / Pass) and Multibagger Screener score.
+- /research — Research hub: screen the Russell 3000, browse valuation summaries, and request a full emailed CSV report.
+- /watchlist — Personal watchlist: track saved tickers with live valuations and multibagger scores.
+- /feedback — Submit feedback or feature requests.
+
+## Content notes
+
+- All valuations are estimates for educational and informational purposes only; not financial advice.
+- Data is sourced from public APIs (Yahoo Finance, Alpha Vantage, Financial Modeling Prep) with provenance badges so users can judge data quality.
+- The Multibagger Screener scores tickers against the Yartseva (2025) empirical factor set; scores are descriptive of historical multibagger cohorts, not predictive of future returns.
