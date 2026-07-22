@@ -65,6 +65,33 @@ async function getResendCredentials(): Promise<ResendCredentials> {
   };
 }
 
+// Resend caps total message size at 40MB; base64 inflates attachments by
+// ~4/3 and the HTML body adds overhead, so cap the raw CSV well below that.
+// Larger CSVs fall back to a download link (spec: "attach the CSV, fall back
+// to a download link if the attachment is too large").
+export const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+
+/**
+ * Best public base URL for download links in emails. Prefers an explicit
+ * PUBLIC_BASE_URL, then the deployment domain, then the dev domain. Returns
+ * null when unknown — the email then shows the path with instructions.
+ */
+export function getPublicBaseUrl(): string | null {
+  const explicit = process.env.PUBLIC_BASE_URL;
+  if (explicit) return explicit.replace(/\/+$/, "");
+  const deployed = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
+  if (deployed) return `https://${deployed}`;
+  const dev = process.env.REPLIT_DEV_DOMAIN?.trim();
+  if (dev) return `https://${dev}`;
+  return null;
+}
+
+export interface CsvDelivery {
+  attached: boolean;
+  /** Absolute download URL, or a bare path when the host is unknown. */
+  downloadUrl: string;
+}
+
 export interface ReportEmailSummary {
   scanned: number;
   ok: number;
@@ -87,7 +114,11 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-export function buildReportEmailHtml(job: ReportJob, summary: ReportEmailSummary): string {
+export function buildReportEmailHtml(
+  job: ReportJob,
+  summary: ReportEmailSummary,
+  delivery: CsvDelivery = { attached: true, downloadUrl: "" },
+): string {
   const rows = summary.buyCandidates
     .map(
       (c) => `<tr>
@@ -120,8 +151,14 @@ export function buildReportEmailHtml(job: ReportJob, summary: ReportEmailSummary
        ${summary.ok.toLocaleString()} with data, ${summary.failed.toLocaleString()} unavailable,
        <strong>${summary.buyCandidates.length}</strong> buy candidates.</p>
     ${candidatesBlock}
-    <p style="margin-top:20px;">The attached CSV covers every company scanned, with per-row data-source
-    provenance so you can judge how much weight each line deserves.</p>
+    ${
+      delivery.attached
+        ? `<p style="margin-top:20px;">The attached CSV covers every company scanned, with per-row data-source
+    provenance so you can judge how much weight each line deserves.</p>`
+        : `<p style="margin-top:20px;">The full CSV (every company scanned, with per-row data-source provenance)
+    was too large to attach. Download it here:
+    <a href="${escapeHtml(delivery.downloadUrl)}">${escapeHtml(delivery.downloadUrl)}</a></p>`
+    }
     <p style="color:#999;font-size:12px;margin-top:24px;">Estimates are simplified server-side screens, not investment advice.
     Verify anything interesting in the full calculator before acting.</p>
   </div>`;
@@ -135,24 +172,37 @@ export async function sendReportEmail(
 ): Promise<void> {
   const { apiKey, fromEmail } = await getResendCredentials();
 
+  const csvBytes = Buffer.byteLength(csv, "utf8");
+  const attach = csvBytes <= MAX_ATTACHMENT_BYTES;
+  const downloadPath = `/api/research/report/${job.id}/download`;
+  const baseUrl = getPublicBaseUrl();
+  const delivery: CsvDelivery = {
+    attached: attach,
+    downloadUrl: baseUrl ? `${baseUrl}${downloadPath}` : downloadPath,
+  };
+
+  const payload: Record<string, unknown> = {
+    from: `Margin of Safety Calculator <${fromEmail}>`,
+    to: [job.email],
+    subject: `Russell 3000 research report — ${summary.buyCandidates.length} buy candidates`,
+    html: buildReportEmailHtml(job, summary, delivery),
+  };
+  if (attach) {
+    payload.attachments = [
+      {
+        filename: csvFilename,
+        content: Buffer.from(csv, "utf8").toString("base64"),
+      },
+    ];
+  }
+
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      from: `Margin of Safety Calculator <${fromEmail}>`,
-      to: [job.email],
-      subject: `Russell 3000 research report — ${summary.buyCandidates.length} buy candidates`,
-      html: buildReportEmailHtml(job, summary),
-      attachments: [
-        {
-          filename: csvFilename,
-          content: Buffer.from(csv, "utf8").toString("base64"),
-        },
-      ],
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {

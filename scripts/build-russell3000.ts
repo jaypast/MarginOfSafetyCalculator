@@ -12,7 +12,7 @@
 
 import { readFileSync, writeFileSync } from "fs";
 import {
-  isLikelyCommonStockName,
+  isLikelyCommonStockRow,
   cleanCompanyName,
   normalizeCompanyKey,
   VALID_SYMBOL_PATTERN,
@@ -26,6 +26,7 @@ interface ScreenerRow {
   name: string;
   marketCap: string;
   country: string;
+  industry?: string;
 }
 
 async function loadRows(): Promise<ScreenerRow[]> {
@@ -66,7 +67,7 @@ async function main() {
         typeof r.symbol === "string" &&
         VALID_SYMBOL_PATTERN.test(r.symbol) &&
         typeof r.name === "string" &&
-        isLikelyCommonStockName(r.name) &&
+        isLikelyCommonStockRow(r) &&
         parseFloat(r.marketCap) > 0,
     )
     .sort((a, b) => parseFloat(b.marketCap) - parseFloat(a.marketCap));

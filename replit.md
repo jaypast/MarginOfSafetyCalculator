@@ -179,10 +179,19 @@ pace (~5h), then emails a summary + full CSV via the Resend connector.
   CSV metadata line and the status payload. Regenerate with
   `npx tsx scripts/build-russell3000.ts` (optionally pass a cached screener
   JSON dump path). Common-stock-only filters (no notes/bonds/debentures/
-  preferreds/CEFs/ETNs/warrants/rights/units/depositary shares) live in
+  preferreds/CEFs/ETNs/warrants/rights/units/depositary shares/structured
+  products/royalty trusts/capital trusts/limited partnerships) live in
   `server/data/universeFilters.ts` and are shared by the build script and
   `tests/russell3000.test.ts`, which fails the suite if any non-common-stock
-  instrument re-enters the dataset.
+  instrument re-enters the dataset. Beyond name regexes, generation applies
+  row-level rules using the screener's `industry` field: the CEF bucket
+  ("Trusts Except Educational Religious and Charitable") is excluded
+  outright, and any security *named* "…Trust" must carry a real-estate or
+  banking industry (REIT common shares stay; Gabelli/BlackRock/Invesco-style
+  CEF trusts under "Investment Managers"/"Finance Companies" are dropped).
+  Corporate-form CEFs with innocuous names (Tri-Continental, General
+  American Investors, Central Securities, Source Capital, ASA) sit on an
+  explicit `KNOWN_NON_CONSTITUENT_SYMBOLS` denylist.
 - Engine: `server/services/reportJob.ts` — `kickReportRunner` +
   module-level single-runner guard; one result row per ticker persisted
   before the next fetch (unique `jobId+symbol`, replay-safe), the row count
@@ -196,10 +205,14 @@ pace (~5h), then emails a summary + full CSV via the Resend connector.
 - CSV: `server/services/reportCsv.ts` — metadata line with as-of date,
   per-row provenance (source, fundamentals-complete, quality, IV, discount,
   error), spreadsheet-formula-injection neutralized in `csvEscape`.
-- Email: `server/services/reportEmail.ts` — Resend REST API via the Replit
-  connector (fetches credentials from the connectors sidecar at send time),
-  base64 CSV attachment. Unverified Resend domains can only send to the
-  Resend account owner's address.
+- Email: `server/services/reportEmail.ts` — Resend REST API; credentials
+  from the `RESEND_API_KEY` secret first, else the Replit-managed Resend
+  connector at send time. Base64 CSV attachment up to
+  `MAX_ATTACHMENT_BYTES` (15MB raw CSV; Resend's total-message cap is 40MB
+  and base64 inflates by 4/3) — larger CSVs fall back to a download link
+  (`getPublicBaseUrl()`: `PUBLIC_BASE_URL` → first of `REPLIT_DOMAINS` →
+  `REPLIT_DEV_DOMAIN`) pointing at the existing download route. Unverified
+  Resend domains can only send to the Resend account owner's address.
 - Routes: `POST /api/research/report` (409 when a job is queued/running —
   one job globally), `GET /api/research/report/status` (active else latest,
   email always masked), `GET /api/research/report/:id/download` (CSV).
@@ -211,11 +224,14 @@ pace (~5h), then emails a summary + full CSV via the Resend connector.
   failure, storage failure, stranded-job sweep, CSV escaping + formula
   injection, maskEmail, summarize, request schema. Mocks storage, stockData,
   reportEmail AND the ticker list (5 entries).
-  `tests/russell3000.test.ts` (14) — dataset integrity: exactly 3000 unique
-  1–5-letter symbols, zero non-common-stock names, denylist of the debt/fund
-  symbols the first generation shipped, one-share-class-per-company, filter
-  unit tests (incl. the `\bdue 20\b` word-boundary bug that let
-  "…Notes due 2066" instruments through originally).
+  `tests/russell3000.test.ts` (18) — dataset integrity: exactly 3000 unique
+  1–5-letter symbols, zero non-common-stock names, denylist of the debt/fund/
+  CEF/royalty-trust/LP symbols earlier generations shipped, one-share-class-
+  per-company, filter unit tests (incl. the `\bdue 20\b` word-boundary bug
+  and the trust-name × industry cross-check).
+  `tests/reportEmail.test.ts` (9) — attachment-vs-download-link delivery:
+  size cap in bytes (multibyte-safe), absolute-URL construction from env,
+  HTML escaping of the link, `getPublicBaseUrl` precedence.
 
 ## Valuation hardening (Task #9 / #15)
 Recent fixes:

@@ -22,3 +22,22 @@ both the generation script and a dataset integrity test (this repo:
 `tests/russell3000.test.ts`). The test hardcodes known-bad names/symbols so a
 broken regeneration fails CI instead of shipping. Any name containing a
 coupon `%` is never a common stock. Plain "Trust" must stay allowed (REITs).
+
+**Name regexes alone are not enough — cross-check the industry field.** A
+second review pass still found closed-end fund trusts ("Gabelli Dividend &
+Income Trust"), structured products (ZONES, STRATS), royalty trusts, trust
+preferreds ("Dillard's Capital Trust"), MLPs ("… Partners L.P."), and
+corporate-form CEFs (Tri-Continental, General American Investors) whose
+names dodge every fund keyword. Working rules:
+- Nasdaq screener industry "Trusts Except Educational Religious and
+  Charitable" ⇒ always a CEF, exclude outright.
+- A security *named* "…Trust" is only a real operating company when its
+  industry is REIT/real-estate/banking. Finance-industry or commodity-industry
+  "Trust" names are CEFs or royalty trusts.
+- Exclude `\bL\.P\.\b` / case-sensitive `\bLP\b` / "limited partnership"
+  (index providers exclude LPs).
+- Corporate-form CEFs have completely innocuous names (e.g. "Central
+  Securities Corporation") — the only defense is an explicit symbol denylist.
+- Case-sensitive tokens matter: ZONES/STRATS/SATURNS/CorTS are uppercase
+  structured-product brands; `municipal` needs the plural (`municipals?`) for
+  "…Investment Grade New York Municipals".

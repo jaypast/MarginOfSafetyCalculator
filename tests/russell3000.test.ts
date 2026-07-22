@@ -5,16 +5,18 @@ import {
 } from "../server/data/russell3000";
 import {
   EXCLUDED_SECURITY_NAME_PATTERNS,
+  KNOWN_NON_CONSTITUENT_SYMBOLS,
   VALID_SYMBOL_PATTERN,
   cleanCompanyName,
   isLikelyCommonStockName,
+  isLikelyCommonStockRow,
   normalizeCompanyKey,
 } from "../server/data/universeFilters";
 
-// Names that previously slipped through the buggy first-pass filter
-// (`\bdue 20\b` never matches "due 2066"). These are real security names from
-// the Nasdaq screener; none may ever classify as a common stock again.
+// Names that slipped through earlier filter passes. These are real security
+// names from the Nasdaq screener; none may ever classify as common stock.
 const KNOWN_BAD_NAMES = [
+  // Pass-1 misses: the `\bdue 20\b` word-boundary bug
   "AT&T Inc. 5.350% Global Notes due 2066",
   "Southern Company (The) Series 2020C 4.20% Junior Subordinated Notes due October 15 2060",
   "Algonquin Power & Utilities Corp. 6.20% Fixed-to-Floating Subordinated Notes Series 2019-A due July 1 2079",
@@ -31,15 +33,37 @@ const KNOWN_BAD_NAMES = [
   "Acme Acquisition Corp. Units",
   "Acme Acquisition Corp. Rights",
   "iPath Series B S&P 500 VIX Short-Term Futures ETN",
+  // Pass-2 misses: structured products, muni CEFs, royalty/capital trusts, LPs
+  "Comcast Holdings ZONES",
+  "Goldman Sachs Group Securities STRATS Trust for Goldman Sachs Group Securities Series 2006-2",
+  "Invesco Municipal Opportunity Trust Common Stock",
+  "Invesco Trust for Investment Grade New York Municipals",
+  "BlackRock Science and Technology Term Trust Common Shares of Beneficial Interest",
+  "Permian Basin Royalty Trust",
+  "Sabine Royalty Trust",
+  "Dillard's Capital Trust I",
+  "Enterprise Products Partners L.P.",
+  "Hess Midstream LP Class A Representing Limited Partner Interests",
+  "Natural Resource Partners LP Limited Partnership",
 ];
 
-// Symbols of exchange-listed debt/funds the code review caught in the first
-// generation. They must never reappear regardless of how names evolve.
+// Exchange-listed debt / CEFs / structured products / royalty trusts / LPs /
+// corporate-form CEFs that earlier generations shipped. They must never
+// reappear regardless of how names evolve.
 const KNOWN_BAD_SYMBOLS = [
+  // pass 1: exchange-listed debt
   "TBB", "SOJC", "SOJD", "SOJE", "AQNB", "DUKB", "APOS", "KKRS", "SREA",
   "ENJ", "EMP", "EAI", "PRH", "PRS", "CMSD", "CMSC", "CMSA", "PFH", "DTW",
   "PDI", "NAN", "NCV", "NCZ", "NIE", "FOF", "ETB", "GBAB", "MIN", "MMT",
   "MFM", "FMN", "MGR", "MGRB", "MGRD", "MGRE", "JSM", "SFB", "GPJA",
+  // pass 2: structured products, CEF trusts, royalty trusts, capital trusts
+  "CCZ", "GJS", "VMO", "BSTZ", "OIA", "GDV", "BDJ", "GAB", "BKT", "BTZ",
+  "BST", "TBLD", "RMT", "XFLT", "BLW", "PPT", "EFT", "FTF", "VTN", "GRX",
+  "PIM", "GNT", "JHS", "PBT", "SBR", "MSB", "DDT", "FUND",
+  // pass 2: limited partnerships (MLPs)
+  "EPD", "IEP", "HESM", "NRP", "SPH", "SGU",
+  // pass 2: corporate-form closed-end funds
+  "TY", "GAM", "CET", "SOR", "ASA",
 ];
 
 // Legitimate common stocks whose names contain trigger-adjacent words —
@@ -48,6 +72,7 @@ const KNOWN_GOOD_NAMES = [
   "Apple Inc.",
   "Johnson & Johnson",
   "Diversified Healthcare Trust", // REIT common shares — "Trust" alone is fine
+  "Universal Health Realty Income Trust", // REIT — "Income Trust" must survive
   "Coca-Cola Company (The)",
   "Unum Group",
   "United Airlines Holdings Inc.",
@@ -76,10 +101,67 @@ describe("universe filters (server/data/universeFilters.ts)", () => {
     expect(isLikelyCommonStockName("Issuer LLC Mortgage Instruments due December 1 2052")).toBe(false);
   });
 
+  it("row check rejects Trust-named securities outside real-estate/banking industries", () => {
+    // Closed-end fund trusts hiding under generic finance industries
+    expect(
+      isLikelyCommonStockRow({ name: "Gabelli Dividend & Income Trust", industry: "Investment Managers" }),
+    ).toBe(false);
+    expect(
+      isLikelyCommonStockRow({ name: "Blackrock Enhanced Equity Dividend Trust", industry: "Finance Companies" }),
+    ).toBe(false);
+    expect(
+      isLikelyCommonStockRow({ name: "Blackrock Limited Duration Income Trust", industry: "Other Consumer Services" }),
+    ).toBe(false);
+    // Royalty trusts under commodity industries
+    expect(
+      isLikelyCommonStockRow({ name: "Mesabi Trust", industry: "Precious Metals" }),
+    ).toBe(false);
+  });
+
+  it("row check keeps Trust-named REITs and trust banks", () => {
+    expect(
+      isLikelyCommonStockRow({ name: "Universal Health Realty Income Trust", industry: "Real Estate Investment Trusts" }),
+    ).toBe(true);
+    expect(
+      isLikelyCommonStockRow({ name: "Northern Trust Corporation", industry: "Major Banks" }),
+    ).toBe(true);
+    expect(
+      isLikelyCommonStockRow({ name: "Claros Mortgage Trust Inc.", industry: "Real Estate" }),
+    ).toBe(true);
+  });
+
+  it("row check rejects the screener's closed-end-trust industry bucket", () => {
+    expect(
+      isLikelyCommonStockRow({
+        name: "Some Innocuously Named Vehicle",
+        industry: "Trusts Except Educational Religious and Charitable",
+      }),
+    ).toBe(false);
+  });
+
+  it("row check rejects corporate-form CEFs via the symbol denylist", () => {
+    expect(
+      isLikelyCommonStockRow({ symbol: "TY", name: "Tri Continental Corporation", industry: "Finance/Investors Services" }),
+    ).toBe(false);
+    expect(KNOWN_NON_CONSTITUENT_SYMBOLS.has("GAM")).toBe(true);
+  });
+
+  it("rejects limited partnerships by name", () => {
+    expect(isLikelyCommonStockName("Suburban Propane Partners L.P.")).toBe(false);
+    expect(isLikelyCommonStockName("Star Group L.P.")).toBe(false);
+    expect(isLikelyCommonStockName("Icahn Enterprises L.P.")).toBe(false);
+    // ...but not ordinary words containing "lp" lowercase
+    expect(isLikelyCommonStockName("Alpine Income Property Trust Inc.")).toBe(true);
+    expect(isLikelyCommonStockName("Helmerich & Payne Inc.")).toBe(true);
+  });
+
   it("cleanCompanyName strips share-class boilerplate", () => {
     expect(cleanCompanyName("Apple Inc. Common Stock")).toBe("Apple Inc.");
     expect(cleanCompanyName("Alphabet Inc. Class A Common Stock")).toBe("Alphabet Inc.");
     expect(cleanCompanyName("Sea Limited Ordinary Shares")).toBe("Sea Limited");
+    expect(cleanCompanyName("Office Properties Income Trust Common shares of beneficial interest")).toBe(
+      "Office Properties Income Trust",
+    );
   });
 
   it("normalizeCompanyKey collapses share classes to one key", () => {
@@ -108,7 +190,7 @@ describe("Russell 3000 dataset integrity (server/data/russell3000.ts)", () => {
     expect(offenders.map((e) => e.symbol)).toEqual([]);
   });
 
-  it("contains no notes, bonds, debentures, preferreds, funds, ETNs, warrants, rights, units, or depositary shares", () => {
+  it("contains no notes, bonds, debentures, preferreds, funds, ETNs, warrants, rights, units, depositary shares, structured products, royalty trusts, or LPs", () => {
     const offenders = RUSSELL_3000.filter((e) => !isLikelyCommonStockName(e.name));
     expect(
       offenders.map((e) => `${e.symbol}: ${e.name}`),
@@ -116,9 +198,15 @@ describe("Russell 3000 dataset integrity (server/data/russell3000.ts)", () => {
     ).toEqual([]);
   });
 
-  it("contains none of the debt/fund symbols the first generation shipped", () => {
+  it("contains none of the non-constituent symbols earlier generations shipped", () => {
     const symbols = new Set(RUSSELL_3000.map((e) => e.symbol));
     const present = KNOWN_BAD_SYMBOLS.filter((s) => symbols.has(s));
+    expect(present).toEqual([]);
+  });
+
+  it("contains none of the denylisted corporate-form CEF symbols", () => {
+    const symbols = new Set(RUSSELL_3000.map((e) => e.symbol));
+    const present = [...KNOWN_NON_CONSTITUENT_SYMBOLS].filter((s) => symbols.has(s));
     expect(present).toEqual([]);
   });
 
@@ -143,6 +231,6 @@ describe("Russell 3000 dataset integrity (server/data/russell3000.ts)", () => {
   });
 
   it("exclusion pattern list is intact (guards accidental deletion)", () => {
-    expect(EXCLUDED_SECURITY_NAME_PATTERNS.length).toBeGreaterThanOrEqual(15);
+    expect(EXCLUDED_SECURITY_NAME_PATTERNS.length).toBeGreaterThanOrEqual(25);
   });
 });
