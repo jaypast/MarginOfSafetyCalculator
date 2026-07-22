@@ -106,8 +106,11 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, isLoading, on
 
   // Multibagger composite (Task #33). Computed inline from the same cached
   // stock payload so we don't double-fetch. Renders as a chip in its own
-  // column; sorting is handled at the parent.
-  const score = stockOk ? scoreTicker(stock).composite : null;
+  // column; sorting is handled at the parent. When fewer than 4 of the 5
+  // factors computed, the chip carries a low-confidence warning marker.
+  const scoreResult = stockOk ? scoreTicker(stock!) : null;
+  const score = scoreResult?.composite ?? null;
+  const scoreLowConfidence = scoreResult?.lowConfidence ?? false;
   const scoreBand = compositeBand(score);
 
   return (
@@ -167,10 +170,15 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, isLoading, on
       </TableCell>
       <TableCell className="text-right">
         <span
-          className={`inline-flex items-center text-xs tabular-nums px-2 py-0.5 rounded-full border ${SCORE_TONE[scoreBand.tone]}`}
+          className={`inline-flex items-center gap-1 text-xs tabular-nums px-2 py-0.5 rounded-full border ${scoreLowConfidence ? SCORE_TONE.muted : SCORE_TONE[scoreBand.tone]}`}
           data-testid={`watchlist-score-${entry.symbol}`}
-          title={`${scoreBand.label} multibagger factor exposure (Yartseva 2025)`}
+          title={
+            scoreLowConfidence
+              ? `Low confidence — only ${scoreResult!.computedFactors} of ${scoreResult!.subScores.length} factors computed (need 4+). Treat the score as incomplete.`
+              : `${scoreBand.label} multibagger factor exposure (Yartseva 2025)`
+          }
         >
+          {scoreLowConfidence && <span aria-hidden="true">⚠</span>}
           {score === null ? '—' : score.toFixed(0)}
         </span>
       </TableCell>
@@ -192,20 +200,32 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, isLoading, on
   );
 };
 
-// Sort entries by composite score (descending), with null/missing scores
-// pushed to the tail. Pure function so the watchlist sort path is trivially
-// testable without rendering React.
+// Sort entries by composite score (descending) in three tiers: reliable
+// scores first, then low-confidence scores (< 4 of 5 factors computed —
+// flagged, so they must not outrank reliable ones at face value), then
+// null/missing scores at the tail. Pure function so the watchlist sort path
+// is trivially testable without rendering React.
+export interface SortableScore {
+  composite: number | null;
+  lowConfidence: boolean;
+}
+
 export function sortEntriesByScore<T extends { symbol: string }>(
   entries: readonly T[],
-  scoreFor: (symbol: string) => number | null,
+  scoreFor: (symbol: string) => SortableScore | null,
 ): T[] {
+  const tierOf = (s: SortableScore | null): number => {
+    if (!s || s.composite === null) return 2;
+    return s.lowConfidence ? 1 : 0;
+  };
   return [...entries].sort((a, b) => {
     const sa = scoreFor(a.symbol);
     const sb = scoreFor(b.symbol);
-    if (sa === null && sb === null) return 0;
-    if (sa === null) return 1;
-    if (sb === null) return -1;
-    return sb - sa;
+    const ta = tierOf(sa);
+    const tb = tierOf(sb);
+    if (ta !== tb) return ta - tb;
+    if (ta === 2) return 0;
+    return sb!.composite! - sa!.composite!;
   });
 }
 
@@ -244,11 +264,12 @@ const Watchlist: React.FC = () => {
 
   // Composite-score lookup used by the sort path. Reads from the live
   // useQueries results above, NOT the React Query cache directly, so the
-  // parent re-renders and re-sorts as new rows resolve.
-  const scoreFor = (symbol: string): number | null => {
+  // parent re-renders and re-sorts as new rows resolve. Returns the full
+  // score result so low-confidence entries can be demoted below reliable ones.
+  const scoreFor = (symbol: string): SortableScore | null => {
     const entry = stockBySymbol.get(symbol);
     if (!entry || !entry.stock || entry.stock.error) return null;
-    return scoreTicker(entry.stock).composite;
+    return scoreTicker(entry.stock);
   };
 
   // Sort toggle (Task #33). Default order is server-provided (insertion);

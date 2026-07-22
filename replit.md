@@ -105,6 +105,14 @@ forward return.
   renders the breakdown card, score bar per factor, and the
   composite badge ("Strong" ≥65 / "Moderate" 40–65 / "Weak" <40 /
   "Insufficient data").
+- **Low-confidence rule**: a composite built from fewer than 4 of the 5
+  factors (`MIN_RELIABLE_FACTORS`) is flagged `lowConfidence` by
+  `scoreTicker`. The screener panel then shows a muted badge labelled "Low
+  confidence" plus an amber warning banner naming the missing factors; the
+  watchlist chip goes muted with a ⚠ marker and explanatory tooltip, and
+  "Sort by score" demotes low-confidence entries below reliable ones (but
+  above no-score rows). 0 computed factors keeps the existing null-composite
+  "Insufficient data" state, unflagged.
 - Watchlist integration: `client/src/pages/Watchlist.tsx` — adds a "Score"
   column and a "Sort by score" toggle that ranks the list by composite
   descending (entries whose score hasn't computed yet sort to the tail).

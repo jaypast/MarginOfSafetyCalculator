@@ -29,7 +29,19 @@ export interface MultibaggerScore {
   composite: number | null; // 0..100, or null when no sub-score computed
   subScores: SubScore[];
   missingFactors: SubScoreKey[];
+  // Number of sub-scores that actually computed (0..5).
+  computedFactors: number;
+  // True when a composite exists but is built from fewer than
+  // MIN_RELIABLE_FACTORS sub-scores — the renormalised number leans too
+  // hard on whichever factors happened to be available, so the UI must
+  // surface it as a low-confidence warning rather than a clean score.
+  lowConfidence: boolean;
 }
+
+// A composite renormalised across fewer than 4 of the 5 factors is not an
+// accurate picture of Yartseva's factor set — below this floor the score is
+// flagged as low-confidence.
+export const MIN_RELIABLE_FACTORS = 4;
 
 // Paper-magnitude-inspired weights. Value (FCF/P) had the largest coefficient
 // in every Yartseva specification, so it carries the most weight. Investment
@@ -262,7 +274,10 @@ export function scoreTicker(stock: StockData): MultibaggerScore {
     ? Math.round((weightedTotal / weightSum) * 10) / 10
     : null;
 
-  return { composite, subScores, missingFactors };
+  const computedFactors = subScores.length - missingFactors.length;
+  const lowConfidence = composite !== null && computedFactors < MIN_RELIABLE_FACTORS;
+
+  return { composite, subScores, missingFactors, computedFactors, lowConfidence };
 }
 
 // Compact band label for the composite — used by the UI badge and the

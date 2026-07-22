@@ -255,6 +255,66 @@ describe('multibaggerScreener — composite & missing-data handling', () => {
   });
 });
 
+describe('multibaggerScreener — low-confidence flag (< 4 computed factors)', () => {
+  it('is NOT low confidence when all 5 factors compute', () => {
+    const stock = makeStock({ marketCap: 5e9 });
+    const r = scoreTicker(stock);
+    expect(r.computedFactors).toBe(5);
+    expect(r.lowConfidence).toBe(false);
+  });
+
+  it('is NOT low confidence at exactly 4 computed factors (boundary)', () => {
+    // Default makeStock has no marketCap → size is the only missing factor.
+    const r = scoreTicker(makeStock());
+    expect(r.computedFactors).toBe(4);
+    expect(r.lowConfidence).toBe(false);
+  });
+
+  it('IS low confidence at 3 computed factors (boundary)', () => {
+    // Drop size (no marketCap) AND the 52-week range → 3 computed.
+    const stock = makeStock({
+      multibaggerSignals: {
+        ...makeStock().multibaggerSignals!,
+        week52High: null,
+        week52Low: null,
+      },
+    });
+    const r = scoreTicker(stock);
+    expect(r.computedFactors).toBe(3);
+    expect(r.lowConfidence).toBe(true);
+    expect(r.composite).not.toBeNull(); // score still shown, but flagged
+  });
+
+  it('IS low confidence at 2 computed factors (signals block missing)', () => {
+    // No marketCap, no signals block: value falls back to fcfPerShare/price,
+    // profitability computes from ROE — everything else is missing.
+    const r = scoreTicker(makeStock({ multibaggerSignals: null }));
+    expect(r.computedFactors).toBe(2);
+    expect(r.lowConfidence).toBe(true);
+  });
+
+  it('is NOT flagged low confidence when nothing computed — composite is null instead', () => {
+    const stock = makeStock({
+      price: 0,
+      fcfPerShare: NaN,
+      roe: NaN,
+      multibaggerSignals: {
+        fcfYield: null,
+        assetGrowth: null,
+        ebitdaGrowth: null,
+        week52High: null,
+        week52Low: null,
+      },
+    });
+    const r = scoreTicker(stock);
+    expect(r.computedFactors).toBe(0);
+    expect(r.composite).toBeNull();
+    // The "Insufficient data" band already covers this state; the warning
+    // flag is reserved for a composite that exists but is unreliable.
+    expect(r.lowConfidence).toBe(false);
+  });
+});
+
 describe('multibaggerScreener — composite band labels', () => {
   it('labels a strong composite ≥ 65 as "Strong"', () => {
     expect(compositeBand(80).label).toBe('Strong');
@@ -303,10 +363,10 @@ describe('multibaggerScreener — bulk scoring & sort (watchlist path)', () => {
     };
     // Closure mirrors the parent's `scoreFor` — it reads from a live
     // mutable map (the useQueries result list in the real component).
-    const scoreFor = (symbol: string): number | null => {
+    const scoreFor = (symbol: string) => {
       const stock = fetched[symbol];
       if (!stock) return null;
-      return scoreTicker(stock).composite;
+      return scoreTicker(stock);
     };
 
     // First render — nothing fetched yet, all sort to the tail in stable order.
@@ -363,5 +423,31 @@ describe('multibaggerScreener — bulk scoring & sort (watchlist path)', () => {
     const sorted = bulkScoreAndSort([mid, broken, high]);
     expect(sorted.map((r) => r.symbol)).toEqual(['HIGH', 'MID', 'BROKEN']);
     expect(sorted[2].composite).toBeNull();
+  });
+
+  it('demotes low-confidence scores below reliable ones but above nulls', () => {
+    const stocks: Record<string, StockData | undefined> = {
+      // Reliable (4 factors) with a modest composite.
+      RELIABLE: makeStock({ symbol: 'RELIABLE', roe: 8, multibaggerSignals: { ...makeStock().multibaggerSignals!, fcfYield: 2 } }),
+      // Low-confidence (2 factors: value fallback + profitability) but with a
+      // HIGH face-value composite — must still rank below RELIABLE.
+      SPARSE: makeStock({ symbol: 'SPARSE', roe: 30, fcfPerShare: 6, multibaggerSignals: null }),
+      // No score at all.
+      NONE: undefined,
+    };
+    const scoreFor = (symbol: string) => {
+      const stock = stocks[symbol];
+      return stock ? scoreTicker(stock) : null;
+    };
+    // Sanity: SPARSE really is low-confidence with the higher raw composite.
+    const sparse = scoreTicker(stocks.SPARSE!);
+    const reliable = scoreTicker(stocks.RELIABLE!);
+    expect(sparse.lowConfidence).toBe(true);
+    expect(reliable.lowConfidence).toBe(false);
+    expect(sparse.composite!).toBeGreaterThan(reliable.composite!);
+
+    const entries = [{ symbol: 'SPARSE' }, { symbol: 'NONE' }, { symbol: 'RELIABLE' }];
+    expect(sortEntriesByScore(entries, scoreFor).map((e) => e.symbol))
+      .toEqual(['RELIABLE', 'SPARSE', 'NONE']);
   });
 });
