@@ -176,7 +176,13 @@ pace (~5h), then emails a summary + full CSV via the Resend connector.
 
 - Universe: `server/data/russell3000.ts` — top 3000 US common stocks by
   market cap (Nasdaq screener derived), `RUSSELL_3000_AS_OF` stamped into the
-  CSV metadata line and the status payload.
+  CSV metadata line and the status payload. Regenerate with
+  `npx tsx scripts/build-russell3000.ts` (optionally pass a cached screener
+  JSON dump path). Common-stock-only filters (no notes/bonds/debentures/
+  preferreds/CEFs/ETNs/warrants/rights/units/depositary shares) live in
+  `server/data/universeFilters.ts` and are shared by the build script and
+  `tests/russell3000.test.ts`, which fails the suite if any non-common-stock
+  instrument re-enters the dataset.
 - Engine: `server/services/reportJob.ts` — `kickReportRunner` +
   module-level single-runner guard; one result row per ticker persisted
   before the next fetch (unique `jobId+symbol`, replay-safe), the row count
@@ -205,6 +211,11 @@ pace (~5h), then emails a summary + full CSV via the Resend connector.
   failure, storage failure, stranded-job sweep, CSV escaping + formula
   injection, maskEmail, summarize, request schema. Mocks storage, stockData,
   reportEmail AND the ticker list (5 entries).
+  `tests/russell3000.test.ts` (14) — dataset integrity: exactly 3000 unique
+  1–5-letter symbols, zero non-common-stock names, denylist of the debt/fund
+  symbols the first generation shipped, one-share-class-per-company, filter
+  unit tests (incl. the `\bdue 20\b` word-boundary bug that let
+  "…Notes due 2066" instruments through originally).
 
 ## Valuation hardening (Task #9 / #15)
 Recent fixes:
