@@ -123,7 +123,7 @@ function scoreValue(stock: StockData): SubScore {
       key: 'value',
       label: 'Value (FCF yield)',
       score: 0,
-      rationale: 'FCF yield is negative — business is consuming cash. See Cash-quality gate in the Verdict.',
+      rationale: `FCF yield ${yieldPct.toFixed(1)}% — business is consuming cash. See Cash-quality gate in the Verdict.`,
     };
   }
   // Linear ramp 0..10% → 0..100, capped above 10%. Yartseva's >5% threshold
@@ -135,8 +135,8 @@ function scoreValue(stock: StockData): SubScore {
     score,
     rationale:
       yieldPct > 5
-        ? 'FCF yield clears the 5% multibagger threshold — see Cash-quality gate in the Verdict for the absolute figure.'
-        : 'FCF yield is positive but below the 5% multibagger threshold — see Cash-quality gate in the Verdict.',
+        ? `FCF yield ${yieldPct.toFixed(1)}% clears the 5% multibagger threshold (Yartseva's strongest factor).`
+        : `FCF yield ${yieldPct.toFixed(1)}% — positive but below the 5% multibagger threshold.`,
   };
 }
 

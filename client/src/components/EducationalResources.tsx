@@ -50,6 +50,16 @@ const EducationalResources: React.FC = () => {
       title: "Quality Assessment Guide",
       description: "How to evaluate company quality to determine appropriate Margin of Safety.",
       searchQuery: "how to assess company quality for value investing margin of safety guide"
+    },
+    {
+      title: "What Makes a Multibagger",
+      description: "The traits shared by stocks that returned 10x or more — small size, strong free cash flow, disciplined reinvestment.",
+      searchQuery: "multibagger stocks common characteristics small cap free cash flow yield study"
+    },
+    {
+      title: "Why Growth Doesn't Predict Returns",
+      description: "Research finds past EBITDA/EPS growth is a poor predictor of future 10x returns — valuation and cash generation matter more.",
+      searchQuery: "does earnings growth predict stock returns academic research value vs growth"
     }
   ];
 

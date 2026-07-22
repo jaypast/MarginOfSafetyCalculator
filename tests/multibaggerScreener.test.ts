@@ -72,6 +72,19 @@ describe('multibaggerScreener — scoring math', () => {
       const sub = findScore(stock, 'value');
       expect(sub.score).toBe(0);
       expect(sub.rationale).toMatch(/consuming cash/i);
+      expect(sub.rationale).toContain('-3.0%');
+    });
+
+    it('surfaces the absolute FCF yield figure in the rationale', () => {
+      const above = makeStock({
+        multibaggerSignals: { ...makeStock().multibaggerSignals!, fcfYield: 11.24 },
+      });
+      expect(findScore(above, 'value').rationale).toContain('11.2%');
+
+      const below = makeStock({
+        multibaggerSignals: { ...makeStock().multibaggerSignals!, fcfYield: 3.5 },
+      });
+      expect(findScore(below, 'value').rationale).toContain('3.5%');
     });
 
     it('falls back to fcfPerShare/price when upstream yield missing', () => {
