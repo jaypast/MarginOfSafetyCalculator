@@ -26,6 +26,20 @@ function getRandomUserAgent() {
 }
 
 /**
+ * Cheap price-only quote for the fundamentals cache (Task #58).
+ * One request to Yahoo's chart endpoint — no key, far lighter than a full
+ * fundamentals fetch. Throws when no positive price could be obtained so
+ * callers can fall through to the full tiered fetch chain.
+ */
+export async function getQuickPrice(symbol: string): Promise<number> {
+  const { price } = await getSimpleQuote(symbol);
+  if (!price || price <= 0) {
+    throw new Error(`Quick quote returned no price for ${symbol}`);
+  }
+  return price;
+}
+
+/**
  * Get real-time stock quote from a simpler API
  * This should bypass complex website scraping issues
  */

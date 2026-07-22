@@ -2,6 +2,8 @@ import {
   users, type User, type InsertUser,
   feedback, type Feedback, type InsertFeedback,
   watchlist, type WatchlistEntry,
+  fundamentalsCache, type FundamentalsCacheRow,
+  type StockResponse,
 } from "@shared/schema";
 import { db } from "./db";
 import { and, eq } from "drizzle-orm";
@@ -31,6 +33,17 @@ export interface IStorage {
   // Returns true when a row was deleted (so the route can return 404 for
   // attempts to delete entries belonging to a different session).
   removeWatchlistEntry(id: number, sessionId: string): Promise<boolean>;
+
+  // Fundamentals cache methods (Task #58)
+  // Persistent per-symbol cache of the last complete live payload so repeat
+  // lookups only need a cheap price refresh. Symbol is always uppercased.
+  getFundamentalsCache(symbol: string): Promise<FundamentalsCacheRow | undefined>;
+  upsertFundamentalsCache(
+    symbol: string,
+    payload: StockResponse,
+    dataSource: string,
+    fetchedAt: Date,
+  ): Promise<FundamentalsCacheRow>;
 }
 
 // Memory storage for fallback when database is not available.
@@ -39,9 +52,11 @@ export class MemStorage implements IStorage {
   private users: User[] = [];
   private feedbackEntries: Feedback[] = [];
   private watchlistEntries: WatchlistEntry[] = [];
+  private fundamentalsCacheRows: Map<string, FundamentalsCacheRow> = new Map();
   private nextUserId = 1;
   private nextFeedbackId = 1;
   private nextWatchlistId = 1;
+  private nextFundamentalsCacheId = 1;
   
   // User methods
   async getUser(id: number): Promise<User | undefined> {
@@ -156,6 +171,30 @@ export class MemStorage implements IStorage {
     if (idx === -1) return false;
     this.watchlistEntries.splice(idx, 1);
     return true;
+  }
+
+  // Fundamentals cache methods --------------------------------------------
+  async getFundamentalsCache(symbol: string): Promise<FundamentalsCacheRow | undefined> {
+    return this.fundamentalsCacheRows.get(symbol.toUpperCase());
+  }
+
+  async upsertFundamentalsCache(
+    symbol: string,
+    payload: StockResponse,
+    dataSource: string,
+    fetchedAt: Date,
+  ): Promise<FundamentalsCacheRow> {
+    const upper = symbol.toUpperCase();
+    const existing = this.fundamentalsCacheRows.get(upper);
+    const row: FundamentalsCacheRow = {
+      id: existing?.id ?? this.nextFundamentalsCacheId++,
+      symbol: upper,
+      payload,
+      dataSource,
+      fetchedAt,
+    };
+    this.fundamentalsCacheRows.set(upper, row);
+    return row;
   }
 }
 
@@ -314,6 +353,35 @@ export class DatabaseStorage implements IStorage {
       .returning({ id: watchlist.id });
     return result.length > 0;
   }
+
+  // Fundamentals cache methods --------------------------------------------
+  async getFundamentalsCache(symbol: string): Promise<FundamentalsCacheRow | undefined> {
+    if (!db) return undefined;
+    const [row] = await db
+      .select()
+      .from(fundamentalsCache)
+      .where(eq(fundamentalsCache.symbol, symbol.toUpperCase()));
+    return row || undefined;
+  }
+
+  async upsertFundamentalsCache(
+    symbol: string,
+    payload: StockResponse,
+    dataSource: string,
+    fetchedAt: Date,
+  ): Promise<FundamentalsCacheRow> {
+    if (!db) throw new Error("Database connection not available");
+    const upper = symbol.toUpperCase();
+    const [row] = await db
+      .insert(fundamentalsCache)
+      .values({ symbol: upper, payload, dataSource, fetchedAt })
+      .onConflictDoUpdate({
+        target: fundamentalsCache.symbol,
+        set: { payload, dataSource, fetchedAt },
+      })
+      .returning();
+    return row;
+  }
 }
 
 // Handle the case when errors occur with the database storage
@@ -439,6 +507,34 @@ class SafeStorageWrapper implements IStorage {
       console.error("Database error in removeWatchlistEntry, falling back to memory storage:", err);
     }
     return this.memStorage.removeWatchlistEntry(id, sessionId);
+  }
+
+  // Fundamentals cache methods --------------------------------------------
+  async getFundamentalsCache(symbol: string): Promise<FundamentalsCacheRow | undefined> {
+    try {
+      if (this.dbStorage) {
+        return await this.dbStorage.getFundamentalsCache(symbol);
+      }
+    } catch (err) {
+      console.error("Database error in getFundamentalsCache, falling back to memory storage:", err);
+    }
+    return this.memStorage.getFundamentalsCache(symbol);
+  }
+
+  async upsertFundamentalsCache(
+    symbol: string,
+    payload: StockResponse,
+    dataSource: string,
+    fetchedAt: Date,
+  ): Promise<FundamentalsCacheRow> {
+    try {
+      if (this.dbStorage) {
+        return await this.dbStorage.upsertFundamentalsCache(symbol, payload, dataSource, fetchedAt);
+      }
+    } catch (err) {
+      console.error("Database error in upsertFundamentalsCache, falling back to memory storage:", err);
+    }
+    return this.memStorage.upsertFundamentalsCache(symbol, payload, dataSource, fetchedAt);
   }
 }
 

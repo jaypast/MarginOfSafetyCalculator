@@ -11,11 +11,24 @@ vi.mock('../server/services/rapidApiFinance', () => ({
 vi.mock('../server/services/alphaVantage', () => ({
   getAlphaVantageData: vi.fn(),
 }));
+vi.mock('../server/services/fmpFinance', () => ({
+  getFmpData: vi.fn().mockRejectedValue(new Error('mocked out')),
+}));
 vi.mock('../server/services/webScraper', () => ({
   scrapeStockData: vi.fn(),
+  getQuickPrice: vi.fn().mockRejectedValue(new Error('mocked out')),
 }));
 vi.mock('../server/services/fallbackData', () => ({
   getFallbackStockData: vi.fn(),
+}));
+// The persistent fundamentals cache (Task #58) is exercised in
+// fundamentalsCache.test.ts — stub it empty here so the divergence
+// pipeline behaves exactly as it did pre-cache.
+vi.mock('../server/storage', () => ({
+  storage: {
+    getFundamentalsCache: async () => undefined,
+    upsertFundamentalsCache: async () => ({}),
+  },
 }));
 
 import {

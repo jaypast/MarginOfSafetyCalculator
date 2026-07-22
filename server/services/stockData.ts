@@ -1,10 +1,11 @@
-import { StockResponse, DataSource, CrossSourceDivergence } from '@shared/schema';
+import { StockResponse, DataSource, CrossSourceDivergence, FundamentalsCacheRow } from '@shared/schema';
 import { getYahooFinanceData } from './yahooFinance';
 import { getRapidApiStockData } from './rapidApiFinance';
 import { getAlphaVantageData } from './alphaVantage';
 import { getFmpData } from './fmpFinance';
-import { scrapeStockData } from './webScraper';
+import { scrapeStockData, getQuickPrice } from './webScraper';
 import { getFallbackStockData } from './fallbackData';
+import { storage } from '../storage';
 
 // ---------------------------------------------------------------------------
 // Cross-source agreement gate
@@ -108,6 +109,86 @@ interface StockCacheEntry {
 }
 const stockDataCache: { [symbol: string]: StockCacheEntry } = {};
 const CACHE_DURATION = 20 * 60 * 1000; // 20 minutes
+
+// ---------------------------------------------------------------------------
+// Persistent fundamentals cache tiers (Task #58)
+// Fundamentals only move quarterly, so a lookup within FUNDAMENTALS_TTL_MS
+// of the last complete live fetch needs just a cheap price refresh. The
+// faster-drifting 52-week range is only served within RANGE_TTL_MS, and
+// historical P/E medians within PE_HISTORY_TTL_MS (only relevant on the
+// stale-serve path, since a normal hit is already inside the 7-day window).
+// ---------------------------------------------------------------------------
+export const FUNDAMENTALS_TTL_MS = 7 * 24 * 60 * 60 * 1000;  // 7 days
+export const RANGE_TTL_MS        = 24 * 60 * 60 * 1000;      // 1 day
+export const PE_HISTORY_TTL_MS   = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+/**
+ * Rebuild a servable payload from cached fundamentals + a price.
+ *
+ * Price-derived fields are recomputed so they are never stale:
+ *   - peRatio  = price ÷ cached EPS
+ *   - marketCap scaled by the price ratio (share count is fixed short-term)
+ *   - fcfYield scaled inversely by the price ratio (FCF is fixed short-term)
+ * Tier expiry: the 52-week range is dropped past RANGE_TTL_MS and the
+ * historical P/E block past PE_HISTORY_TTL_MS, with explicit notes.
+ * Provenance stays honest: the original dataSource badge is kept and
+ * `fetchedAt` reflects when the fundamentals were actually fetched.
+ *
+ * Exported so tests can exercise the exact production recombination math.
+ */
+export function recombineCachedFundamentals(
+  cached: StockResponse,
+  fetchedAt: Date,
+  price: number,
+  opts: { priceIsLive: boolean; note: string },
+  now: number = Date.now(),
+): StockResponse {
+  const age = now - fetchedAt.getTime();
+  const d: StockResponse = {
+    ...cached,
+    appliedAdjustments: [...(cached.appliedAdjustments ?? []), opts.note],
+    multibaggerSignals: cached.multibaggerSignals ? { ...cached.multibaggerSignals } : cached.multibaggerSignals,
+  };
+  const oldPrice = cached.price;
+
+  if (opts.priceIsLive && price > 0) {
+    d.price = Math.round(price * 100) / 100;
+    if (d.eps > 0) {
+      d.peRatio = Math.round((price / d.eps) * 100) / 100;
+    }
+    if (typeof d.marketCap === 'number' && d.marketCap > 0 && oldPrice > 0) {
+      d.marketCap = Math.round(d.marketCap * (price / oldPrice));
+    }
+    if (d.multibaggerSignals && d.multibaggerSignals.fcfYield != null && oldPrice > 0) {
+      d.multibaggerSignals.fcfYield = parseFloat(
+        (d.multibaggerSignals.fcfYield * (oldPrice / price)).toFixed(4),
+      );
+    }
+  }
+
+  if (age > RANGE_TTL_MS && d.multibaggerSignals &&
+      (d.multibaggerSignals.week52High != null || d.multibaggerSignals.week52Low != null)) {
+    d.multibaggerSignals = { ...d.multibaggerSignals, week52High: null, week52Low: null };
+    d.appliedAdjustments!.push('52-week range omitted — cached copy is older than 1 day');
+  }
+  if (age > PE_HISTORY_TTL_MS && d.peHistory) {
+    d.peHistory = null;
+    d.appliedAdjustments!.push('Historical P/E omitted — cached copy is older than 30 days');
+  }
+
+  // Honest provenance: original source badge, true fundamentals age.
+  d.fetchedAt = fetchedAt.toISOString();
+  return d;
+}
+
+// Fire-and-forget write-through: persist every complete live payload so the
+// next lookup (or the next server process) can serve it with just a price
+// refresh. Failures are logged and never affect the response.
+function persistFundamentals(symbol: string, stamped: StockResponse): void {
+  storage
+    .upsertFundamentalsCache(symbol, stamped, stamped.dataSource ?? 'unknown', new Date())
+    .catch((err) => console.error(`[${symbol}] Failed to persist fundamentals cache:`, err));
+}
 
 // Background spot-check promises, exposed to tests so they can deterministically
 // wait for fire-and-forget agreement checks before asserting on cache state.
@@ -270,6 +351,45 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
     return attachDivergence(symbol, stockDataCache[symbol].data);
   }
 
+  // --- Persistent fundamentals cache (Task #58) ---
+  // Fetched once here; also reused by the stale-serve branch below if every
+  // live source fails. Lookup failures are non-fatal — the live chain is
+  // always available as the fallback path.
+  let dbCached: FundamentalsCacheRow | undefined;
+  try {
+    dbCached = await storage.getFundamentalsCache(symbol);
+  } catch (err) {
+    console.error(`[${symbol}] Fundamentals cache lookup failed:`, err);
+  }
+  if (dbCached && !dbCached.payload?.error) {
+    const fetchedAtDate = new Date(dbCached.fetchedAt);
+    const age = now - fetchedAtDate.getTime();
+    if (age < FUNDAMENTALS_TTL_MS) {
+      try {
+        const freshPrice = await getQuickPrice(symbol);
+        const combined = recombineCachedFundamentals(
+          dbCached.payload,
+          fetchedAtDate,
+          freshPrice,
+          {
+            priceIsLive: true,
+            note: `Fundamentals served from cache (fetched ${fetchedAtDate.toISOString()}); price refreshed live`,
+          },
+          now,
+        );
+        console.log(`[${symbol}] Serving cached fundamentals (${Math.round(age / (60 * 60 * 1000))}h old) with fresh live price`);
+        stockDataCache[symbol] = {
+          data: combined,
+          timestamp: now,
+          divergence: stockDataCache[symbol]?.divergence,
+        };
+        return attachDivergence(symbol, combined);
+      } catch (err) {
+        console.log(`[${symbol}] Quick price refresh failed — falling through to live sources: ${err}`);
+      }
+    }
+  }
+
   // Track the best live price seen across all sources even when fundamentals
   // are incomplete. Used to patch static fallback data so the price shown
   // is current even when EPS/FCF could not be fetched.
@@ -357,6 +477,7 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
     const stamped = stampProvenance(yfinanceResult, 'yfinance');
     const divergence = compareWithCachedPrimary(stamped, 'yfinance');
     stockDataCache[symbol] = { data: stamped, timestamp: now, divergence };
+    persistFundamentals(symbol, stamped);
     spotCheck(stamped, 'yfinance', 'rapidapi', () => getRapidApiStockData(symbol));
     return attachDivergence(symbol, stamped);
   }
@@ -367,6 +488,7 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
     const stamped = stampProvenance(rapidResult, 'rapidapi');
     const divergence = compareWithCachedPrimary(stamped, 'rapidapi');
     stockDataCache[symbol] = { data: stamped, timestamp: now, divergence };
+    persistFundamentals(symbol, stamped);
     spotCheck(stamped, 'rapidapi', 'alphavantage', () => getAlphaVantageData(symbol));
     return attachDivergence(symbol, stamped);
   }
@@ -377,6 +499,7 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
     const stamped = stampProvenance(avResult, 'alphavantage');
     const divergence = compareWithCachedPrimary(stamped, 'alphavantage');
     stockDataCache[symbol] = { data: stamped, timestamp: now, divergence };
+    persistFundamentals(symbol, stamped);
     spotCheck(stamped, 'alphavantage', 'rapidapi', () => getRapidApiStockData(symbol));
     return attachDivergence(symbol, stamped);
   }
@@ -389,6 +512,7 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
     const stamped = stampProvenance(fmpResult, 'fmp');
     const divergence = compareWithCachedPrimary(stamped, 'fmp');
     stockDataCache[symbol] = { data: stamped, timestamp: now, divergence };
+    persistFundamentals(symbol, stamped);
     spotCheck(stamped, 'fmp', 'rapidapi', () => getRapidApiStockData(symbol));
     return attachDivergence(symbol, stamped);
   }
@@ -399,10 +523,41 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
     const stamped = stampProvenance(scrapeResult, 'scraper');
     const divergence = compareWithCachedPrimary(stamped, 'scraper');
     stockDataCache[symbol] = { data: stamped, timestamp: now, divergence };
+    persistFundamentals(symbol, stamped);
     return attachDivergence(symbol, stamped);
   }
 
-  // --- 6. Static fallback ---
+  // --- 6. Stale persistent cache (Task #58) ---
+  // Every live source failed. Real fundamentals from a previous live fetch —
+  // however old — beat the curated static dataset, so serve them before
+  // falling back. The response keeps its true fetched-at timestamp and gets
+  // an explicit note; the best partial live price (if any source returned
+  // one) patches the cached price.
+  if (dbCached && !dbCached.payload?.error) {
+    const fetchedAtDate = new Date(dbCached.fetchedAt);
+    const livePrice: number | null = (bestPartialPrice !== null && bestPartialPrice > 0)
+      ? bestPartialPrice
+      : null;
+    const combined = recombineCachedFundamentals(
+      dbCached.payload,
+      fetchedAtDate,
+      livePrice ?? dbCached.payload.price,
+      {
+        priceIsLive: livePrice !== null,
+        note: livePrice !== null
+          ? `All live sources failed — cached fundamentals (fetched ${fetchedAtDate.toISOString()}) combined with the latest live price`
+          : `All live sources failed — serving cached fundamentals and price (fetched ${fetchedAtDate.toISOString()})`,
+      },
+      now,
+    );
+    console.log(`[${symbol}] All live sources failed — serving stale cached fundamentals from ${fetchedAtDate.toISOString()}`);
+    const divergence = compareWithCachedPrimary(combined, (combined.dataSource ?? 'unknown') as DataSource);
+    // Cache as if it expired 15 minutes ago so a live source is retried sooner.
+    stockDataCache[symbol] = { data: combined, timestamp: now - (15 * 60 * 1000), divergence };
+    return attachDivergence(symbol, combined);
+  }
+
+  // --- 7. Static fallback ---
   // Fundamentals (EPS, ROE, D/E, currentRatio) from the curated static
   // dataset are slow-moving and valid for months. The price, however, can
   // change dramatically. If any earlier source returned a valid live price

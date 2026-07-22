@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, decimal, varchar, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, decimal, varchar, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -264,3 +264,37 @@ export const watchlistEntryResponseSchema = z.object({
   createdAt: z.string(),
 });
 export type WatchlistEntryResponse = z.infer<typeof watchlistEntryResponseSchema>;
+
+// =============================================================================
+// Fundamentals cache (Task #58)
+//
+// Persistent cache of the slow-changing parts of a StockResponse, keyed by
+// symbol. Fundamentals only move quarterly, so a repeat lookup within the
+// freshness window needs just a cheap live price fetch; the rest is served
+// from this table. The full last-known-good payload is stored as JSONB so
+// schema additions to StockResponse never require a cache migration —
+// tier expiry logic (7-day fundamentals, 1-day 52-week range, 30-day
+// P/E history) lives in the fetch pipeline, not the table.
+//
+// Append-only block at the bottom of the file to keep merges mechanical.
+// =============================================================================
+export const fundamentalsCache = pgTable("fundamentals_cache", {
+  id: serial("id").primaryKey(),
+  symbol: varchar("symbol", { length: 10 }).notNull().unique(),
+  // Last complete payload returned by a live source (never the static
+  // fallback and never an error response).
+  payload: jsonb("payload").$type<StockResponse>().notNull(),
+  // Which upstream produced the payload — preserved so cached responses
+  // keep an honest provenance badge.
+  dataSource: text("data_source").notNull(),
+  // When the payload was fetched from the live source. Cached responses
+  // surface this (not "now") as their freshness timestamp.
+  fetchedAt: timestamp("fetched_at").notNull(),
+});
+
+export const insertFundamentalsCacheSchema = createInsertSchema(fundamentalsCache).omit({
+  id: true,
+});
+
+export type InsertFundamentalsCache = z.infer<typeof insertFundamentalsCacheSchema>;
+export type FundamentalsCacheRow = typeof fundamentalsCache.$inferSelect;

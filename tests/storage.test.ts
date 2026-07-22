@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 vi.mock('../server/db', () => ({ db: null, pool: null }));
 
 import { MemStorage } from '../server/storage';
-import type { InsertFeedback } from '../shared/schema';
+import type { InsertFeedback, StockResponse } from '../shared/schema';
 
 function fb(satisfaction: InsertFeedback['satisfaction'], extras: Partial<InsertFeedback> = {}): InsertFeedback {
   return {
@@ -81,5 +81,72 @@ describe('MemStorage — feedback PMF math (production code path)', () => {
     const t0 = new Date(all[0].createdAt as any).getTime();
     const t1 = new Date(all[1].createdAt as any).getTime();
     expect(t0).toBeLessThanOrEqual(t1);
+  });
+});
+
+describe('MemStorage — fundamentals cache (Task #58)', () => {
+  let storage: MemStorage;
+
+  const payload = {
+    symbol: 'AAPL',
+    name: 'Apple Inc.',
+    price: 200,
+    eps: 6.5,
+    peRatio: 30.77,
+    fcfPerShare: 6,
+    growthRate: 9,
+    roe: 150,
+    debtToEquity: 1.5,
+    currentRatio: 1,
+    revenueGrowth: 5,
+    earningsStability: 'High',
+    competitivePosition: 'Strong',
+    dataSource: 'yfinance',
+    fetchedAt: new Date().toISOString(),
+  } as StockResponse;
+
+  beforeEach(() => {
+    storage = new MemStorage();
+  });
+
+  it('returns undefined for a symbol that was never cached', async () => {
+    expect(await storage.getFundamentalsCache('NVDA')).toBeUndefined();
+  });
+
+  it('upsert stores a row and get retrieves it, uppercasing the symbol', async () => {
+    const fetchedAt = new Date('2026-07-20T12:00:00Z');
+    await storage.upsertFundamentalsCache('aapl', payload, 'yfinance', fetchedAt);
+
+    const row = await storage.getFundamentalsCache('AAPL');
+    expect(row).toBeDefined();
+    expect(row!.symbol).toBe('AAPL');
+    expect(row!.dataSource).toBe('yfinance');
+    expect(row!.fetchedAt).toEqual(fetchedAt);
+    expect(row!.payload.eps).toBe(6.5);
+
+    // Lookup is case-insensitive both ways.
+    expect(await storage.getFundamentalsCache('aapl')).toBeDefined();
+  });
+
+  it('a second upsert overwrites the payload but keeps the same row id', async () => {
+    const first = await storage.upsertFundamentalsCache('AAPL', payload, 'yfinance', new Date('2026-07-10T00:00:00Z'));
+    const updated = { ...payload, eps: 7.1 } as StockResponse;
+    const second = await storage.upsertFundamentalsCache('AAPL', updated, 'fmp', new Date('2026-07-21T00:00:00Z'));
+
+    expect(second.id).toBe(first.id);
+    const row = await storage.getFundamentalsCache('AAPL');
+    expect(row!.payload.eps).toBe(7.1);
+    expect(row!.dataSource).toBe('fmp');
+    expect(row!.fetchedAt).toEqual(new Date('2026-07-21T00:00:00Z'));
+  });
+
+  it('rows for different symbols are independent', async () => {
+    await storage.upsertFundamentalsCache('AAPL', payload, 'yfinance', new Date());
+    await storage.upsertFundamentalsCache('MSFT', { ...payload, symbol: 'MSFT' } as StockResponse, 'fmp', new Date());
+    const a = await storage.getFundamentalsCache('AAPL');
+    const m = await storage.getFundamentalsCache('MSFT');
+    expect(a!.id).not.toBe(m!.id);
+    expect(a!.payload.symbol).toBe('AAPL');
+    expect(m!.payload.symbol).toBe('MSFT');
   });
 });

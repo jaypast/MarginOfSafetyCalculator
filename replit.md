@@ -120,6 +120,47 @@ returns `null` for tickers fetched through the live API; the composite
 renormalises across the remaining four factors. Adapters that surface market
 cap will light up the size sub-score automatically — no code change needed.
 
+## Persistent fundamentals cache (Task #58)
+Slow-changing fundamentals are cached in Postgres (`fundamentals_cache`
+table — one row per symbol, whole `StockResponse` payload as jsonb with
+original `dataSource` + `fetchedAt`) so repeat lookups survive restarts and
+only need a cheap live price refresh.
+
+Tiered freshness, enforced at read time by the pure
+`recombineCachedFundamentals()` in `server/services/stockData.ts`:
+- **Fundamentals (EPS, FCF/share, ROE, D/E, growth…): 7 days**
+  (`FUNDAMENTALS_TTL_MS`). Within this window `/api/stock/:symbol` skips the
+  full adapter chain, fetches one quick quote (`getQuickPrice` in
+  `webScraper.ts`, Yahoo chart endpoint), and recomputes the price-derived
+  fields: `peRatio = price/eps`, `marketCap` scaled by the price ratio,
+  `fcfYield` scaled inversely. If the quick quote fails, the normal live
+  chain runs as before.
+- **52-week range: 1 day** (`RANGE_TTL_MS`) — nulled past expiry with a note.
+- **peHistory: 30 days** (`PE_HISTORY_TTL_MS`) — nulled past expiry with a note.
+- **Price: never cached** beyond the existing 20-minute in-memory window.
+
+Provenance stays honest: cached responses keep the *original* source badge
+and the *original* `fetchedAt`, plus an explicit `appliedAdjustments` note
+("Fundamentals served from cache … price refreshed live").
+
+Write-through: every complete payload from a live source (yfinance /
+RapidAPI / Alpha Vantage / FMP / scraper) is upserted fire-and-forget via
+`storage.upsertFundamentalsCache`; the static fallback dataset is never
+persisted. Stale-serve: when **all** live sources fail, cached fundamentals
+of *any* age are served (patched with `bestPartialPrice` when available)
+ahead of the static fallback, cached in memory as already-15-minutes-old so
+live sources are retried soon. Storage failures in either direction are
+non-fatal — the pipeline degrades to pre-cache behavior.
+
+- Storage: `getFundamentalsCache`/`upsertFundamentalsCache` on `IStorage`,
+  `MemStorage` (uppercased keys), `DatabaseStorage` (`onConflictDoUpdate`
+  on the unique symbol column), and the `SafeStorageWrapper`.
+- Tests: `tests/fundamentalsCache.test.ts` (recombination math, tier
+  boundaries, cache-hit path, write-through, stale-serve) and the
+  MemStorage block in `tests/storage.test.ts`.
+- Note for new test files: anything that exercises `getStockData` must mock
+  `../server/storage`, otherwise the suite writes rows into the real dev DB.
+
 ## Valuation hardening (Task #9 / #15)
 Recent fixes:
 - Removed hard-coded `5year=18.6 / 10year=16.2 / industry=22.5` P/E branches in Task #9. Task #15 restored the three modes — backed by per-ticker `peHistory` (TTM-P/E medians from yfinance) and a published `INDUSTRY_PE_BASELINES` table — never the magic constants. Each mode falls back to current P/E with an explicit note when its data source is missing.
