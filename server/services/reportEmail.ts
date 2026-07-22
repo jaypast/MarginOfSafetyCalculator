@@ -4,12 +4,17 @@
 // This module is the single email boundary — the job engine only calls
 // sendReportEmail(), so tests mock this module and never touch the network.
 //
-// Credential flow: the Resend connector stores the API key with Replit's
-// connector service; we fetch it at send time (never cached to disk, never
-// logged). If the connector isn't set up the send fails loudly and the job
-// lands in 'email_failed' — the CSV stays downloadable from the UI.
+// Credential flow, in preference order:
+//   1. RESEND_API_KEY secret (with optional RESEND_FROM_EMAIL env var) —
+//      the user provides their Resend API key directly.
+//   2. The Replit-managed Resend connector, fetched at send time.
+// Keys are never cached to disk and never logged. If neither source is
+// available the send fails loudly and the job lands in 'email_failed' —
+// the CSV stays downloadable from the UI.
 
 import type { ReportJob } from "@shared/schema";
+
+const DEFAULT_FROM_EMAIL = "onboarding@resend.dev";
 
 interface ResendCredentials {
   apiKey: string;
@@ -17,6 +22,14 @@ interface ResendCredentials {
 }
 
 async function getResendCredentials(): Promise<ResendCredentials> {
+  const envKey = process.env.RESEND_API_KEY;
+  if (envKey) {
+    return {
+      apiKey: envKey,
+      fromEmail: process.env.RESEND_FROM_EMAIL || DEFAULT_FROM_EMAIL,
+    };
+  }
+
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY
     ? "repl " + process.env.REPL_IDENTITY
@@ -25,7 +38,7 @@ async function getResendCredentials(): Promise<ResendCredentials> {
       : null;
 
   if (!hostname || !xReplitToken) {
-    throw new Error("Resend connector unavailable: not running in a Replit environment with connector support");
+    throw new Error("No Resend credentials: set the RESEND_API_KEY secret (or connect the Resend integration)");
   }
 
   const response = await fetch(
@@ -44,11 +57,11 @@ async function getResendCredentials(): Promise<ResendCredentials> {
   const settings = data.items?.[0]?.settings;
   const apiKey = settings?.api_key;
   if (!apiKey) {
-    throw new Error("Resend connector is not connected (no API key found) — set it up in the Integrations panel");
+    throw new Error("No Resend credentials: set the RESEND_API_KEY secret (or connect the Resend integration)");
   }
   return {
     apiKey,
-    fromEmail: settings?.from_email || "onboarding@resend.dev",
+    fromEmail: settings?.from_email || DEFAULT_FROM_EMAIL,
   };
 }
 
