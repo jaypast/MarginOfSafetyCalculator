@@ -10,7 +10,7 @@ import QualityIndicators from './QualityIndicators';
 import EducationalResources from './EducationalResources';
 import DecisionHeadline from './DecisionHeadline';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { useStockData } from '@/hooks/useStockData';
 import { useQuery } from '@tanstack/react-query';
 import type { FedRateResponse } from '@/lib/types';
@@ -218,7 +218,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
               href="#educational-resources"
               className="text-[#2A3E5C] hover:text-[#1A2942] text-sm flex items-center"
             >
-              <i className="ri-information-line mr-1" />
+              <Info size={14} className="mr-1" />
               Learn more about Margin of Safety
             </a>
           </div>

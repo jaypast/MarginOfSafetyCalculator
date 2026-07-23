@@ -1,4 +1,5 @@
 import React from 'react';
+import { HelpCircle } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { StyledInput } from '@/components/ui/styled-input';
 import { 
@@ -51,33 +52,25 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
     <div className="bg-white rounded-lg shadow-sm p-6 border border-neutral-200">
       <h2 className="text-xl font-semibold text-[#1A2942] mb-4">Valuation Method</h2>
       
-      <div className="flex border border-neutral-300 rounded-md overflow-hidden">
-        <button 
-          className={`flex-1 py-2.5 text-center text-sm font-medium transition-all duration-200 ${activeMethod === 'dcf' ? 'bg-[#1A2942] text-white' : ''}`}
-          onClick={() => {
-            setActiveMethod('dcf');
-            setTimeout(() => onCalculate(), 100);
-          }}
+      {/* Method Selection Tabs */}
+      <div className="flex border border-neutral-200 rounded-lg overflow-hidden mb-4">
+        <button
+          className={`flex-1 py-2 text-sm font-medium ${activeMethod === 'dcf' ? 'bg-[#1A2942] text-white' : 'bg-white text-neutral-600 hover:bg-neutral-50'}`}
+          onClick={() => setActiveMethod('dcf')}
         >
-          DCF Analysis
+          DCF
         </button>
-        <button 
-          className={`flex-1 py-2.5 text-center text-sm font-medium transition-all duration-200 ${activeMethod === 'pe' ? 'bg-[#1A2942] text-white' : ''}`}
-          onClick={() => {
-            setActiveMethod('pe');
-            setTimeout(() => onCalculate(), 100);
-          }}
+        <button
+          className={`flex-1 py-2 text-sm font-medium border-l border-neutral-200 ${activeMethod === 'pe' ? 'bg-[#1A2942] text-white' : 'bg-white text-neutral-600 hover:bg-neutral-50'}`}
+          onClick={() => setActiveMethod('pe')}
         >
           P/E Based
         </button>
-        <button 
-          className={`flex-1 py-2.5 text-center text-sm font-medium transition-all duration-200 ${activeMethod === 'graham' ? 'bg-[#1A2942] text-white' : ''}`}
-          onClick={() => {
-            setActiveMethod('graham');
-            setTimeout(() => onCalculate(), 100);
-          }}
+        <button
+          className={`flex-1 py-2 text-sm font-medium border-l border-neutral-200 ${activeMethod === 'graham' ? 'bg-[#1A2942] text-white' : 'bg-white text-neutral-600 hover:bg-neutral-50'}`}
+          onClick={() => setActiveMethod('graham')}
         >
-          Graham Formula
+          Graham
         </button>
       </div>
       
@@ -90,7 +83,7 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger className="text-neutral-400 ml-1">
-                    <i className="ri-question-line"></i>
+                    <HelpCircle size={14} />
                   </TooltipTrigger>
                   <TooltipContent className="w-64">
                     <p>Projected annual growth rate of free cash flow over the forecast period. Historical growth rate is provided as reference.</p>
@@ -117,7 +110,7 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger className="text-neutral-400 ml-1">
-                    <i className="ri-question-line"></i>
+                    <HelpCircle size={14} />
                   </TooltipTrigger>
                   <TooltipContent className="w-64">
                     <p>Required rate of return used to discount future cash flows to present value. Higher rates result in lower valuations and reflect higher risk.</p>
@@ -141,7 +134,7 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger className="text-neutral-400 ml-1">
-                    <i className="ri-question-line"></i>
+                    <HelpCircle size={14} />
                   </TooltipTrigger>
                   <TooltipContent className="w-64">
                     <p>Multiple applied to the final year's cash flow to determine terminal value. Represents the business value beyond the explicit forecast period.</p>
@@ -187,7 +180,7 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger className="text-neutral-400 ml-1">
-                    <i className="ri-question-line"></i>
+                    <HelpCircle size={14} />
                   </TooltipTrigger>
                   <TooltipContent className="w-72">
                     <div className="space-y-2 text-xs">
@@ -217,10 +210,6 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
                 <SelectItem value="custom">Custom P/E...</SelectItem>
               </SelectContent>
             </StyledSelect>
-            {/* Per-mode help line that shows underneath the selector,
-                explaining the *currently selected* mode in plain words.
-                Complements the umbrella tooltip above and is always
-                visible without hovering. */}
             <p className="mt-1 text-xs text-neutral-500" data-testid="pe-mode-help">
               {valuationParams.peType === '5year' && (
                 stockData?.peHistory?.fiveYearAvg != null
@@ -264,7 +253,7 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger className="text-neutral-400 ml-1">
-                    <i className="ri-question-line"></i>
+                    <HelpCircle size={14} />
                   </TooltipTrigger>
                   <TooltipContent className="w-64">
                     <p>Optional adjustment to EPS for temporary factors or expected changes. Use 100% for current EPS with no adjustments.</p>
@@ -303,7 +292,7 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger className="text-neutral-400 ml-1">
-                    <i className="ri-question-line"></i>
+                    <HelpCircle size={14} />
                   </TooltipTrigger>
                   <TooltipContent className="w-64">
                     <p>Expected annual growth rate for the company. Graham capped this at 20% to maintain conservatism.</p>
@@ -328,7 +317,7 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger className="text-neutral-400 ml-1">
-                    <i className="ri-question-line"></i>
+                    <HelpCircle size={14} />
                   </TooltipTrigger>
                   <TooltipContent className="w-64">
                     <p>Graham's original formula used 8.5 as the base value. Some investors modify this based on interest rates.</p>

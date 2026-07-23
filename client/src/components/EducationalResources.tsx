@@ -1,6 +1,6 @@
 import React from 'react';
+import { Info, ExternalLink } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
-import { ExternalLink } from 'lucide-react';
 
 interface ResourceCardProps {
   title: string;
@@ -9,7 +9,6 @@ interface ResourceCardProps {
 }
 
 const ResourceCard: React.FC<ResourceCardProps> = ({ title, description, searchQuery }) => {
-  // Create Google search URL with the query
   const googleSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
   
   return (
@@ -81,7 +80,7 @@ const EducationalResources: React.FC = () => {
         
         <div className="mt-4 p-4 bg-[#E9ECF1] rounded-md">
           <div className="flex items-start">
-            <i className="ri-information-line text-[#415876] mr-3 mt-0.5 text-lg"></i>
+            <Info size={18} className="text-[#415876] mr-3 mt-0.5 flex-shrink-0" />
             <div>
               <h3 className="text-[#21324F] font-medium mb-1">Important Reminder</h3>
               <p className="text-sm text-[#2A3E5C]">Intrinsic value calculations are estimates, not precise values. Always consider qualitative factors and use Margin of Safety as a risk-reduction tool, not a guarantee.</p>

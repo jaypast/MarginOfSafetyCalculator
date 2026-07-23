@@ -1,4 +1,5 @@
 import React from 'react';
+import { HelpCircle } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import {
@@ -40,7 +41,7 @@ const MarginOfSafetyParams: React.FC<MarginOfSafetyParamsProps> = ({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-neutral-400">
-              <i className="ri-question-line"></i>
+              <HelpCircle size={16} />
             </TooltipTrigger>
             <TooltipContent className="w-64">
               <p>Margin of Safety is the difference between intrinsic value and market price that protects investors from estimation errors, market volatility, and unforeseen business challenges.</p>
