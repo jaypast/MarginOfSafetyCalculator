@@ -82,6 +82,7 @@ const ResearchPage: React.FC = () => {
 
       if (data.status === 'done' && data.candidates.length > 0) {
         const converted = data.candidates
+          .filter(c => c.discountPct >= MIN_DISCOUNT_PCT)
           .map(candidateToResearchStock)
           .sort((a, b) => b.discount - a.discount)
           .slice(0, 10);
@@ -146,7 +147,7 @@ const ResearchPage: React.FC = () => {
   };
 
   return (
-    <div className="container mx-auto py-8 max-w-7xl">
+    <div className="container mx-auto py-8 max-w-7xl px-4 sm:px-6">
       <header className="mb-8">
         <h1 className="text-3xl md:text-4xl font-bold text-[#1A2942] mb-2">Stock Research</h1>
         <p className="text-neutral-600">High-quality businesses trading at a meaningful discount to intrinsic value</p>

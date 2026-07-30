@@ -122,7 +122,13 @@ export function estimateIntrinsicValue(data: StockResponse): number {
   const pe = data.peRatio > 0 ? Math.min(data.peRatio, 25) : 15;
   const peValue = eps * pe;
 
-  const values = [dcf, peValue].filter(v => v > 0);
+  // Graham Number: sqrt(22.5 * EPS * BookValuePerShare)
+  const bvps = data.bookValuePerShare ?? 0;
+  const grahamNumber = (eps > 0 && bvps > 0)
+    ? Math.sqrt(22.5 * eps * bvps)
+    : 0;
+
+  const values = [dcf, peValue, grahamNumber].filter(v => v > 0);
   if (values.length === 0) return 0;
   return values.reduce((a, b) => a + b, 0) / values.length;
 }

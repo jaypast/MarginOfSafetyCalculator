@@ -225,6 +225,10 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
       })(),
       // Market cap scraped from the key-statistics page (Task #37).
       marketCap,
+      // Web-scraper has no book-value-per-share source; emit null so the
+      // Graham Number component in estimateIntrinsicValue is skipped and the
+      // estimate falls back to the DCF + P/E two-method average.
+      bookValuePerShare: null,
     };
     
     // Fill in reasonable defaults for missing values

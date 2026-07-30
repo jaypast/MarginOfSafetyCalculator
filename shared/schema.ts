@@ -161,6 +161,11 @@ export const stockResponseSchema = z.object({
   // adapter populates this when the upstream exposes it; others emit
   // null so the composite renormalises across the remaining factors.
   marketCap: z.number().nullable().optional(),
+  // Book value per share in USD. Used by the server-side intrinsic-value
+  // estimate (Graham Number component). Adapters that expose it populate
+  // it directly; others emit null so the Graham component is skipped
+  // and the estimate falls back to the DCF + P/E average.
+  bookValuePerShare: z.number().nullable().optional(),
   // VMS scoring inputs. Stored as fractions (0–1) to match the raw
   // upstream convention (FMP ratios-ttm, yfinance info.grossMargins).
   // Both are independently nullable so adapters with partial coverage
@@ -229,14 +234,14 @@ export const feedbackResponseSchema = z.object({
 export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
 export type Feedback = typeof feedback.$inferSelect;
 
-// =============================================================================
+// ------------------------------------------------------------------------------
 // Watchlist (Task #14)
 //
 // A persistent list of tickers the user is tracking, scoped by an opaque
 // browser-set session cookie (no auth yet — per-user lists are a clean
 // follow-up). Append-only block at the bottom of the file to keep merges
 // with the parallel cross-source / historical-P/E tasks mechanical.
-// =============================================================================
+// ------------------------------------------------------------------------------
 export const watchlist = pgTable("watchlist", {
   id: serial("id").primaryKey(),
   sessionId: varchar("session_id", { length: 64 }).notNull(),
@@ -272,7 +277,7 @@ export const watchlistEntryResponseSchema = z.object({
 });
 export type WatchlistEntryResponse = z.infer<typeof watchlistEntryResponseSchema>;
 
-// =============================================================================
+// ------------------------------------------------------------------------------
 // Fundamentals cache (Task #58)
 //
 // Persistent cache of the slow-changing parts of a StockResponse, keyed by
@@ -284,7 +289,7 @@ export type WatchlistEntryResponse = z.infer<typeof watchlistEntryResponseSchema
 // P/E history) lives in the fetch pipeline, not the table.
 //
 // Append-only block at the bottom of the file to keep merges mechanical.
-// =============================================================================
+// ------------------------------------------------------------------------------
 export const fundamentalsCache = pgTable("fundamentals_cache", {
   id: serial("id").primaryKey(),
   symbol: varchar("symbol", { length: 10 }).notNull().unique(),
@@ -305,4 +310,3 @@ export const insertFundamentalsCacheSchema = createInsertSchema(fundamentalsCach
 
 export type InsertFundamentalsCache = z.infer<typeof insertFundamentalsCacheSchema>;
 export type FundamentalsCacheRow = typeof fundamentalsCache.$inferSelect;
-

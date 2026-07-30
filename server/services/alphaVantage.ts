@@ -183,6 +183,9 @@ export async function getAlphaVantageData(symbol: string): Promise<StockResponse
     },
     // Market cap parsed from OVERVIEW.MarketCapitalization (Task #37).
     marketCap,
+    // Book value per share from OVERVIEW.BookValue — used by the server-side
+    // Graham Number component in estimateIntrinsicValue.
+    bookValuePerShare: bookValuePerShare > 0 ? bookValuePerShare : null,
   };
 
   console.log(`Alpha Vantage data for ${symbol}: price=${price}, eps=${eps}, growth=${growthRate}%`);
