@@ -161,6 +161,13 @@ export const stockResponseSchema = z.object({
   // adapter populates this when the upstream exposes it; others emit
   // null so the composite renormalises across the remaining factors.
   marketCap: z.number().nullable().optional(),
+  // VMS scoring inputs. Stored as fractions (0–1) to match the raw
+  // upstream convention (FMP ratios-ttm, yfinance info.grossMargins).
+  // Both are independently nullable so adapters with partial coverage
+  // can return what they have; the VMS scorer treats null as "unknown"
+  // and omits the corresponding signal rather than guessing.
+  grossMargin: z.number().nullable().optional(),
+  operatingMargin: z.number().nullable().optional(),
 });
 
 export type StockResponse = z.infer<typeof stockResponseSchema>;

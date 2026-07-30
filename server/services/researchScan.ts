@@ -21,6 +21,10 @@ export interface ScanCandidate {
   roe: number;
   debtToEquity: number;
   currentRatio: number;
+  revenueGrowth: number;
+  earningsStability: string;
+  grossMargin: number | null;
+  operatingMargin: number | null;
   quality: ScanQuality;
   dataSource: string;
   intrinsicValue: number;
@@ -218,6 +222,10 @@ async function runScan(): Promise<void> {
         roe: data.roe ?? 0,
         debtToEquity: data.debtToEquity ?? 0,
         currentRatio: data.currentRatio ?? 0,
+        revenueGrowth: data.revenueGrowth ?? 0,
+        earningsStability: data.earningsStability ?? 'Medium',
+        grossMargin: data.grossMargin ?? null,
+        operatingMargin: data.operatingMargin ?? null,
         quality,
         dataSource: data.dataSource || 'unknown',
         intrinsicValue: parseFloat(iv.toFixed(2)),

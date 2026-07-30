@@ -8,6 +8,7 @@ import { AlertTriangle, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ResearchStock, getCachedResearchData, saveResearchDataToCache, getCacheExpirationDate, getCacheLastUpdated } from '@/lib/researchCache';
 import { computeStockQuality } from '@/lib/researchCalculations';
+import { computeVmsScore } from '@/lib/vmsScore';
 
 const MIN_DISCOUNT_PCT = 10;
 const POLL_INTERVAL_MS = 3000;
@@ -23,6 +24,10 @@ interface ScanCandidate {
   roe: number;
   debtToEquity: number;
   currentRatio: number;
+  revenueGrowth: number;
+  earningsStability: string;
+  grossMargin: number | null;
+  operatingMargin: number | null;
   quality: 'Exceptional' | 'Good';
   dataSource: string;
   intrinsicValue: number;
@@ -40,6 +45,14 @@ interface ScanResponse {
 }
 
 function candidateToResearchStock(c: ScanCandidate): ResearchStock {
+  const { score } = computeVmsScore({
+    grossMargin: c.grossMargin,
+    operatingMargin: c.operatingMargin,
+    fcfPerShare: c.fcfPerShare,
+    earningsStability: c.earningsStability,
+    debtToEquity: c.debtToEquity,
+    revenueGrowth: c.revenueGrowth,
+  });
   return {
     symbol: c.symbol,
     name: c.name,
@@ -47,6 +60,7 @@ function candidateToResearchStock(c: ScanCandidate): ResearchStock {
     intrinsicValue: c.intrinsicValue,
     discount: c.discountPct,
     quality: c.quality,
+    vmsScore: score,
   };
 }
 
@@ -219,9 +233,20 @@ const ResearchPage: React.FC = () => {
                       <TableCell className="text-right">{formatCurrency(stock.intrinsicValue)}</TableCell>
                       <TableCell className="text-right text-green-600 font-medium">-{stock.discount.toFixed(1)}%</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={getQualityBadgeColor(stock.quality)}>
-                          {stock.quality}
-                        </Badge>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <Badge variant="outline" className={getQualityBadgeColor(stock.quality)}>
+                            {stock.quality}
+                          </Badge>
+                          {(stock.vmsScore ?? 0) >= 75 && (
+                            <Badge
+                              variant="outline"
+                              className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs"
+                              title={`VMS score ${stock.vmsScore}/100 — software-like business model`}
+                            >
+                              VMS-Like
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))

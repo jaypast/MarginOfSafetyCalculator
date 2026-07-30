@@ -34,6 +34,9 @@ import {
   calculateReverseDCFDetailed
 } from '@/lib/calculators';
 import { getCompanyQuality, getRecommendedMarginOfSafety, getDefaultMarginOfSafety } from '@/lib/utils';
+import SectorWarningCard from './SectorWarningCard';
+import VmsEducationCard from './VmsEducationCard';
+import { computeVmsScore, computeSectorWarning } from '@/lib/vmsScore';
 
 type FedRateWireResponse = FedRateResponse | { environment: null };
 
@@ -251,6 +254,22 @@ const MarginOfSafetyCalculator: React.FC = () => {
           />
         )}
 
+        {/* Sector warning / VMS confidence card — rendered inline (not in a
+            SectionPanel) so it reads as an alert rather than an evidence panel.
+            Only appears when computeSectorWarning fires. */}
+        {stockData && !stockData.error && (() => {
+          const vms = computeVmsScore(stockData);
+          const impliedGrowth = reverseDCFResult?.impliedGrowthRate ?? null;
+          const warning = computeSectorWarning(stockData, vms.score, impliedGrowth);
+          if (!warning) return null;
+          return (
+            <SectorWarningCard
+              warning={warning}
+              dismissKey={stockData.symbol}
+            />
+          );
+        })()}
+
         {/* Evidence panels — all collapsed by default so the headline is the
             only thing the user sees until they want to drill in. */}
 
@@ -363,6 +382,21 @@ const MarginOfSafetyCalculator: React.FC = () => {
             />
           </SectionPanel>
         )}
+
+        {/* VMS education card — appears when score ≥ 50 or a sector warning
+            is firing, so the user always has context for the alert they see. */}
+        {stockData && !stockData.error && (() => {
+          const vms = computeVmsScore(stockData);
+          const impliedGrowth = reverseDCFResult?.impliedGrowthRate ?? null;
+          const warning = computeSectorWarning(stockData, vms.score, impliedGrowth);
+          if (vms.score < 50 && !warning) return null;
+          return (
+            <VmsEducationCard
+              vmsScore={vms.score}
+              hasSectorWarning={warning !== null}
+            />
+          );
+        })()}
 
         {/* Educational resources — always visible at the bottom */}
         <div id="educational-resources">

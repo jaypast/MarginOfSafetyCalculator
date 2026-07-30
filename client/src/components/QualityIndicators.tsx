@@ -1,9 +1,11 @@
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { 
   StockData, 
   CompanyQualityResult
 } from '@/lib/types';
+import { computeVmsScore, VmsTier } from '@/lib/vmsScore';
 
 interface QualityIndicatorsProps {
   stockData: StockData;
@@ -238,6 +240,45 @@ const QualityIndicators: React.FC<QualityIndicatorsProps> = ({
             </p>
           </div>
         )}
+
+        {/* Business Model — VMS assessment (parallel dimension, doesn't change quality tier) */}
+        {(() => {
+          const vms = computeVmsScore(stockData);
+          const tierColors: Record<VmsTier, string> = {
+            'VMS-Like': 'bg-emerald-100 text-emerald-800 border-emerald-200',
+            'Software Characteristics': 'bg-blue-100 text-blue-800 border-blue-200',
+            'Mixed': 'bg-neutral-100 text-neutral-800 border-neutral-200',
+            'Asset-Heavy': 'bg-neutral-100 text-neutral-700 border-neutral-200',
+          };
+          return (
+            <div className="mt-3 p-4 bg-neutral-50 rounded-md border border-neutral-200">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+                <h3 className="text-sm font-medium text-[#21324F]">Business Model</h3>
+                <Badge
+                  variant="outline"
+                  className={`text-xs ${tierColors[vms.tier]}`}
+                  data-testid="vms-tier-badge"
+                >
+                  {vms.tier}
+                </Badge>
+              </div>
+              <p className="text-xs text-neutral-600">{vms.rationale}</p>
+              {vms.signals.length > 0 && (
+                <ul className="mt-2 space-y-0.5">
+                  {vms.signals.map((s, i) => (
+                    <li key={i} className="text-xs text-neutral-500 flex items-start gap-1">
+                      <span className="text-emerald-500 mt-0.5">✓</span>
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-xs text-neutral-400 mt-2">
+                Score: {vms.score}/100 · Does not affect quality tier or valuation
+              </p>
+            </div>
+          );
+        })()}
       </CardContent>
     </Card>
   );

@@ -161,6 +161,11 @@ export async function getFmpData(symbol: string): Promise<StockResponse> {
   if (operatingMargin === 0 && operatingIncomeLatest !== null && revenueLatest !== null && revenueLatest > 0) {
     operatingMargin = operatingIncomeLatest / revenueLatest;
   }
+  // Gross margin for VMS scoring. FMP returns this as a TTM fraction (0–1).
+  const grossMarginRaw = num(ratios.grossProfitMarginTTM);
+  const grossMargin = grossMarginRaw !== null && Number.isFinite(grossMarginRaw) ? grossMarginRaw : null;
+  // Retain the computed operating margin for VMS scoring (null when not available).
+  const operatingMarginResult = operatingMargin !== 0 ? operatingMargin : null;
   const beta = num(profile.beta) ?? 1;
 
   // Same classification heuristics as the Alpha Vantage adapter, so the
@@ -217,6 +222,8 @@ export async function getFmpData(symbol: string): Promise<StockResponse> {
       week52Low,
     },
     marketCap,
+    grossMargin,
+    operatingMargin: operatingMarginResult,
   };
 
   console.log(`FMP data for ${symbol}: price=${price}, eps=${eps}, roe=${roe.toFixed(1)}%, growth=${growthRate.toFixed(1)}%`);

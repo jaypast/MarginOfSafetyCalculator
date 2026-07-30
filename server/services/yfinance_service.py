@@ -592,7 +592,10 @@ def get_stock_data(symbol):
         
         # Evaluate competitive position based on margins and market share
         profit_margin = float(info.get('profitMargins') or 0)
-        gross_margin = float(info.get('grossMargins') or 0)
+        gross_margin_raw = info.get('grossMargins')
+        gross_margin = float(gross_margin_raw) if gross_margin_raw is not None else 0
+        operating_margin_raw = info.get('operatingMargins')
+        operating_margin = float(operating_margin_raw) if operating_margin_raw is not None else None
         if profit_margin > 0.15 or gross_margin > 0.4:
             competitive_position = "Strong"
         elif profit_margin > 0.08 or gross_margin > 0.3:
@@ -691,6 +694,8 @@ def get_stock_data(symbol):
             "peHistory": pe_history,
             "multibaggerSignals": _compute_multibagger_signals(ticker, info, currency, rate),
             "marketCap": market_cap,
+            "grossMargin": gross_margin if gross_margin_raw is not None else None,
+            "operatingMargin": operating_margin,
         }
         
         # Return as JSON string

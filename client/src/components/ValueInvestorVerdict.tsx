@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  TrendingUp,
 } from 'lucide-react';
 import {
   StockData,
@@ -21,6 +22,7 @@ import {
   FedRateResponse,
 } from '@/lib/types';
 import { isETF, getRecommendedMarginOfSafety } from '@/lib/utils';
+import { computeVmsScore, VmsTier } from '@/lib/vmsScore';
 
 interface ValueInvestorVerdictProps {
   stockData: StockData;
@@ -530,6 +532,11 @@ export const decideVerdict = (
   // pre-Yartseva 7-arg call sites and tests untouched.
   cashQuality: CashQualityStatus = 'unknown',
   modifierChipCount: number = 0,
+  // VMS model upgrade (Task #70). Promotes Watch→Buy when the business
+  // profile gives elevated cash-flow confidence without the FCF-yield
+  // being strong enough to fire the Yartseva gate alone.
+  vmsScore: number = 0,
+  fcfPerShare: number = 0,
 ): { action: VerdictAction; rationale: string } => {
   const base = computeBaseVerdict(
     quality,
@@ -565,6 +572,29 @@ export const decideVerdict = (
     return {
       action: 'BUY',
       rationale: `${base.rationale} FCF yield clears the 5% multibagger threshold (Yartseva 2025), no modifier chips flagged — promotion to Buy.`,
+    };
+  }
+
+  // VMS model upgrade (Task #70). Fires when the business shows
+  // Vertical Market Software characteristics (high margins, predictable
+  // FCF, low leverage) — giving extra confidence in cash-flow
+  // reliability even when FCF yield is positive but below 5%.
+  // Requires: VMS score ≥ 75, WATCH base, adequate MoS, non-heroic
+  // expectations, non-Speculative quality, no modifier chips, and
+  // non-negative FCF (minimum: the business is generating cash).
+  if (
+    vmsScore >= 75 &&
+    base.action === 'WATCH' &&
+    mosStatus === 'adequate' &&
+    realityCheck !== 'heroic' &&
+    quality !== 'Speculative' &&
+    modifierChipCount === 0 &&
+    cashQuality !== 'negative' &&
+    fcfPerShare > 0
+  ) {
+    return {
+      action: 'BUY',
+      rationale: `${base.rationale} Business shows VMS-like characteristics (high margins, predictable recurring FCF) — elevated cash-flow confidence supports the buy decision.`,
     };
   }
 
@@ -834,6 +864,15 @@ const ValueInvestorVerdict: React.FC<ValueInvestorVerdictProps> = ({
     (c): c is ModifierChip => c !== null,
   );
 
+  // VMS scoring — computed fresh for this render; drives upgrade + chip.
+  const vmsAssessment = computeVmsScore(stockData);
+  const vmsTierColors: Record<VmsTier, string> = {
+    'VMS-Like': 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    'Software Characteristics': 'border-blue-200 bg-blue-50 text-blue-800',
+    'Mixed': 'border-neutral-200 bg-neutral-50 text-neutral-700',
+    'Asset-Heavy': 'border-neutral-200 bg-neutral-50 text-neutral-600',
+  };
+
   const verdict = decideVerdict(
     quality,
     mos.status,
@@ -844,6 +883,8 @@ const ValueInvestorVerdict: React.FC<ValueInvestorVerdictProps> = ({
     hasSourceDivergence,
     cashQuality.status,
     modifierChips.length,
+    vmsAssessment.score,
+    stockData.fcfPerShare ?? 0,
   );
   const style = verdictStyles[verdict.action];
 
@@ -1035,6 +1076,32 @@ const ValueInvestorVerdict: React.FC<ValueInvestorVerdictProps> = ({
                 </span>
               </span>
             ))}
+          </div>
+        )}
+
+        {/* VMS business-model chip — rendered when VMS score ≥ 50. Purely
+            informational; the upgrade logic in decideVerdict handles the
+            actual verdict impact when score ≥ 75 and all conditions are met. */}
+        {vmsAssessment.score >= 50 && (
+          <div
+            className={`mt-3 flex items-start gap-2 rounded-md border px-3 py-2.5 ${vmsTierColors[vmsAssessment.tier]}`}
+            data-testid="verdict-vms-chip"
+          >
+            <TrendingUp className="h-4 w-4 shrink-0 mt-0.5 opacity-70" />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold leading-snug">
+                Business Model: {vmsAssessment.tier}
+              </p>
+              <p className="text-xs mt-0.5 opacity-80">{vmsAssessment.rationale}</p>
+              {vmsAssessment.score >= 75 && (
+                <p className="text-xs mt-1 opacity-70">
+                  VMS score {vmsAssessment.score}/100 — watch for promotion to Buy when all gates clear.
+                </p>
+              )}
+            </div>
+            <span className="shrink-0 text-xs font-semibold opacity-60 ml-auto">
+              {vmsAssessment.score}/100
+            </span>
           </div>
         )}
 

@@ -66,6 +66,10 @@ export interface StockData {
   // Market capitalisation in USD (Task #37). Powers the Size sub-score
   // in the Multibagger Screener. Null when the upstream doesn't expose it.
   marketCap?: number | null;
+  // VMS scoring inputs — fractions 0–1 (e.g. 0.72 = 72% gross margin).
+  // Null when the upstream adapter doesn't expose them.
+  grossMargin?: number | null;
+  operatingMargin?: number | null;
   error?: boolean;
   errorMessage?: string;
 }

@@ -6,6 +6,8 @@ export interface ResearchStock {
   intrinsicValue: number;
   discount: number;
   quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative';
+  /** VMS score (0–100). Absent on legacy localStorage entries — treat as 0. */
+  vmsScore?: number;
 }
 
 // Cache key for the research data — bump version to invalidate old client caches

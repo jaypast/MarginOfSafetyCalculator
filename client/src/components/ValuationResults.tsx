@@ -17,6 +17,7 @@ import { formatCurrency, isETF, getInvestmentRecommendation } from '@/lib/utils'
 import { generateCalculationsPDF } from '@/utils/pdfGenerator';
 import { calculateDiscountPremium } from '@/lib/calculators';
 import EntryTimingBanner from './EntryTimingBanner';
+import { computeVmsScore } from '@/lib/vmsScore';
 
 interface ValuationResultsProps {
   valuationResults: ValuationResult[];
@@ -400,6 +401,23 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                   </div>
                 ))}
               </div>
+            </div>
+          );
+        })()}
+
+        {/* VMS DCF confidence note — shown when VMS score ≥ 75 so the user
+            understands WHY they can place more trust in these estimates. */}
+        {stockData && !isSpecialCase && !etfDetected && (() => {
+          const vms = computeVmsScore(stockData);
+          if (vms.score < 75) return null;
+          return (
+            <div className="mt-4 flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+              <Info className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-emerald-800">
+                <span className="font-semibold">VMS-Like business</span> — this company scores {vms.score}/100 on Constellation Software&apos;s
+                Vertical Market Software criteria. High gross margins, predictable recurring cash flows, and low leverage make DCF analysis
+                more reliable here than for a typical cyclical or high-growth business. The estimates above carry higher-than-usual confidence.
+              </p>
             </div>
           );
         })()}
