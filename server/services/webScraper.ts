@@ -229,6 +229,17 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
       // Graham Number component in estimateIntrinsicValue is skipped and the
       // estimate falls back to the DCF + P/E two-method average.
       bookValuePerShare: null,
+      // VMS scoring inputs — scraped from key-statistics. parsePercentage
+      // returns a whole-number percentage (e.g. 43.5), so divide by 100
+      // to normalise to the 0–1 fraction convention used everywhere else.
+      grossMargin: (() => {
+        const pct = parsePercentage(metricsMap['Gross Margin'] || '0%');
+        return pct > 0 ? pct / 100 : null;
+      })(),
+      operatingMargin: (() => {
+        const pct = parsePercentage(metricsMap['Operating Margin'] || '0%');
+        return pct > 0 ? pct / 100 : null;
+      })(),
     };
     
     // Fill in reasonable defaults for missing values

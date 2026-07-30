@@ -192,6 +192,15 @@ async function getStockDataApiInfo(symbol: string): Promise<StockResponse> {
     },
     // Market cap from the Stock Data API price response (Task #37).
     marketCap,
+    // VMS scoring inputs — these are already fractions (0–1) from the API.
+    // Emit null when zero so the scorer treats them as "unknown" rather than
+    // "zero margin" which would unfairly penalise asset-light businesses.
+    grossMargin: (data.grossMargin || companyData.grossMargin || 0) > 0
+      ? (data.grossMargin || companyData.grossMargin)
+      : null,
+    operatingMargin: (data.operatingMargin || companyData.operatingMargin || 0) > 0
+      ? (data.operatingMargin || companyData.operatingMargin)
+      : null,
   };
   
   console.log(`Successfully received Stock Data API data for ${symbol}`);
@@ -273,6 +282,13 @@ async function getYahooFinanceApiInfo(symbol: string): Promise<StockResponse> {
     },
     // Market cap from Yahoo Finance price block (Task #37).
     marketCap: yahooMarketCap,
+    // VMS scoring inputs — Yahoo Finance returns these as fractions (0–1).
+    grossMargin: typeof financialData.grossMargins?.raw === 'number' && financialData.grossMargins.raw > 0
+      ? financialData.grossMargins.raw
+      : null,
+    operatingMargin: typeof financialData.operatingMargins?.raw === 'number' && financialData.operatingMargins.raw > 0
+      ? financialData.operatingMargins.raw
+      : null,
   };
   
   console.log(`Successfully received Yahoo Finance API data for ${symbol}`);

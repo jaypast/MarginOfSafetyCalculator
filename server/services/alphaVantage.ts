@@ -136,6 +136,16 @@ export async function getAlphaVantageData(symbol: string): Promise<StockResponse
   else if (roe > 12 && operatingMargin > 0.08) competitivePosition = 'Good';
   else competitivePosition = 'Average';
 
+  // VMS scoring inputs — gross and operating margin as fractions (0–1).
+  // AV OVERVIEW exposes GrossProfitTTM and RevenueTTM as absolute dollar
+  // strings; divide to get the ratio. OperatingMarginTTM is already a
+  // fraction and was computed above.
+  const grossProfitTTM = parseFloat(overview.GrossProfitTTM ?? '0') || 0;
+  const revenueTTM = parseFloat(overview.RevenueTTM ?? '0') || 0;
+  const grossMargin: number | null =
+    grossProfitTTM > 0 && revenueTTM > 0 ? grossProfitTTM / revenueTTM : null;
+  const operatingMarginResult: number | null = operatingMargin > 0 ? operatingMargin : null;
+
   // Market cap — Alpha Vantage OVERVIEW exposes MarketCapitalization as a
   // dollar integer string (e.g. "2748967000000"). Parse it directly; no
   // currency conversion needed since AV always reports in USD.
@@ -186,6 +196,9 @@ export async function getAlphaVantageData(symbol: string): Promise<StockResponse
     // Book value per share from OVERVIEW.BookValue — used by the server-side
     // Graham Number component in estimateIntrinsicValue.
     bookValuePerShare: bookValuePerShare > 0 ? bookValuePerShare : null,
+    // VMS scoring inputs — fractions (0–1). Null when not computable.
+    grossMargin,
+    operatingMargin: operatingMarginResult,
   };
 
   console.log(`Alpha Vantage data for ${symbol}: price=${price}, eps=${eps}, growth=${growthRate}%`);
