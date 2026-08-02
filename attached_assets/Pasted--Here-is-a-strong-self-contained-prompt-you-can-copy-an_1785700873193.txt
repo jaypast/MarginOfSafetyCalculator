@@ -1,0 +1,73 @@
+**Here is a strong, self-contained prompt** you can copy and paste to an AI agent (e.g., Grok, Claude, GPT, etc.):
+
+-----
+
+**Task:** Research the “Insider Buy/Sell Ratio” (or Corporate Insider Buy/Sell sentiment) signal and create a detailed development plan to turn it into a practical, web-based financial calculator/tool.
+
+**Background on the Signal:**  
+Insider selling is mostly noise (diversification, taxes, 10b5-1 plans, liquidity needs, etc.). Insider buying is mostly signal because executives are using their own money to buy shares. Academic research and historical data (e.g., from SentimentTrader and studies by Lakonishok & Lee, Cohen et al.) show that elevated insider buying (especially open-market purchases by CEOs/CFOs, clusters, and in smaller caps) has predictive value for future stock returns, while raw selling has little predictive power.
+
+**Core Objectives for the Calculator:**
+
+1. Allow users to analyze individual stocks, sectors, or the overall market using insider trading data.
+2. Provide historical backtested performance of the signal.
+3. Deliver actionable insights and visualizations.
+4. Make it educational and user-friendly for retail investors.
+
+**Step-by-Step Instructions for You (the AI Agent):**
+
+1. **Research Phase** (be thorough and cite sources):
+- Summarize key academic papers and findings on insider trading predictability (purchases vs. sales, opportunistic vs. routine trades, cluster buys, etc.).
+- Identify reliable data sources (SEC EDGAR, OpenInsider, Insider Monkey, SentimenTrader, WhaleWisdom, etc.) and APIs if available.
+- Review existing tools that already track this (strengths/weaknesses).
+- Document typical performance metrics: abnormal returns, win rates, best time horizons (1mo, 3mo, 6mo, 1yr), and conditions where the signal works best (market cap, industry, after drawdowns, etc.).
+- Note limitations, risks, and regulatory considerations.
+2. **Feature Specification**:
+   Design the calculator with these core features (prioritize MVP then expansions):
+- Ticker input (single stock) + option for sector/index.
+- Time period selector and filters (e.g., only open-market buys, minimum $ amount, senior executives only, cluster detection).
+- Key outputs: Current Buy/Sell Ratio, Net Insider Activity, Historical charts, Forward return statistics, Signal strength score.
+- Visualizations: Buy/Sell ratio chart overlaid with stock price, performance heatmaps, tables of recent insider trades with context.
+- Backtesting module: Simulate returns from following high-buy-ratio periods.
+- Alerts/Scanner: Ability to scan for stocks with strong insider buying signals.
+- Educational explanations and disclaimers.
+3. **Technical Implementation Plan**:
+- Recommended tech stack (frontend, backend, database, hosting).
+- Data pipeline: How to fetch, clean, and update insider data regularly (handling Form 4 nuances, filtering noise).
+- Architecture diagram (describe in text or suggest tools for it).
+- Key calculations/formulas (e.g., Buy/Sell ratio definitions, abnormal return calculations, signal scoring).
+- Performance & scalability considerations.
+- Security, compliance, and rate-limiting for data sources.
+4. **Monetization & User Experience**:
+- Freemium model ideas.
+- UI/UX best practices for a financial tool.
+- Mobile responsiveness.
+5. **Development Roadmap**:
+- Phase 1: MVP (core calculator for single tickers).
+- Phase 2: Backtesting + scanner.
+- Phase 3: Advanced filters, alerts, portfolio integration.
+- Estimated effort and timeline per phase.
+6. **Risks & Enhancements**:
+- Legal/regulatory risks.
+- Data quality issues.
+- Ideas for AI enhancements (e.g., NLP on filings, machine learning signal refinement).
+
+**Deliverables:**
+
+- A comprehensive report covering the research summary.
+- Detailed feature spec.
+- Technical architecture and implementation plan.
+- Sample wireframes or UI descriptions.
+- Code structure outline or starter code snippets where helpful.
+- Prioritized backlog.
+
+Be objective, data-driven, and practical. Highlight both the evidence supporting the signal and its limitations so the tool is responsible.
+
+-----
+
+**Tips for using this prompt:**
+
+- Add specifics like target tech stack (e.g., “use Python + Streamlit or React + FastAPI”), budget constraints, or timeline if you have them.
+- For best results, follow up with the agent on individual sections (e.g., “Now expand the data pipeline section”).
+
+Would you like me to modify this prompt for a specific platform, add more constraints, or generate a shorter version?
