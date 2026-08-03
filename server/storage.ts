@@ -3,6 +3,7 @@ import {
   feedback, type Feedback, type InsertFeedback,
   watchlist, type WatchlistEntry,
   fundamentalsCache, type FundamentalsCacheRow,
+  insiderCache, type InsiderCacheRow, type InsiderTrade,
   type StockResponse,
 } from "@shared/schema";
 import { db } from "./db";
@@ -44,6 +45,16 @@ export interface IStorage {
     dataSource: string,
     fetchedAt: Date,
   ): Promise<FundamentalsCacheRow>;
+
+  // Insider activity cache methods (Task #74)
+  // Persistent per-symbol cache of the last 20 Form 4 filings. Cached for
+  // 24 hours (Form 4s must file within 2 business days of the trade).
+  getInsiderCache(symbol: string): Promise<InsiderCacheRow | undefined>;
+  upsertInsiderCache(
+    symbol: string,
+    payload: InsiderTrade[],
+    fetchedAt: Date,
+  ): Promise<InsiderCacheRow>;
 }
 
 // Memory storage for fallback when database is not available.
@@ -53,10 +64,12 @@ export class MemStorage implements IStorage {
   private feedbackEntries: Feedback[] = [];
   private watchlistEntries: WatchlistEntry[] = [];
   private fundamentalsCacheRows: Map<string, FundamentalsCacheRow> = new Map();
+  private insiderCacheRows: Map<string, InsiderCacheRow> = new Map();
   private nextUserId = 1;
   private nextFeedbackId = 1;
   private nextWatchlistId = 1;
   private nextFundamentalsCacheId = 1;
+  private nextInsiderCacheId = 1;
   
   // User methods
   async getUser(id: number): Promise<User | undefined> {
@@ -194,6 +207,27 @@ export class MemStorage implements IStorage {
       fetchedAt,
     };
     this.fundamentalsCacheRows.set(upper, row);
+    return row;
+  }
+
+  async getInsiderCache(symbol: string): Promise<InsiderCacheRow | undefined> {
+    return this.insiderCacheRows.get(symbol.toUpperCase());
+  }
+
+  async upsertInsiderCache(
+    symbol: string,
+    payload: InsiderTrade[],
+    fetchedAt: Date,
+  ): Promise<InsiderCacheRow> {
+    const upper = symbol.toUpperCase();
+    const existing = this.insiderCacheRows.get(upper);
+    const row: InsiderCacheRow = {
+      id: existing?.id ?? this.nextInsiderCacheId++,
+      symbol: upper,
+      payload,
+      fetchedAt,
+    };
+    this.insiderCacheRows.set(upper, row);
     return row;
   }
 }
@@ -382,6 +416,34 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return row;
   }
+
+  // Insider activity cache methods (Task #74) --------------------------------
+  async getInsiderCache(symbol: string): Promise<InsiderCacheRow | undefined> {
+    if (!db) return undefined;
+    const [row] = await db
+      .select()
+      .from(insiderCache)
+      .where(eq(insiderCache.symbol, symbol.toUpperCase()));
+    return row || undefined;
+  }
+
+  async upsertInsiderCache(
+    symbol: string,
+    payload: InsiderTrade[],
+    fetchedAt: Date,
+  ): Promise<InsiderCacheRow> {
+    if (!db) throw new Error("Database connection not available");
+    const upper = symbol.toUpperCase();
+    const [row] = await db
+      .insert(insiderCache)
+      .values({ symbol: upper, payload, fetchedAt })
+      .onConflictDoUpdate({
+        target: insiderCache.symbol,
+        set: { payload, fetchedAt },
+      })
+      .returning();
+    return row;
+  }
 }
 
 // Handle the case when errors occur with the database storage
@@ -535,6 +597,33 @@ class SafeStorageWrapper implements IStorage {
       console.error("Database error in upsertFundamentalsCache, falling back to memory storage:", err);
     }
     return this.memStorage.upsertFundamentalsCache(symbol, payload, dataSource, fetchedAt);
+  }
+
+  // Insider activity cache methods (Task #74) --------------------------------
+  async getInsiderCache(symbol: string): Promise<InsiderCacheRow | undefined> {
+    try {
+      if (this.dbStorage) {
+        return await this.dbStorage.getInsiderCache(symbol);
+      }
+    } catch (err) {
+      console.error("Database error in getInsiderCache, falling back to memory storage:", err);
+    }
+    return this.memStorage.getInsiderCache(symbol);
+  }
+
+  async upsertInsiderCache(
+    symbol: string,
+    payload: InsiderTrade[],
+    fetchedAt: Date,
+  ): Promise<InsiderCacheRow> {
+    try {
+      if (this.dbStorage) {
+        return await this.dbStorage.upsertInsiderCache(symbol, payload, fetchedAt);
+      }
+    } catch (err) {
+      console.error("Database error in upsertInsiderCache, falling back to memory storage:", err);
+    }
+    return this.memStorage.upsertInsiderCache(symbol, payload, fetchedAt);
   }
 }
 

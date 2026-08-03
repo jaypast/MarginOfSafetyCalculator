@@ -37,6 +37,7 @@ import { getCompanyQuality, getRecommendedMarginOfSafety, getDefaultMarginOfSafe
 import SectorWarningCard from './SectorWarningCard';
 import VmsEducationCard from './VmsEducationCard';
 import { computeVmsScore, computeSectorWarning } from '@/lib/vmsScore';
+import { computeInsiderSignal, type InsiderSignal } from '@/lib/insiderSignal';
 
 type FedRateWireResponse = FedRateResponse | { environment: null };
 
@@ -123,6 +124,30 @@ const MarginOfSafetyCalculator: React.FC = () => {
   const [valuationResults, setValuationResults] = useState<ValuationResult[]>([]);
   const [companyQuality, setCompanyQuality] = useState<CompanyQualityResult | null>(null);
   const [reverseDCFResult, setReverseDCFResult] = useState<ReverseDCFResult | null>(null);
+  const [insiderSignal, setInsiderSignal] = useState<InsiderSignal | null>(null);
+
+  // Fetch insider activity whenever the symbol changes (Task #74).
+  // The `cancelled` flag prevents a slow response from a previous symbol
+  // from overwriting state for the current symbol (classic React cleanup).
+  useEffect(() => {
+    if (!stockData?.symbol || stockData.error) {
+      setInsiderSignal(null);
+      return;
+    }
+    let cancelled = false;
+    const sym = stockData.symbol;
+    fetch(`/api/insider/${encodeURIComponent(sym)}`)
+      .then(r => r.ok ? r.json() : Promise.resolve({ trades: [] }))
+      .then(data => {
+        if (!cancelled) {
+          setInsiderSignal(computeInsiderSignal(data.trades ?? []));
+        }
+      })
+      .catch(() => {
+        // Silently suppress — VIV and QI gracefully handle null insiderSignal
+      });
+    return () => { cancelled = true; };
+  }, [stockData?.symbol]);
 
   useEffect(() => {
     if (stockData && !stockData.error) {
@@ -303,6 +328,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
               companyQuality={companyQuality}
               marginOfSafetyParams={marginOfSafetyParams}
               fedRateEnvironment={fedRateEnvironment}
+              insiderTier={insiderSignal?.tier ?? null}
             />
           </SectionPanel>
         )}
@@ -379,6 +405,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
             <QualityIndicators
               stockData={stockData}
               companyQuality={companyQuality}
+              insiderSignal={insiderSignal}
             />
           </SectionPanel>
         )}

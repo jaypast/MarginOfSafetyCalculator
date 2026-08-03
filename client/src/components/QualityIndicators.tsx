@@ -6,15 +6,31 @@ import {
   CompanyQualityResult
 } from '@/lib/types';
 import { computeVmsScore, VmsTier } from '@/lib/vmsScore';
+import {
+  type InsiderSignal,
+  type InsiderSignalTier,
+  isOpenMarketPurchase,
+  formatCurrency,
+  formatDate,
+} from '@/lib/insiderSignal';
 
 interface QualityIndicatorsProps {
   stockData: StockData;
   companyQuality: CompanyQualityResult | null;
+  insiderSignal?: InsiderSignal | null;
 }
+
+const INSIDER_BADGE: Record<InsiderSignalTier, { label: string; className: string }> = {
+  'cluster-buy': { label: 'Cluster Buy', className: 'bg-teal-100 text-teal-800 border-teal-200' },
+  'recent-buy':  { label: 'Recent Buying', className: 'bg-blue-100 text-blue-800 border-blue-200' },
+  'no-signal':   { label: 'No Signal', className: 'bg-neutral-100 text-neutral-700 border-neutral-200' },
+  'sell-only':   { label: 'Selling Only', className: 'bg-neutral-100 text-neutral-600 border-neutral-200' },
+};
 
 const QualityIndicators: React.FC<QualityIndicatorsProps> = ({
   stockData,
-  companyQuality
+  companyQuality,
+  insiderSignal,
 }) => {
   const getProgressWidth = (value: number, benchmark: number, inverse: boolean = false) => {
     if (inverse) {
@@ -275,6 +291,62 @@ const QualityIndicators: React.FC<QualityIndicatorsProps> = ({
               )}
               <p className="text-xs text-neutral-400 mt-2">
                 Score: {vms.score}/100 · Does not affect quality tier or valuation
+              </p>
+            </div>
+          );
+        })()}
+
+        {/* Insider Activity (Task #74) — shown when signal data is available.
+            Selling activity appears in the table but generates no badge
+            change: insider selling is largely noise. */}
+        {insiderSignal && (() => {
+          const badge = INSIDER_BADGE[insiderSignal.tier];
+          return (
+            <div className="mt-3 p-4 bg-neutral-50 rounded-md border border-neutral-200">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+                <h3 className="text-sm font-medium text-[#21324F]">Insider Activity</h3>
+                <Badge
+                  variant="outline"
+                  className={`text-xs ${badge.className}`}
+                  data-testid="insider-activity-badge"
+                >
+                  {badge.label}
+                </Badge>
+              </div>
+              <p className="text-xs text-neutral-600">{insiderSignal.summary}</p>
+
+              {/* Compact trade micro-table — no card borders, tight padding */}
+              {insiderSignal.recentTrades.length > 0 && (
+                <div className="mt-2 space-y-0 divide-y divide-neutral-100">
+                  {insiderSignal.recentTrades.map((t, i) => {
+                    const isPurchase = isOpenMarketPurchase(t.transactionType);
+                    const value = t.securitiesTransacted * t.price;
+                    return (
+                      <div
+                        key={i}
+                        className="grid grid-cols-[1fr_auto_auto] gap-x-2 py-1 text-xs"
+                      >
+                        <span className="text-neutral-700 truncate leading-tight">
+                          {t.reportingName}
+                        </span>
+                        <span
+                          className={`font-medium tabular-nums ${
+                            isPurchase ? 'text-teal-700' : 'text-neutral-500'
+                          }`}
+                        >
+                          {isPurchase ? '+' : '−'}{value > 0 ? formatCurrency(value) : '—'}
+                        </span>
+                        <span className="text-neutral-400 whitespace-nowrap">
+                          {formatDate(t.transactionDate)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <p className="text-xs text-neutral-400 mt-2">
+                SEC Form 4 via FMP · Buying is signal; selling is noise
               </p>
             </div>
           );

@@ -229,3 +229,35 @@ export async function getFmpData(symbol: string): Promise<StockResponse> {
   console.log(`FMP data for ${symbol}: price=${price}, eps=${eps}, roe=${roe.toFixed(1)}%, growth=${growthRate.toFixed(1)}%`);
   return result;
 }
+
+// ---------------------------------------------------------------------------
+// Insider trading data (Task #74)
+//
+// Fetches the last 20 Form 4 filings from FMP's /stable/insider-trading
+// endpoint. Returns an empty array when the API key is absent or the
+// request fails — callers treat an empty array as "no data available"
+// rather than an error.
+// ---------------------------------------------------------------------------
+import { InsiderTrade } from '@shared/schema';
+
+export async function getInsiderTrades(symbol: string): Promise<InsiderTrade[]> {
+  if (!FMP_API_KEY) return [];
+  try {
+    const raw = await fmpGet('/insider-trading', { symbol, limit: '20' });
+    if (!Array.isArray(raw)) return [];
+
+    return raw
+      .map((t: any): InsiderTrade => ({
+        reportingName: String(t.reportingName ?? '').trim(),
+        typeOfOwner: String(t.typeOfOwner ?? '').trim(),
+        transactionDate: String(t.transactionDate ?? '').trim(),
+        transactionType: String(t.transactionType ?? '').trim(),
+        securitiesTransacted: num(t.securitiesTransacted) ?? 0,
+        price: num(t.price) ?? 0,
+      }))
+      .filter(t => t.transactionDate.length > 0);
+  } catch (err) {
+    console.warn(`FMP insider-trading fetch failed for ${symbol}:`, (err as Error).message);
+    return [];
+  }
+}

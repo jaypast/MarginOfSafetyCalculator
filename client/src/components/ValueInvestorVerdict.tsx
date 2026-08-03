@@ -23,6 +23,7 @@ import {
 } from '@/lib/types';
 import { isETF, getRecommendedMarginOfSafety } from '@/lib/utils';
 import { computeVmsScore, VmsTier } from '@/lib/vmsScore';
+import { type InsiderSignalTier } from '@/lib/insiderSignal';
 
 interface ValueInvestorVerdictProps {
   stockData: StockData;
@@ -34,6 +35,9 @@ interface ValueInvestorVerdictProps {
   // growth-tilted, we surface a single informational caution. Never gates
   // Buy/Watch/Pass — purely a sentence-long heads-up.
   fedRateEnvironment?: FedRateResponse | null;
+  // Insider activity signal tier (Task #74). Cluster-buy can promote
+  // Watch→Buy under the same conditions as the VMS upgrade.
+  insiderTier?: InsiderSignalTier | null;
 }
 
 export type VerdictAction = 'BUY' | 'WATCH' | 'PASS' | 'OUTSIDE_CIRCLE';
@@ -537,6 +541,10 @@ export const decideVerdict = (
   // being strong enough to fire the Yartseva gate alone.
   vmsScore: number = 0,
   fcfPerShare: number = 0,
+  // Insider cluster-buy upgrade (Task #74). Promotes Watch→Buy when
+  // ≥2 distinct C-suite insiders made open-market purchases in 90 days,
+  // using the same guard conditions as the VMS upgrade.
+  clusterBuy: boolean = false,
 ): { action: VerdictAction; rationale: string } => {
   const base = computeBaseVerdict(
     quality,
@@ -595,6 +603,27 @@ export const decideVerdict = (
     return {
       action: 'BUY',
       rationale: `${base.rationale} Business shows VMS-like characteristics (high margins, predictable recurring FCF) — elevated cash-flow confidence supports the buy decision.`,
+    };
+  }
+
+  // Insider cluster-buy upgrade (Task #74). Multiple C-suite insiders
+  // making open-market purchases in 90 days is a well-studied conviction
+  // signal (Lakonishok & Lee 2001; Cohen et al. 2012). Same guard
+  // conditions as VMS upgrade: never promotes into heroic/Speculative/
+  // negative-FCF/negative-cash territory.
+  if (
+    clusterBuy &&
+    base.action === 'WATCH' &&
+    mosStatus === 'adequate' &&
+    realityCheck !== 'heroic' &&
+    quality !== 'Speculative' &&
+    modifierChipCount === 0 &&
+    cashQuality !== 'negative' &&
+    fcfPerShare > 0
+  ) {
+    return {
+      action: 'BUY',
+      rationale: `${base.rationale} Multiple C-suite insiders made open-market purchases in the past 90 days — a strong conviction signal (Lakonishok & Lee 2001) that aligns management with shareholders at current prices.`,
     };
   }
 
@@ -789,6 +818,7 @@ const ValueInvestorVerdict: React.FC<ValueInvestorVerdictProps> = ({
   companyQuality,
   marginOfSafetyParams,
   fedRateEnvironment,
+  insiderTier,
 }) => {
   // ETFs: don't apply single-business framework.
   if (isETF(stockData)) {
@@ -885,6 +915,7 @@ const ValueInvestorVerdict: React.FC<ValueInvestorVerdictProps> = ({
     modifierChips.length,
     vmsAssessment.score,
     stockData.fcfPerShare ?? 0,
+    insiderTier === 'cluster-buy',
   );
   const style = verdictStyles[verdict.action];
 
@@ -1102,6 +1133,24 @@ const ValueInvestorVerdict: React.FC<ValueInvestorVerdictProps> = ({
             <span className="shrink-0 text-xs font-semibold opacity-60 ml-auto">
               {vmsAssessment.score}/100
             </span>
+          </div>
+        )}
+
+        {/* Insider cluster-buy chip (Task #74) — only rendered when ≥2
+            distinct C-suite insiders made open-market purchases in 90 days.
+            Same visual weight as the VMS chip; no section headers. */}
+        {insiderTier === 'cluster-buy' && (
+          <div
+            className="mt-3 flex items-start gap-2 rounded-md border px-3 py-2.5 border-teal-200 bg-teal-50 text-teal-800"
+            data-testid="verdict-insider-chip"
+          >
+            <TrendingUp className="h-4 w-4 shrink-0 mt-0.5 opacity-70" />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold leading-snug">Cluster Insider Buy</p>
+              <p className="text-xs mt-0.5 opacity-80">
+                ≥2 C-suite open-market purchases in 90 days — management is putting personal capital in at current prices (Lakonishok &amp; Lee 2001).
+              </p>
+            </div>
           </div>
         )}
 

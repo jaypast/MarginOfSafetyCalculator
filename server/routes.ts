@@ -9,6 +9,7 @@ import {
   type WatchlistEntryResponse,
 } from "@shared/schema";
 import { getStockData, acquireYfinanceSlot, releaseYfinanceSlot } from "./services/stockData";
+import { getInsiderTrades } from "./services/fmpFinance";
 import { getFedRateEnvironment } from "./services/fedRate";
 import { getScanState, startScanIfNeeded } from "./services/researchScan";
 import { getMarketSentiment, getMostActiveStocks, RealTimeSentiment } from "./services/marketSentiment";
@@ -500,6 +501,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({
         message: error instanceof Error ? error.message : "Failed to remove watchlist entry",
       });
+    }
+  });
+
+  // Insider activity endpoint (Task #74) ------------------------------------
+  // Fetches the last 20 Form 4 filings for a symbol from FMP, cached 24h
+  // server-side. Returns { trades: InsiderTrade[], cachedAt: string }.
+  // Always responds 200 — empty trades array when FMP is unavailable.
+  app.get('/api/insider/:symbol', async (req, res) => {
+    const { symbol } = req.params;
+    if (!symbol || typeof symbol !== 'string') {
+      return res.status(400).json({ trades: [], cachedAt: new Date().toISOString() });
+    }
+    const upper = symbol.toUpperCase();
+    const INSIDER_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+    try {
+      // Check persistent cache first
+      const cached = await storage.getInsiderCache(upper);
+      if (cached) {
+        const ageMs = Date.now() - new Date(cached.fetchedAt).getTime();
+        if (ageMs < INSIDER_TTL_MS) {
+          return res.json({ trades: cached.payload, cachedAt: cached.fetchedAt });
+        }
+      }
+
+      // Fetch fresh from FMP
+      const trades = await getInsiderTrades(upper);
+      const now = new Date();
+      // Fire-and-forget cache write — never block the response on a DB error
+      storage.upsertInsiderCache(upper, trades, now).catch(err =>
+        console.warn(`insider cache write failed for ${upper}:`, (err as Error).message),
+      );
+      return res.json({ trades, cachedAt: now.toISOString() });
+    } catch (err) {
+      console.warn(`insider endpoint error for ${upper}:`, (err as Error).message);
+      return res.json({ trades: [], cachedAt: new Date().toISOString() });
     }
   });
 

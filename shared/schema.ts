@@ -310,3 +310,37 @@ export const insertFundamentalsCacheSchema = createInsertSchema(fundamentalsCach
 
 export type InsertFundamentalsCache = z.infer<typeof insertFundamentalsCacheSchema>;
 export type FundamentalsCacheRow = typeof fundamentalsCache.$inferSelect;
+
+// ------------------------------------------------------------------------------
+// Insider activity cache (Task #74)
+//
+// Persistent cache of the last 20 Form 4 filings for a symbol, fetched from
+// FMP's /stable/insider-trading endpoint. Cached for 24 hours (shorter than
+// fundamentals — Form 4s must file within 2 business days of the trade).
+//
+// The full payload is stored as JSONB so the schema never needs a migration
+// when InsiderTrade gains new fields.
+// ------------------------------------------------------------------------------
+
+// Wire-format for a single Form 4 trade record. Only the fields the app
+// actually uses are typed; the rest are discarded at the fetch boundary.
+export const insiderTradeSchema = z.object({
+  reportingName: z.string(),
+  typeOfOwner: z.string(),
+  transactionDate: z.string(),  // "YYYY-MM-DD"
+  transactionType: z.string(),  // "P-Purchase", "S-Sale", "A-Award", etc.
+  securitiesTransacted: z.number(),
+  price: z.number(),
+});
+export type InsiderTrade = z.infer<typeof insiderTradeSchema>;
+
+export const insiderCache = pgTable("insider_cache", {
+  id: serial("id").primaryKey(),
+  symbol: varchar("symbol", { length: 10 }).notNull().unique(),
+  payload: jsonb("payload").$type<InsiderTrade[]>().notNull(),
+  fetchedAt: timestamp("fetched_at").notNull(),
+});
+
+export const insertInsiderCacheSchema = createInsertSchema(insiderCache).omit({ id: true });
+export type InsertInsiderCache = z.infer<typeof insertInsiderCacheSchema>;
+export type InsiderCacheRow = typeof insiderCache.$inferSelect;
