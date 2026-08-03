@@ -19,6 +19,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useLocation } from 'wouter';
 import { StockData, WatchlistEntry } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
 import { classifyBuyZone, priceVsBuyBelowPct, describeFreshness, type BuyZone } from '@/lib/watchlist';
@@ -89,6 +90,7 @@ interface WatchlistRowProps {
   isLoading: boolean;
   onRemove: (id: number) => void;
   isRemoving: boolean;
+  onOpen: (symbol: string) => void;
 }
 
 // Score-tone styling for the per-row composite chip — mirrors the screener panel.
@@ -99,7 +101,7 @@ const SCORE_TONE: Record<'positive' | 'neutral' | 'negative' | 'muted', string> 
   muted: 'bg-neutral-100 text-neutral-600 border-neutral-300',
 };
 
-const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, isLoading, onRemove, isRemoving }) => {
+const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, isLoading, onRemove, isRemoving, onOpen }) => {
   const stockOk = !!stock && !stock.error;
   const buyBelow = stockOk ? computeAverageBuyBelow(stock, entry.marginOfSafety) : null;
   const zone: BuyZone = stockOk && buyBelow !== null
@@ -122,7 +124,9 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, isLoading, on
   return (
     <TableRow
       data-testid={`watchlist-row-${entry.symbol}`}
-      className={styles.row}
+      className={`${styles.row} cursor-pointer`}
+      onClick={() => onOpen(entry.symbol)}
+      title={`Open full analysis for ${entry.symbol}`}
     >
       <TableCell className="font-semibold text-[#1A2942]">
         <div className="flex flex-col">
@@ -201,7 +205,7 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, isLoading, on
           size="sm"
           data-testid={`button-remove-${entry.symbol}`}
           disabled={isRemoving}
-          onClick={() => onRemove(entry.id)}
+          onClick={(e) => { e.stopPropagation(); onRemove(entry.id); }}
           className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 px-2"
           aria-label={`Remove ${entry.symbol} from watchlist`}
         >
@@ -243,6 +247,8 @@ export function sortEntriesByScore<T extends { symbol: string }>(
 
 const Watchlist: React.FC = () => {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
+  const handleOpen = (symbol: string) => navigate(`/?symbol=${encodeURIComponent(symbol)}`);
   const watchlistQuery = useQuery<WatchlistEntry[]>({ queryKey: ['/api/watchlist'] });
   const rawEntries = watchlistQuery.data ?? [];
 
@@ -451,6 +457,7 @@ const Watchlist: React.FC = () => {
                       isLoading={!!r?.isLoading}
                       onRemove={(id) => removeMutation.mutate(id)}
                       isRemoving={removeMutation.isPending && removeMutation.variables === entry.id}
+                      onOpen={handleOpen}
                     />
                   );
                 })}

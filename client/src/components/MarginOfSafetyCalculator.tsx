@@ -38,6 +38,7 @@ import SectorWarningCard from './SectorWarningCard';
 import VmsEducationCard from './VmsEducationCard';
 import { computeVmsScore, computeSectorWarning } from '@/lib/vmsScore';
 import { computeInsiderSignal, type InsiderSignal } from '@/lib/insiderSignal';
+import { useSearch } from 'wouter';
 
 type FedRateWireResponse = FedRateResponse | { environment: null };
 
@@ -91,6 +92,20 @@ const SectionPanel: React.FC<SectionPanelProps> = ({
 
 const MarginOfSafetyCalculator: React.FC = () => {
   const { stockData, isLoading, isError, error, fetchStockData } = useStockData();
+
+  // Auto-load a symbol passed via ?symbol=AAPL (e.g. from watchlist row click).
+  // Runs once on mount; ignores subsequent search-string changes so the user
+  // can freely edit the symbol field after landing without a re-trigger.
+  const search = useSearch();
+  const didAutoLoad = React.useRef(false);
+  useEffect(() => {
+    if (didAutoLoad.current) return;
+    const sym = new URLSearchParams(search).get('symbol');
+    if (sym) {
+      didAutoLoad.current = true;
+      fetchStockData(sym.toUpperCase());
+    }
+  }, []);
 
   const { data: fedRateData } = useQuery<FedRateWireResponse>({
     queryKey: ['/api/macro/fed-rate'],
