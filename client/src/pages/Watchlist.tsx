@@ -13,6 +13,12 @@ import {
 } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, RefreshCw, Trash2, BookmarkPlus, Loader2, TrendingUp } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { StockData, WatchlistEntry } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
 import { classifyBuyZone, priceVsBuyBelowPct, describeFreshness, type BuyZone } from '@/lib/watchlist';
@@ -169,18 +175,24 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, isLoading, on
         </span>
       </TableCell>
       <TableCell className="text-right">
-        <span
-          className={`inline-flex items-center gap-1 text-xs tabular-nums px-2 py-0.5 rounded-full border ${scoreLowConfidence ? SCORE_TONE.muted : SCORE_TONE[scoreBand.tone]}`}
-          data-testid={`watchlist-score-${entry.symbol}`}
-          title={
-            scoreLowConfidence
-              ? `Low confidence — only ${scoreResult!.computedFactors} of ${scoreResult!.subScores.length} factors computed (need 4+). Treat the score as incomplete.`
-              : `${scoreBand.label} multibagger factor exposure (Yartseva 2025)`
-          }
-        >
-          {scoreLowConfidence && <span aria-hidden="true">⚠</span>}
-          {score === null ? '—' : score.toFixed(0)}
-        </span>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className={`inline-flex items-center gap-1 text-xs tabular-nums px-2 py-0.5 rounded-full border cursor-help ${scoreLowConfidence ? SCORE_TONE.muted : SCORE_TONE[scoreBand.tone]}`}
+                data-testid={`watchlist-score-${entry.symbol}`}
+              >
+                {scoreLowConfidence && <span aria-hidden="true">⚠</span>}
+                {score === null ? '—' : score.toFixed(0)}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="left" className="max-w-[220px] text-xs">
+              {scoreLowConfidence
+                ? `Low-confidence score — only ${scoreResult!.computedFactors} of ${scoreResult!.subScores.length} multibagger factors could be computed (need 4+). Use as a rough signal, not a precise rank.`
+                : `${scoreBand.label} multibagger factor exposure (Yartseva 2025 empirics)`}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </TableCell>
       <TableCell className="text-right">
         <Button
@@ -445,6 +457,15 @@ const Watchlist: React.FC = () => {
               </TableBody>
             </Table>
           </div>
+        )}
+
+        {/* Score legend — visible on all devices so users never need to hover
+            to understand the ⚠ flag. Shown only when there are entries. */}
+        {entries.length > 0 && (
+          <p className="mt-3 text-xs text-neutral-500">
+            <strong>Score</strong> = multibagger factor exposure (Yartseva 2025) · 0–100 scale ·{' '}
+            <span className="font-medium">⚠</span> = fewer than 4 of 5 factors available — treat as directional
+          </p>
         )}
       </div>
     </main>
