@@ -294,7 +294,7 @@ const Watchlist: React.FC = () => {
   // user can flip into "by multibagger composite, descending" with one click.
   // Sorting is reactive: as more per-row queries resolve, the parent
   // re-renders and sortEntriesByScore picks up the freshly computed scores.
-  const [sortByScore, setSortByScore] = useState(false);
+  const [sortByScore, setSortByScore] = useState(true);
   const entries = sortByScore ? sortEntriesByScore(rawEntries, scoreFor) : rawEntries;
 
   // Loading hint while at least one row is still resolving and the user has
