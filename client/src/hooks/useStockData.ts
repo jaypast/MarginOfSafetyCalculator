@@ -68,6 +68,7 @@ export const useStockData = () => {
       toast({
         title: "Data retrieved successfully",
         description: `Stock data for ${data.symbol} has been loaded.`,
+        duration: 3000,
       });
     },
     onError: (error: Error) => {
