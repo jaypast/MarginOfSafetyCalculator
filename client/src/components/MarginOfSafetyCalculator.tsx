@@ -245,8 +245,9 @@ const MarginOfSafetyCalculator: React.FC = () => {
 
   return (
     <>
-      {/* Header */}
-      <header className="mb-6">
+      {/* Header — hidden on mobile to avoid duplicating the nav brand; shown
+          on sm+ where there is space and the nav brand is shorter. */}
+      <header className="mb-6 hidden sm:block">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold text-[#1A2942] mb-2">
