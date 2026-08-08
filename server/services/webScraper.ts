@@ -7,6 +7,56 @@ import { HistoricalDataResponse } from './yahooFinance';
 // Add delay function to space out requests
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Maximum wall-clock time for any single web-scraper HTTP call (headers +
+// body). Without this, a slow or non-responsive Yahoo endpoint hangs the tail
+// of the waterfall. Configurable via env var so integration tests can use a
+// short value (e.g. SCRAPER_FETCH_TIMEOUT_MS=80) without waiting 10 seconds.
+const SCRAPER_FETCH_TIMEOUT_MS = parseInt(process.env.SCRAPER_FETCH_TIMEOUT_MS ?? '10000', 10);
+
+/**
+ * Fetch `url` with a hard wall-clock timeout that covers the ENTIRE operation:
+ * both the network round-trip (headers) and the body read (text/json).
+ *
+ * Uses `Promise.race` so the timeout rejection propagates even when the body
+ * read does not respond to an AbortController signal (a node-fetch v3 quirk:
+ * aborting after headers are received may not abort an in-progress body read).
+ * The AbortController is still signalled so that the underlying connection is
+ * torn down when possible, but the race guarantees the caller is unblocked
+ * within SCRAPER_FETCH_TIMEOUT_MS regardless.
+ *
+ * @param url     Target URL.
+ * @param options node-fetch RequestInit options (headers, agent, …).
+ * @param decode  Receives the raw Response and returns the decoded value.
+ *                Runs inside the same timeout window as the fetch itself.
+ */
+async function fetchWithTimeout<T>(
+  url: string,
+  options: Record<string, any>,
+  decode: (response: import('node-fetch').Response) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`Scraper request timed out after ${SCRAPER_FETCH_TIMEOUT_MS}ms`));
+    }, SCRAPER_FETCH_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([
+      (async () => {
+        const response = await fetch(url, { ...options, signal: controller.signal as any });
+        return await decode(response);
+      })(),
+      timeoutPromise,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Yahoo Finance now returns very large response headers that exceed node-fetch /
 // Node's default 8 KB parser limit ("Parse Error: Header overflow").
 // Use a custom HTTPS agent with a 32 KB header budget to bypass this.
@@ -46,21 +96,22 @@ export async function getQuickPrice(symbol: string): Promise<number> {
 async function getSimpleQuote(symbol: string): Promise<{price: number, name: string}> {
   try {
     // Try a simpler API endpoint that's less likely to be blocked
-    const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d`, {
-      headers: {
-        'User-Agent': getRandomUserAgent(),
-        'Accept': 'application/json',
-        'Referer': 'https://finance.yahoo.com/',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Cache-Control': 'no-cache'
-      }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch JSON quote for ${symbol}`);
-    }
-    
-    const data = await response.json();
+    const data = await fetchWithTimeout(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d`,
+      {
+        headers: {
+          'User-Agent': getRandomUserAgent(),
+          'Accept': 'application/json',
+          'Referer': 'https://finance.yahoo.com/',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Cache-Control': 'no-cache',
+        },
+      },
+      async (r) => {
+        if (!r.ok) throw new Error(`Failed to fetch JSON quote for ${symbol}`);
+        return r.json() as Promise<any>;
+      },
+    );
     
     // Extract the current price with proper type checking
     const chartData = data as any;
@@ -94,23 +145,26 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
     // the price + name obtained from getSimpleQuote above.
     let html = '';
     try {
-      const response = await fetch(`https://finance.yahoo.com/quote/${symbol}`, {
-        agent: httpsAgent,
-        headers: {
-          'User-Agent': getRandomUserAgent(),
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-          'Pragma': 'no-cache',
-          'Sec-Fetch-Dest': 'document',
-          'Sec-Fetch-Mode': 'navigate',
-          'Sec-Fetch-Site': 'none',
-          'Sec-Fetch-User': '?1',
-          'DNT': '1'
-        }
-      } as any);
-      if (response.ok) html = await response.text();
+      html = await fetchWithTimeout(
+        `https://finance.yahoo.com/quote/${symbol}`,
+        {
+          agent: httpsAgent,
+          headers: {
+            'User-Agent': getRandomUserAgent(),
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Pragma': 'no-cache',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'DNT': '1',
+          },
+        },
+        async (r) => r.ok ? r.text() : '',
+      );
     } catch {
       // Header overflow or network error — proceed with empty HTML
     }
@@ -121,23 +175,26 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
     // Get statistics page for more detailed metrics
     let statsHtml = '';
     try {
-      const statsResponse = await fetch(`https://finance.yahoo.com/quote/${symbol}/key-statistics`, {
-        agent: httpsAgent,
-        headers: {
-          'User-Agent': getRandomUserAgent(),
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-          'Pragma': 'no-cache',
-          'Referer': `https://finance.yahoo.com/quote/${symbol}`,
-          'Sec-Fetch-Dest': 'document',
-          'Sec-Fetch-Mode': 'navigate',
-          'Sec-Fetch-Site': 'same-origin',
-          'DNT': '1'
-        }
-      } as any);
-      if (statsResponse.ok) statsHtml = await statsResponse.text();
+      statsHtml = await fetchWithTimeout(
+        `https://finance.yahoo.com/quote/${symbol}/key-statistics`,
+        {
+          agent: httpsAgent,
+          headers: {
+            'User-Agent': getRandomUserAgent(),
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Pragma': 'no-cache',
+            'Referer': `https://finance.yahoo.com/quote/${symbol}`,
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'same-origin',
+            'DNT': '1',
+          },
+        },
+        async (r) => r.ok ? r.text() : '',
+      );
     } catch {
       // Header overflow or network error — proceed with empty stats HTML
     }
@@ -279,20 +336,21 @@ export async function scrapeHistoricalData(
     // Use the chart API endpoint to get historical data
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${yahooRange}&interval=${yahooInterval}`;
     
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': getRandomUserAgent(),
-        'Accept': 'application/json',
-        'Referer': 'https://finance.yahoo.com/',
-        'Accept-Language': 'en-US,en;q=0.9'
-      }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch historical data for ${symbol}`);
-    }
-    
-    const data = await response.json();
+    const data = await fetchWithTimeout(
+      url,
+      {
+        headers: {
+          'User-Agent': getRandomUserAgent(),
+          'Accept': 'application/json',
+          'Referer': 'https://finance.yahoo.com/',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+      },
+      async (r) => {
+        if (!r.ok) throw new Error(`Failed to fetch historical data for ${symbol}`);
+        return r.json() as Promise<any>;
+      },
+    );
     const chartData = data as any;
     const result = chartData?.chart?.result?.[0];
     

@@ -5,13 +5,24 @@ import { StockResponse } from '../../shared/schema';
 // Promisify the exec function to use with async/await
 const execAsync = promisify(exec);
 
+// Maximum wall-clock time to wait for the Python yfinance subprocess.
+// If the subprocess doesn't respond within this window, Node kills it,
+// releases the concurrency slot (via the finally block in fetchYfinanceWithQueue),
+// and lets the waterfall fall through to the next source.
+const YFINANCE_TIMEOUT_MS = 12_000;
+
 // Function to get stock data from Yahoo Finance using the Python yfinance package
 export async function getYahooFinanceData(symbol: string): Promise<StockResponse> {
   try {
     console.log(`Fetching Yahoo Finance data for ${symbol} using yfinance`);
     
-    // Call the Python script with the stock symbol as an argument
-    const { stdout, stderr } = await execAsync(`python3 server/services/yfinance_service.py ${symbol}`);
+    // Call the Python script with the stock symbol as an argument.
+    // timeout kills the subprocess after YFINANCE_TIMEOUT_MS so a hung
+    // Python process never blocks the concurrency slot indefinitely.
+    const { stdout, stderr } = await execAsync(
+      `python3 server/services/yfinance_service.py ${symbol}`,
+      { timeout: YFINANCE_TIMEOUT_MS },
+    );
     
     if (stderr) {
       console.error(`Python script error: ${stderr}`);
@@ -65,9 +76,11 @@ export async function getHistoricalData(
   try {
     console.log(`Fetching historical data for ${symbol} (${period}, ${interval}) using yfinance`);
     
-    // Call the Python script with the stock symbol, history command, and period
+    // Call the Python script with the stock symbol, history command, and period.
+    // timeout kills the subprocess so a hung process never blocks the slot.
     const { stdout, stderr } = await execAsync(
-      `python3 server/services/yfinance_service.py ${symbol} history ${period} ${interval}`
+      `python3 server/services/yfinance_service.py ${symbol} history ${period} ${interval}`,
+      { timeout: YFINANCE_TIMEOUT_MS },
     );
     
     if (stderr) {

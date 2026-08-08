@@ -219,6 +219,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Overall deadline for the stock-data waterfall. If no source responds within
+  // this window we return 504 so the client can show a clear error rather than
+  // leaving the user staring at a spinner indefinitely.
+  // Configurable via env var so integration tests can use a short deadline
+  // (e.g. STOCK_FETCH_DEADLINE_MS=50) without waiting 25 seconds.
+  const STOCK_FETCH_DEADLINE_MS = parseInt(process.env.STOCK_FETCH_DEADLINE_MS ?? '25000', 10);
+
   // API Routes
   app.get('/api/stock/:symbol', async (req, res) => {
     try {
@@ -227,8 +234,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!symbol || typeof symbol !== 'string') {
         return res.status(400).json({ message: 'Invalid stock symbol' });
       }
-      
-      const stockData = await getStockData(symbol.toUpperCase());
+
+      // Race the waterfall against a hard deadline.
+      let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+      const deadline = new Promise<never>((_, reject) => {
+        deadlineTimer = setTimeout(
+          () => reject(new Error('STOCK_FETCH_TIMEOUT')),
+          STOCK_FETCH_DEADLINE_MS,
+        );
+      });
+
+      let stockData;
+      try {
+        stockData = await Promise.race([
+          getStockData(symbol.toUpperCase()),
+          deadline,
+        ]);
+      } finally {
+        clearTimeout(deadlineTimer);
+      }
       
       // Validate the returned data against our schema
       const validatedData = stockResponseSchema.parse(stockData);
@@ -236,6 +260,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.json(validatedData);
     } catch (error) {
       console.error('Error fetching stock data:', error);
+
+      if (error instanceof Error && error.message === 'STOCK_FETCH_TIMEOUT') {
+        return res.status(504).json({
+          error: 'timeout',
+          message: 'Request timed out. Please try again.',
+        });
+      }
       
       if (error instanceof ZodError) {
         return res.status(422).json({ 

@@ -2,6 +2,10 @@ import axios from 'axios';
 import { StockResponse } from '@shared/schema';
 import { HistoricalDataResponse } from './yahooFinance';
 
+// Per-request Axios timeout for all RapidAPI calls. Without this, a slow or
+// non-responsive upstream hangs the entire source and blocks the waterfall.
+const RAPIDAPI_TIMEOUT_MS = 10_000;
+
 // Check if RAPIDAPI_KEY is available
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 if (!RAPIDAPI_KEY) {
@@ -59,7 +63,8 @@ export async function getRapidApiHistoricalData(
       headers: {
         'X-RapidAPI-Key': RAPIDAPI_KEY,
         'X-RapidAPI-Host': YAHOO_FINANCE_HOST
-      }
+      },
+      timeout: RAPIDAPI_TIMEOUT_MS,
     });
     
     const data = response.data;
@@ -114,7 +119,8 @@ async function getStockDataApiInfo(symbol: string): Promise<StockResponse> {
     headers: {
       'X-RapidAPI-Key': RAPIDAPI_KEY,
       'X-RapidAPI-Host': STOCK_DATA_HOST
-    }
+    },
+    timeout: RAPIDAPI_TIMEOUT_MS,
   });
   
   const data = response.data;
@@ -131,7 +137,8 @@ async function getStockDataApiInfo(symbol: string): Promise<StockResponse> {
       headers: {
         'X-RapidAPI-Key': RAPIDAPI_KEY,
         'X-RapidAPI-Host': STOCK_DATA_HOST
-      }
+      },
+      timeout: RAPIDAPI_TIMEOUT_MS,
     });
     companyData = profileResponse.data || {};
   } catch (err) {
@@ -220,7 +227,8 @@ async function getYahooFinanceApiInfo(symbol: string): Promise<StockResponse> {
     headers: {
       'X-RapidAPI-Key': RAPIDAPI_KEY,
       'X-RapidAPI-Host': YAHOO_FINANCE_HOST
-    }
+    },
+    timeout: RAPIDAPI_TIMEOUT_MS,
   });
   
   const quoteData = quoteResponse.data;

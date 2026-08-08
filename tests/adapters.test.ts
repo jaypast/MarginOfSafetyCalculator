@@ -357,7 +357,10 @@ describe('yahooFinance adapter', () => {
     };
 
     vi.doMock('child_process', () => ({
-      exec: (cmd: string, cb: any) => cb(null, { stdout: JSON.stringify(fakePayload), stderr: '' }),
+      exec: (cmd: string, optsOrCb: any, cb?: any) => {
+        const callback = typeof optsOrCb === 'function' ? optsOrCb : cb!;
+        callback(null, { stdout: JSON.stringify(fakePayload), stderr: '' });
+      },
     }));
 
     const { getYahooFinanceData } = await import('../server/services/yahooFinance');
@@ -391,8 +394,10 @@ describe('yahooFinance adapter', () => {
     };
 
     vi.doMock('child_process', () => ({
-      exec: (cmd: string, cb: any) =>
-        cb(null, { stdout: JSON.stringify(payload), stderr: '' }),
+      exec: (cmd: string, optsOrCb: any, cb?: any) => {
+        const callback = typeof optsOrCb === 'function' ? optsOrCb : cb!;
+        callback(null, { stdout: JSON.stringify(payload), stderr: '' });
+      },
     }));
 
     const { getYahooFinanceData } = await import('../server/services/yahooFinance');
@@ -425,8 +430,10 @@ describe('yahooFinance adapter', () => {
     };
 
     vi.doMock('child_process', () => ({
-      exec: (cmd: string, cb: any) =>
-        cb(null, { stdout: JSON.stringify(payload), stderr: '' }),
+      exec: (cmd: string, optsOrCb: any, cb?: any) => {
+        const callback = typeof optsOrCb === 'function' ? optsOrCb : cb!;
+        callback(null, { stdout: JSON.stringify(payload), stderr: '' });
+      },
     }));
 
     const { getYahooFinanceData } = await import('../server/services/yahooFinance');
@@ -463,8 +470,10 @@ describe('yahooFinance adapter', () => {
     };
 
     vi.doMock('child_process', () => ({
-      exec: (cmd: string, cb: any) =>
-        cb(null, { stdout: JSON.stringify(payload), stderr: '' }),
+      exec: (cmd: string, optsOrCb: any, cb?: any) => {
+        const callback = typeof optsOrCb === 'function' ? optsOrCb : cb!;
+        callback(null, { stdout: JSON.stringify(payload), stderr: '' });
+      },
     }));
 
     const { getYahooFinanceData } = await import('../server/services/yahooFinance');
@@ -480,8 +489,10 @@ describe('yahooFinance adapter', () => {
 
   it('throws when the Python script reports an error', async () => {
     vi.doMock('child_process', () => ({
-      exec: (cmd: string, cb: any) =>
-        cb(null, { stdout: JSON.stringify({ error: true, message: 'no symbol' }), stderr: '' }),
+      exec: (cmd: string, optsOrCb: any, cb?: any) => {
+        const callback = typeof optsOrCb === 'function' ? optsOrCb : cb!;
+        callback(null, { stdout: JSON.stringify({ error: true, message: 'no symbol' }), stderr: '' });
+      },
     }));
 
     const { getYahooFinanceData } = await import('../server/services/yahooFinance');
@@ -490,11 +501,58 @@ describe('yahooFinance adapter', () => {
 
   it('throws when the subprocess itself fails', async () => {
     vi.doMock('child_process', () => ({
-      exec: (cmd: string, cb: any) => cb(new Error('python missing'), { stdout: '', stderr: 'oops' }),
+      exec: (cmd: string, optsOrCb: any, cb?: any) => {
+        const callback = typeof optsOrCb === 'function' ? optsOrCb : cb!;
+        callback(new Error('python missing'), { stdout: '', stderr: 'oops' });
+      },
     }));
 
     const { getYahooFinanceData } = await import('../server/services/yahooFinance');
     await expect(getYahooFinanceData('AAPL')).rejects.toThrow(/Failed to fetch data/);
+  });
+
+  it('passes a numeric timeout option to the exec subprocess call', async () => {
+    let capturedOptions: any = undefined;
+    const fakePayload = {
+      symbol: 'AAPL', name: 'Apple Inc.', price: 170.25, eps: 6.1,
+      peRatio: 28.5, fcfPerShare: 7.2, growthRate: 10, roe: 45,
+      debtToEquity: 1.5, currentRatio: 1.05, revenueGrowth: 8,
+      earningsStability: 'High', competitivePosition: 'Strong',
+    };
+
+    vi.doMock('child_process', () => ({
+      exec: (cmd: string, optsOrCb: any, cb?: any) => {
+        if (typeof optsOrCb === 'object') capturedOptions = optsOrCb;
+        const callback = typeof optsOrCb === 'function' ? optsOrCb : cb!;
+        callback(null, { stdout: JSON.stringify(fakePayload), stderr: '' });
+      },
+    }));
+
+    const { getYahooFinanceData } = await import('../server/services/yahooFinance');
+    await getYahooFinanceData('AAPL');
+
+    expect(capturedOptions).toBeDefined();
+    expect(typeof capturedOptions.timeout).toBe('number');
+    expect(capturedOptions.timeout).toBeGreaterThan(0);
+  });
+});
+
+describe('stock endpoint deadline', () => {
+  it('Promise.race fires before a never-settling waterfall and rejects with STOCK_FETCH_TIMEOUT', async () => {
+    const neverSettles = new Promise<never>(() => { /* intentionally hangs */ });
+    const deadline = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('STOCK_FETCH_TIMEOUT')), 20),
+    );
+    await expect(Promise.race([neverSettles, deadline])).rejects.toThrow('STOCK_FETCH_TIMEOUT');
+  });
+
+  it('Promise.race resolves with the waterfall result when the waterfall is faster than the deadline', async () => {
+    const fastWaterfall = Promise.resolve({ symbol: 'AAPL', price: 170 });
+    const deadline = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('STOCK_FETCH_TIMEOUT')), 5000),
+    );
+    const result = await Promise.race([fastWaterfall, deadline]);
+    expect((result as any).symbol).toBe('AAPL');
   });
 });
 
@@ -615,6 +673,30 @@ describe('webScraper adapter', () => {
     const { scrapeStockData } = await import('../server/services/webScraper');
     await expect(scrapeStockData('AAPL')).rejects.toThrow();
   });
+
+  it('aborts and rejects when headers arrive quickly but json() body read never settles', async () => {
+    // Set a short scraper timeout so the test completes in ~80 ms.
+    process.env.SCRAPER_FETCH_TIMEOUT_MS = '80';
+
+    // Mock node-fetch: headers arrive instantly (Promise.resolve), but
+    // json() returns a promise that never resolves — simulating a stalled
+    // response body.
+    vi.doMock('node-fetch', () => ({
+      default: vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => new Promise<never>(() => { /* intentionally hangs */ }),
+        text: () => new Promise<never>(() => { /* intentionally hangs */ }),
+      }),
+    }));
+
+    const { getQuickPrice } = await import('../server/services/webScraper');
+
+    // getQuickPrice → getSimpleQuote → fetchWithTimeout with 80 ms deadline.
+    // The abort fires after 80 ms; the underlying fetch rejects with AbortError.
+    await expect(getQuickPrice('AAPL')).rejects.toThrow();
+
+    delete process.env.SCRAPER_FETCH_TIMEOUT_MS;
+  }, 3_000 /* generous wall-clock budget; actual wait is ~80 ms */);
 });
 
 describe('fmpFinance adapter', () => {
