@@ -170,7 +170,7 @@ const QualityIndicators: React.FC<QualityIndicatorsProps> = ({
                 </div>
                 <p className="text-xs text-neutral-500 mt-1">
                   {stockData.currentRatio >= 2 ? 'Excellent' : stockData.currentRatio >= 1.5 ? 'Strong' : stockData.currentRatio >= 1 ? 'Adequate' : 'Weak'} 
-                  {' '}(above 1.5 is preferred)
+                  {' '}(1.5 or above is preferred)
                 </p>
               </div>
             </div>
