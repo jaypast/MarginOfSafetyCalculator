@@ -156,10 +156,10 @@ const QualityIndicators: React.FC<QualityIndicatorsProps> = ({
                 </p>
               </div>
               
-              {/* Current Ratio */}
+              {/* Short-Term Liquidity (Current Ratio) */}
               <div>
                 <div className="flex justify-between mb-1">
-                  <span className="text-sm text-neutral-600">Current Ratio</span>
+                  <span className="text-sm text-neutral-600">Short-Term Liquidity</span>
                   <span className={`text-sm font-medium ${getTextColor(stockData.currentRatio, 1.5)}`}>{stockData.currentRatio.toFixed(1)}</span>
                 </div>
                 <div className="h-2 bg-neutral-200 rounded-full">
