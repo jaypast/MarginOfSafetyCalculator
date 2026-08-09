@@ -247,7 +247,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                     {activeResult.buyBelowStatus > 0 ? `+${activeResult.buyBelowStatus.toFixed(1)}%` : `${activeResult.buyBelowStatus.toFixed(1)}%`}
                   </p>
                   <p className={`text-xs ${activeResult.buyBelowStatus < 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    With Margin of Safety
+                    With MoS
                   </p>
                 </div>
               )}

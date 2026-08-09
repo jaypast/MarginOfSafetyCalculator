@@ -6,7 +6,7 @@ import { MessageSquare } from 'lucide-react';
 const Home: React.FC = () => {
   return (
     <div className="min-h-screen bg-neutral-50 py-8 px-4 sm:px-6 lg:px-8 flex flex-col">
-      <div className="max-w-7xl mx-auto flex-grow">
+      <div className="max-w-7xl w-full min-w-0 mx-auto flex-grow">
         <MarginOfSafetyCalculator />
       </div>
       

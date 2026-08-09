@@ -71,9 +71,9 @@ const SectionPanel: React.FC<SectionPanelProps> = ({
       data-testid={testId}
     >
       <CollapsibleTrigger className="flex items-start justify-between w-full p-4 text-left hover:bg-neutral-50 rounded-lg transition-colors">
-        <div>
+        <div className="min-w-0 overflow-hidden">
           <h2 className="text-base font-semibold text-[#1A2942]">{title}</h2>
-          <p className="text-xs text-neutral-500 mt-0.5">{subtitle}</p>
+          <p className="text-xs text-neutral-500 mt-0.5 line-clamp-2">{subtitle}</p>
         </div>
         <div className="rounded-full bg-neutral-100 p-1 ml-3 shrink-0 mt-0.5">
           {open

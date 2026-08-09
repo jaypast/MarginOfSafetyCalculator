@@ -427,7 +427,7 @@ const Watchlist: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="bg-white rounded-md border border-neutral-200 shadow-sm">
+          <div className="bg-white rounded-md border border-neutral-200 shadow-sm overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
