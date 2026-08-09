@@ -35,9 +35,9 @@ const MarginOfSafetyParams: React.FC<MarginOfSafetyParamsProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm p-6 border border-neutral-200">
+    <div className="bg-white rounded-lg shadow-sm p-4 sm:p-6 border border-neutral-200">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold text-[#1A2942]">Margin of Safety</h2>
+        <h2 className="text-lg sm:text-xl font-semibold text-[#1A2942]">Margin of Safety</h2>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-neutral-400">

@@ -49,8 +49,8 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm p-6 border border-neutral-200">
-      <h2 className="text-xl font-semibold text-[#1A2942] mb-4">Valuation Method</h2>
+    <div className="bg-white rounded-lg shadow-sm p-4 sm:p-6 border border-neutral-200">
+      <h2 className="text-lg sm:text-xl font-semibold text-[#1A2942] mb-4">Valuation Method</h2>
       
       {/* Method Selection Tabs */}
       <div className="flex border border-neutral-200 rounded-lg overflow-hidden mb-4">

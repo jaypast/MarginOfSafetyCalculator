@@ -32,9 +32,9 @@ const KeyMetrics: React.FC<KeyMetricsProps> = ({
   if (!stockData && !isLoading) return null;
   
   return (
-    <div className="bg-white rounded-lg shadow-sm p-6 border border-neutral-200">
+    <div className="bg-white rounded-lg shadow-sm p-4 sm:p-6 border border-neutral-200">
       <div className="flex flex-col mb-4">
-        <h2 className="text-xl font-semibold text-[#1A2942]">
+        <h2 className="text-lg sm:text-xl font-semibold text-[#1A2942]">
           Key Metrics {stockData && <span className="text-sm font-normal">- {stockData.name}</span>}
         </h2>
         {stockData?.lastUpdated && (
@@ -44,7 +44,7 @@ const KeyMetrics: React.FC<KeyMetricsProps> = ({
         )}
       </div>
       
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4">
         {/* Current Price */}
         <div className="bg-neutral-50 p-3 rounded-md">
           <p className="text-xs text-neutral-500 mb-1">Current Price</p>

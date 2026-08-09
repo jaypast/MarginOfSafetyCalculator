@@ -49,7 +49,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
     return (
       <Card className="bg-white rounded-lg shadow-sm border border-neutral-200">
         <CardContent className="p-4">
-          <h2 className="text-xl font-semibold text-[#1A2942] mb-2">Valuation Results</h2>
+          <h2 className="text-lg sm:text-xl font-semibold text-[#1A2942] mb-2">Valuation Results</h2>
           <div className="text-center py-8 text-neutral-500">
             <p>Enter a stock symbol and click "Calculate Intrinsic Value" to view results</p>
           </div>
@@ -63,7 +63,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
     return (
       <Card className="bg-white rounded-lg shadow-sm border border-neutral-200">
         <CardContent className="p-4">
-          <h2 className="text-xl font-semibold text-[#1A2942] mb-2">
+          <h2 className="text-lg sm:text-xl font-semibold text-[#1A2942] mb-2">
             Valuation Results {stockData && <span className="text-sm font-normal">- {stockData.name}</span>}
           </h2>
           
@@ -123,7 +123,7 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
   return (
     <Card className="bg-white rounded-lg shadow-sm border border-neutral-200">
       <CardContent className="p-4">
-        <h2 className="text-xl font-semibold text-[#1A2942] mb-2">
+        <h2 className="text-lg sm:text-xl font-semibold text-[#1A2942] mb-2">
           Valuation Results {stockData && <span className="text-sm font-normal">- {stockData.name}</span>}
         </h2>
         

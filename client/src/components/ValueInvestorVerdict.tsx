@@ -839,7 +839,7 @@ const ValueInvestorVerdict: React.FC<ValueInvestorVerdictProps> = ({
     return (
       <Card className="bg-white rounded-lg shadow-sm border border-neutral-200">
         <CardContent className="p-4">
-          <h2 className="text-xl font-semibold text-[#1A2942] mb-2">
+          <h2 className="text-lg sm:text-xl font-semibold text-[#1A2942] mb-2">
             Value-Investor Verdict
           </h2>
           <div className="bg-amber-50 p-4 rounded-lg border border-amber-100">
@@ -925,7 +925,7 @@ const ValueInvestorVerdict: React.FC<ValueInvestorVerdictProps> = ({
     <Card className="bg-white rounded-lg shadow-sm border border-neutral-200">
       <CardContent className="p-4">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
-          <h2 className="text-xl font-semibold text-[#1A2942]">
+          <h2 className="text-lg sm:text-xl font-semibold text-[#1A2942]">
             Value-Investor Verdict
             {stockData && (
               <span className="text-sm font-normal text-neutral-600 ml-2">
