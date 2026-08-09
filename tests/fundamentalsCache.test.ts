@@ -33,6 +33,7 @@ import {
   getStockData,
   recombineCachedFundamentals,
   __resetStockDataCache,
+  __awaitPendingSpotChecks,
   FUNDAMENTALS_TTL_MS,
   RANGE_TTL_MS,
   PE_HISTORY_TTL_MS,
@@ -253,8 +254,24 @@ describe('getStockData — persistent cache hit (age < 7 days)', () => {
     expect(storage.upsertFundamentalsCache).toHaveBeenCalled();
   });
 
-  it('ignores an expired cache row (age > 7 days) and uses the live chain', async () => {
-    vi.mocked(storage.getFundamentalsCache).mockResolvedValue(cacheRow(payload({ symbol: 'EXP1' }), 8 * DAY));
+  it('serves a stale row (7–14 days) immediately via stale-while-revalidate', async () => {
+    vi.mocked(storage.getFundamentalsCache).mockResolvedValue(cacheRow(payload({ symbol: 'SWR1' }), 8 * DAY));
+    vi.mocked(getQuickPrice).mockResolvedValue(111);
+    vi.mocked(getYahooFinanceData).mockResolvedValue(payload({ symbol: 'SWR1', price: 90 }));
+
+    const res = await getStockData('SWR1');
+    // Stale fundamentals served immediately with a fresh live price
+    expect(res.price).toBe(111);
+    expect(res.eps).toBe(5);
+    expect(res.appliedAdjustments?.some((n) => n.includes('background refresh'))).toBe(true);
+    // Background refresh hits the live chain and writes back through
+    await __awaitPendingSpotChecks();
+    expect(getYahooFinanceData).toHaveBeenCalled();
+    expect(storage.upsertFundamentalsCache).toHaveBeenCalled();
+  });
+
+  it('ignores an expired cache row (age > 14 days) and uses the live chain', async () => {
+    vi.mocked(storage.getFundamentalsCache).mockResolvedValue(cacheRow(payload({ symbol: 'EXP1' }), 15 * DAY));
     vi.mocked(getYahooFinanceData).mockResolvedValue(payload({ symbol: 'EXP1', price: 90 }));
 
     const res = await getStockData('EXP1');

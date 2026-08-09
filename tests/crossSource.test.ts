@@ -220,3 +220,72 @@ describe('getStockData — cross-source divergence capture & attach', () => {
     expect(epsField!.deltaPct).toBeGreaterThan(15);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Parallel primary-source race (Task #88): a slow high-priority source must
+// not delay a fast lower-priority result beyond the bounded grace window,
+// while a higher-priority source that finishes promptly still wins.
+// ---------------------------------------------------------------------------
+describe('getStockData — parallel primary source race', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    __resetStockDataCache();
+  });
+
+  it('returns a fast lower-priority result without waiting for a slow yfinance call', async () => {
+    const symbol = 'RACE1';
+    // yfinance is very slow (well beyond the grace window)
+    vi.mocked(getYahooFinanceData).mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve(payload({ symbol, price: 111 })), 5000)),
+    );
+    // RapidAPI answers immediately with complete data
+    vi.mocked(getRapidApiStockData).mockResolvedValue(payload({ symbol, price: 222 }));
+    vi.mocked(getAlphaVantageData).mockRejectedValue(new Error('no key'));
+
+    const start = Date.now();
+    const res = await getStockData(symbol);
+    const elapsed = Date.now() - start;
+
+    expect(res.dataSource).toBe('rapidapi');
+    expect(res.price).toBe(222);
+    // Bounded by the grace window (400ms) + overhead — nowhere near yfinance's 5s
+    expect(elapsed).toBeLessThan(2000);
+    await __awaitPendingSpotChecks();
+  });
+
+  it('still prefers yfinance when it finishes within the grace window', async () => {
+    const symbol = 'RACE2';
+    // yfinance is slightly slower than RapidAPI but well inside the grace window
+    vi.mocked(getYahooFinanceData).mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve(payload({ symbol, price: 111 })), 100)),
+    );
+    vi.mocked(getRapidApiStockData).mockResolvedValue(payload({ symbol, price: 222 }));
+    vi.mocked(getAlphaVantageData).mockRejectedValue(new Error('no key'));
+
+    const res = await getStockData(symbol);
+    expect(res.dataSource).toBe('yfinance');
+    expect(res.price).toBe(111);
+    await __awaitPendingSpotChecks();
+  });
+
+  it('falls through past the primaries when every source fails, without serial-latency stacking', async () => {
+    const symbol = 'RACE3';
+    // Every primary fails slowly-ish in parallel; scraper succeeds.
+    const slowFail = () => new Promise<never>((_, reject) => setTimeout(() => reject(new Error('down')), 300));
+    vi.mocked(getYahooFinanceData).mockImplementation(slowFail);
+    vi.mocked(getRapidApiStockData).mockImplementation(slowFail);
+    vi.mocked(getAlphaVantageData).mockImplementation(slowFail);
+    vi.mocked(scrapeStockData).mockResolvedValue(payload({ symbol, price: 333 }));
+
+    const start = Date.now();
+    const res = await getStockData(symbol);
+    const elapsed = Date.now() - start;
+
+    expect(res.dataSource).toBe('scraper');
+    expect(res.price).toBe(333);
+    // Serial waterfall would have been ≥ 4 × 300ms just for the primaries;
+    // parallel failure should complete in roughly one 300ms round.
+    expect(elapsed).toBeLessThan(1500);
+    await __awaitPendingSpotChecks();
+  });
+});

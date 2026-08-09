@@ -76,9 +76,6 @@ interface StockInformationProps {
   marginOfSafety?: number;
 }
 
-// Popular stocks for prefetching
-const POPULAR_STOCKS = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META'];
-
 const StockInformation: React.FC<StockInformationProps> = ({ 
   stockData,
   isLoading, 
@@ -126,21 +123,10 @@ const StockInformation: React.FC<StockInformationProps> = ({
     }
   }, [stockData?.symbol, justAddedSymbol]);
 
-  // Prefetch popular stock data when component loads
-  useEffect(() => {
-    // Prefetch popular stocks data in the background for common symbols
-    POPULAR_STOCKS.forEach((symbol) => {
-      queryClient.prefetchQuery({
-        queryKey: ['/api/stock', symbol],
-        queryFn: async () => {
-          const res = await fetch(`/api/stock/${symbol}`);
-          if (!res.ok) throw new Error('Network response was not ok');
-          return res.json();
-        },
-        staleTime: 5 * 60 * 1000, // 5 minutes
-      });
-    });
-  }, [queryClient]);
+  // NOTE: the app used to prefetch five popular tickers (AAPL, MSFT, ...) on
+  // mount. Removed (Task #88): those five requests competed with the ticker
+  // the user actually searched for — both for server capacity and for the
+  // rate-limited upstream APIs behind each data source.
 
   // Check if the stock data is cached
   useEffect(() => {

@@ -109,6 +109,10 @@ interface StockCacheEntry {
 }
 const stockDataCache: { [symbol: string]: StockCacheEntry } = {};
 const CACHE_DURATION = 20 * 60 * 1000; // 20 minutes
+// When a lower-priority source succeeds while a higher-priority source is
+// still in flight, wait at most this long for the higher tier before
+// returning the lower-tier result. Exported for tests.
+export const PRIMARY_SOURCE_GRACE_MS = 400;
 
 // ---------------------------------------------------------------------------
 // Persistent fundamentals cache tiers (Task #58)
@@ -193,6 +197,10 @@ function persistFundamentals(symbol: string, stamped: StockResponse): void {
 // Background spot-check promises, exposed to tests so they can deterministically
 // wait for fire-and-forget agreement checks before asserting on cache state.
 const inFlightSpotChecks: Set<Promise<void>> = new Set();
+
+// Tracks symbols whose background stale-while-revalidate refresh is in progress,
+// so we don't stack duplicate refreshes for the same symbol.
+const pendingBackgroundRefreshes = new Set<string>();
 
 // Test helpers — never used by production code paths.
 export async function __awaitPendingSpotChecks(): Promise<void> {
@@ -341,12 +349,14 @@ function stampProvenance(data: StockResponse, source: DataSource): StockResponse
 
 // ---------------------------------------------------------------------------
 // Core fetch logic
+// forceRefresh=true bypasses the in-memory and DB TTL checks (used by the
+// stale-while-revalidate background refresh path).
 // ---------------------------------------------------------------------------
-async function _fetchStockData(symbol: string): Promise<StockResponse> {
+async function _fetchStockData(symbol: string, forceRefresh = false): Promise<StockResponse> {
   const now = Date.now();
 
-  // Serve from cache if still fresh
-  if (stockDataCache[symbol] && now - stockDataCache[symbol].timestamp < CACHE_DURATION) {
+  // Serve from cache if still fresh (skipped during a background refresh)
+  if (!forceRefresh && stockDataCache[symbol] && now - stockDataCache[symbol].timestamp < CACHE_DURATION) {
     console.log(`Returning cached data for ${symbol}`);
     return attachDivergence(symbol, stockDataCache[symbol].data);
   }
@@ -364,7 +374,10 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
   if (dbCached && !dbCached.payload?.error) {
     const fetchedAtDate = new Date(dbCached.fetchedAt);
     const age = now - fetchedAtDate.getTime();
-    if (age < FUNDAMENTALS_TTL_MS) {
+
+    // Normal DB cache hit: within TTL, serve immediately with a fresh price.
+    // Skip during a background refresh so we always reach the live sources.
+    if (!forceRefresh && age < FUNDAMENTALS_TTL_MS) {
       try {
         const freshPrice = await getQuickPrice(symbol);
         const combined = recombineCachedFundamentals(
@@ -386,6 +399,52 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
         return attachDivergence(symbol, combined);
       } catch (err) {
         console.log(`[${symbol}] Quick price refresh failed — falling through to live sources: ${err}`);
+      }
+    }
+
+    // Stale-while-revalidate window: DB cache is between 1× and 2× TTL.
+    // Serve the stale-but-recent fundamentals immediately (with a fresh price),
+    // then kick off a background refresh so the next in-memory miss gets live data.
+    // Skip during a background refresh so we always reach live sources.
+    if (!forceRefresh && age < FUNDAMENTALS_TTL_MS * 2) {
+      try {
+        const freshPrice = await getQuickPrice(symbol);
+        const ageH = Math.round(age / (60 * 60 * 1000));
+        const combined = recombineCachedFundamentals(
+          dbCached.payload,
+          fetchedAtDate,
+          freshPrice,
+          {
+            priceIsLive: true,
+            note: `Fundamentals ${ageH}h old — served immediately; background refresh in progress`,
+          },
+          now,
+        );
+        console.log(`[${symbol}] Stale-while-revalidate: fundamentals ${ageH}h old — serving immediately + scheduling background refresh`);
+        // Short in-memory TTL (5 min) so the next miss triggers a live re-fetch
+        stockDataCache[symbol] = {
+          data: combined,
+          timestamp: now - CACHE_DURATION + (5 * 60 * 1000),
+          divergence: stockDataCache[symbol]?.divergence,
+        };
+        // Background refresh — forceRefresh=true bypasses cache checks so we
+        // always hit the live sources rather than re-serving from the stale DB entry.
+        // Note: pendingRequests still holds *this* request's symbol here, so it
+        // cannot be used as a guard — pendingBackgroundRefreshes is the dedup.
+        if (!pendingBackgroundRefreshes.has(symbol)) {
+          pendingBackgroundRefreshes.add(symbol);
+          const refreshP: Promise<void> = _fetchStockData(symbol, true)
+            .then((fresh) => console.log(`[${symbol}] Background refresh completed via ${fresh.dataSource}`))
+            .catch((err) => console.log(`[${symbol}] Background refresh failed: ${err}`))
+            .finally(() => {
+              pendingBackgroundRefreshes.delete(symbol);
+              inFlightSpotChecks.delete(refreshP);
+            });
+          inFlightSpotChecks.add(refreshP);
+        }
+        return attachDivergence(symbol, combined);
+      } catch (err) {
+        console.log(`[${symbol}] Stale-while-revalidate price refresh failed — falling through to live sources: ${err}`);
       }
     }
   }
@@ -431,7 +490,8 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
     fetcher: () => Promise<StockResponse>,
   ): void {
     let p: Promise<void>;
-    p = fetcher()
+    p = Promise.resolve()
+      .then(fetcher)
       .then((raw) => {
         const secondary = deriveMetrics(raw);
         if (!isDataComplete(secondary)) return;
@@ -471,49 +531,85 @@ async function _fetchStockData(symbol: string): Promise<StockResponse> {
     return null;
   }
 
-  // --- 1. yfinance (Python — most reliable for broad symbol coverage) ---
-  const yfinanceResult = await trySource('yfinance', () => fetchYfinanceWithQueue(symbol));
-  if (yfinanceResult) {
-    const stamped = stampProvenance(yfinanceResult, 'yfinance');
-    const divergence = compareWithCachedPrimary(stamped, 'yfinance');
-    stockDataCache[symbol] = { data: stamped, timestamp: now, divergence };
-    persistFundamentals(symbol, stamped);
-    spotCheck(stamped, 'yfinance', 'rapidapi', () => getRapidApiStockData(symbol));
-    return attachDivergence(symbol, stamped);
+  // --- 1–4. Primary sources — fired in parallel; first complete result wins ---
+  // All four sources start simultaneously. The first one to return complete data
+  // resolves the race; the losers continue running in the background (their only
+  // side-effect is updating bestPartialPrice, which is harmless for the fallback
+  // path). This replaces the previous serial waterfall where a slow or failing
+  // first source added its full latency before the second was even attempted.
+  interface PrimarySourceDef {
+    label: string;
+    source: DataSource;
+    fetcher: () => Promise<StockResponse>;
+    spotCheckSource: DataSource;
+    spotCheckFetcher: () => Promise<StockResponse>;
   }
+  const primaryDefs: PrimarySourceDef[] = [
+    { label: 'yfinance',      source: 'yfinance',     fetcher: () => fetchYfinanceWithQueue(symbol), spotCheckSource: 'rapidapi',     spotCheckFetcher: () => getRapidApiStockData(symbol) },
+    { label: 'RapidAPI',      source: 'rapidapi',     fetcher: () => getRapidApiStockData(symbol),   spotCheckSource: 'alphavantage', spotCheckFetcher: () => getAlphaVantageData(symbol) },
+    { label: 'Alpha Vantage', source: 'alphavantage', fetcher: () => getAlphaVantageData(symbol),   spotCheckSource: 'rapidapi',     spotCheckFetcher: () => getRapidApiStockData(symbol) },
+    // FMP: fundamentals for mid/small-caps. Skipped gracefully (throws immediately)
+    // when the API key is not configured.
+    { label: 'FMP',           source: 'fmp',          fetcher: () => getFmpData(symbol),             spotCheckSource: 'rapidapi',     spotCheckFetcher: () => getRapidApiStockData(symbol) },
+  ];
 
-  // --- 2. RapidAPI ---
-  const rapidResult = await trySource('RapidAPI', () => getRapidApiStockData(symbol));
-  if (rapidResult) {
-    const stamped = stampProvenance(rapidResult, 'rapidapi');
-    const divergence = compareWithCachedPrimary(stamped, 'rapidapi');
+  // Start every source now (parallel) and select in completion order, with a
+  // small priority preference: when a *lower*-priority source succeeds first
+  // while a higher-priority source is still in flight, the higher tier gets a
+  // short grace window (PRIMARY_SOURCE_GRACE_MS) to finish and win. This keeps
+  // the deterministic quality preference (yfinance > RapidAPI > ...) for
+  // near-simultaneous results, but a slow or hung yfinance call can no longer
+  // hold a fast lower-tier result hostage — worst-case added latency is the
+  // grace window, not the higher tier's full timeout.
+  type PrimaryWin = { result: StockResponse; def: PrimarySourceDef };
+  const primaryWinner = await new Promise<PrimaryWin | null>((resolve) => {
+    const successes: (PrimaryWin | null)[] = primaryDefs.map(() => null);
+    const settled: boolean[] = primaryDefs.map(() => false);
+    let pending = primaryDefs.length;
+    let done = false;
+    let graceTimer: NodeJS.Timeout | null = null;
+
+    const bestSettledSuccess = () => successes.find((s) => s !== null) ?? null;
+    const finish = (w: PrimaryWin | null) => {
+      if (done) return;
+      done = true;
+      if (graceTimer) clearTimeout(graceTimer);
+      resolve(w);
+    };
+
+    primaryDefs.forEach((def, i) => {
+      trySource(def.label, def.fetcher)
+        .catch(() => null)
+        .then((result) => {
+          if (done) return;
+          settled[i] = true;
+          pending--;
+          if (result !== null) successes[i] = { result, def };
+          const best = bestSettledSuccess();
+          if (best) {
+            const bestIdx = primaryDefs.findIndex((d) => d === best.def);
+            const allHigherSettled = settled.slice(0, bestIdx).every(Boolean);
+            if (allHigherSettled || pending === 0) {
+              finish(best);
+            } else if (!graceTimer) {
+              // A lower tier succeeded while a higher tier is still running:
+              // give the higher tier a bounded window to finish and win.
+              graceTimer = setTimeout(() => finish(bestSettledSuccess()), PRIMARY_SOURCE_GRACE_MS);
+            }
+          } else if (pending === 0) {
+            finish(null);
+          }
+        });
+    });
+  });
+
+  if (primaryWinner) {
+    const { result, def } = primaryWinner;
+    const stamped = stampProvenance(result, def.source);
+    const divergence = compareWithCachedPrimary(stamped, def.source);
     stockDataCache[symbol] = { data: stamped, timestamp: now, divergence };
     persistFundamentals(symbol, stamped);
-    spotCheck(stamped, 'rapidapi', 'alphavantage', () => getAlphaVantageData(symbol));
-    return attachDivergence(symbol, stamped);
-  }
-
-  // --- 3. Alpha Vantage (dedicated fundamentals API) ---
-  const avResult = await trySource('Alpha Vantage', () => getAlphaVantageData(symbol));
-  if (avResult) {
-    const stamped = stampProvenance(avResult, 'alphavantage');
-    const divergence = compareWithCachedPrimary(stamped, 'alphavantage');
-    stockDataCache[symbol] = { data: stamped, timestamp: now, divergence };
-    persistFundamentals(symbol, stamped);
-    spotCheck(stamped, 'alphavantage', 'rapidapi', () => getRapidApiStockData(symbol));
-    return attachDivergence(symbol, stamped);
-  }
-
-  // --- 4. Financial Modeling Prep (fundamentals for mid/small-caps the
-  // higher tiers often miss). Skipped gracefully when the API key is not
-  // configured — the adapter throws immediately and trySource logs it. ---
-  const fmpResult = await trySource('FMP', () => getFmpData(symbol));
-  if (fmpResult) {
-    const stamped = stampProvenance(fmpResult, 'fmp');
-    const divergence = compareWithCachedPrimary(stamped, 'fmp');
-    stockDataCache[symbol] = { data: stamped, timestamp: now, divergence };
-    persistFundamentals(symbol, stamped);
-    spotCheck(stamped, 'fmp', 'rapidapi', () => getRapidApiStockData(symbol));
+    spotCheck(stamped, def.source, def.spotCheckSource, def.spotCheckFetcher);
     return attachDivergence(symbol, stamped);
   }
 
