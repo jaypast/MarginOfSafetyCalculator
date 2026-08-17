@@ -6,7 +6,8 @@ import type {
 } from "@/components/ui/toast"
 
 const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+export const DEFAULT_TOAST_DURATION = 5000
+const TOAST_REMOVE_DELAY = 300
 
 type ToasterToast = ToastProps & {
   id: string
@@ -54,6 +55,7 @@ interface State {
 }
 
 const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+const autoDismissTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
 
 const addToRemoveQueue = (toastId: string) => {
   if (toastTimeouts.has(toastId)) {
@@ -69,6 +71,14 @@ const addToRemoveQueue = (toastId: string) => {
   }, TOAST_REMOVE_DELAY)
 
   toastTimeouts.set(toastId, timeout)
+}
+
+const clearAutoDismissTimeout = (toastId: string) => {
+  const timeout = autoDismissTimeouts.get(toastId)
+  if (timeout) {
+    clearTimeout(timeout)
+    autoDismissTimeouts.delete(toastId)
+  }
 }
 
 export const reducer = (state: State, action: Action): State => {
@@ -131,6 +141,25 @@ const listeners: Array<(state: State) => void> = []
 let memoryState: State = { toasts: [] }
 
 function dispatch(action: Action) {
+  if (action.type === "DISMISS_TOAST" && action.toastId) {
+    clearAutoDismissTimeout(action.toastId)
+  }
+  if (action.type === "REMOVE_TOAST") {
+    if (action.toastId) {
+      clearAutoDismissTimeout(action.toastId)
+      const timeout = toastTimeouts.get(action.toastId)
+      if (timeout) {
+        clearTimeout(timeout)
+        toastTimeouts.delete(action.toastId)
+      }
+    } else {
+      autoDismissTimeouts.forEach((_, toastId) => clearAutoDismissTimeout(toastId))
+      toastTimeouts.forEach((timeout, toastId) => {
+        clearTimeout(timeout)
+        toastTimeouts.delete(toastId)
+      })
+    }
+  }
   memoryState = reducer(memoryState, action)
   listeners.forEach((listener) => {
     listener(memoryState)
@@ -141,6 +170,7 @@ type Toast = Omit<ToasterToast, "id">
 
 function toast({ ...props }: Toast) {
   const id = genId()
+  const duration = props.duration ?? DEFAULT_TOAST_DURATION
 
   const update = (props: ToasterToast) =>
     dispatch({
@@ -149,11 +179,21 @@ function toast({ ...props }: Toast) {
     })
   const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id })
 
+  const autoDismissTimeout = setTimeout(() => {
+    autoDismissTimeouts.delete(id)
+    dispatch({
+      type: "DISMISS_TOAST",
+      toastId: id,
+    })
+  }, duration)
+  autoDismissTimeouts.set(id, autoDismissTimeout)
+
   dispatch({
     type: "ADD_TOAST",
     toast: {
       ...props,
       id,
+      duration,
       open: true,
       onOpenChange: (open) => {
         if (!open) dismiss()
@@ -166,6 +206,18 @@ function toast({ ...props }: Toast) {
     dismiss,
     update,
   }
+}
+
+// Kept for reducer-level tests without exposing mutable state to application
+// callers. This also makes the timer contract testable with fake timers.
+export const __getToastStateForTests = () => memoryState
+export const __resetToastStateForTests = () => {
+  autoDismissTimeouts.forEach((_, toastId) => clearAutoDismissTimeout(toastId))
+  toastTimeouts.forEach((timeout, toastId) => {
+    clearTimeout(timeout)
+    toastTimeouts.delete(toastId)
+  })
+  memoryState = { toasts: [] }
 }
 
 function useToast() {

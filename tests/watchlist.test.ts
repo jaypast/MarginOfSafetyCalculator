@@ -7,7 +7,14 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 vi.mock('../server/db', () => ({ db: null, pool: null }));
 
 import { MemStorage } from '../server/storage';
-import { classifyBuyZone, priceVsBuyBelowPct } from '../client/src/lib/watchlist';
+import {
+  classifyBuyZone,
+  priceVsBuyBelowPct,
+} from '../client/src/lib/watchlist';
+import {
+  createWatchlistStockQuery,
+  refreshWatchlistStockQueries,
+} from '../client/src/pages/Watchlist';
 
 describe('MemStorage — watchlist CRUD (production code path)', () => {
   let storage: MemStorage;
@@ -134,5 +141,35 @@ describe('priceVsBuyBelowPct — headroom vs the buy-below threshold', () => {
     expect(priceVsBuyBelowPct(100, 0)).toBeNull();
     expect(priceVsBuyBelowPct(100, -5)).toBeNull();
     expect(priceVsBuyBelowPct(NaN, 100)).toBeNull();
+  });
+});
+
+describe('watchlist refresh policy', () => {
+  const entry = {
+    id: 1,
+    sessionId: 'session-A',
+    symbol: 'AAPL',
+    marginOfSafety: 25,
+    createdAt: new Date(),
+  };
+
+  it('does not enable stock requests when the watchlist page mounts', () => {
+    const query = createWatchlistStockQuery(entry);
+    expect(query.queryKey).toEqual(['/api/stock', 'AAPL']);
+    expect(query.enabled).toBe(false);
+  });
+
+  it('refetches every row only when the refresh action calls it', async () => {
+    const refetchA = vi.fn().mockResolvedValue({ isError: false });
+    const refetchB = vi.fn().mockResolvedValue({ isError: true });
+
+    const incomplete = await refreshWatchlistStockQueries([
+      { refetch: refetchA },
+      { refetch: refetchB },
+    ]);
+
+    expect(refetchA).toHaveBeenCalledOnce();
+    expect(refetchB).toHaveBeenCalledOnce();
+    expect(incomplete).toBe(true);
   });
 });

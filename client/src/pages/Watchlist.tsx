@@ -33,6 +33,38 @@ import {
 import type { ValuationParams, ValuationResult } from '@/lib/types';
 import { scoreTicker, compositeBand } from '@/lib/multibaggerScreener';
 
+// ---------------------------------------------------------------------------
+// Exported helpers — used by production code and unit tests alike so the
+// refresh policy is testable without rendering React.
+// ---------------------------------------------------------------------------
+
+/** Builds the React Query options object for a single watchlist row.
+ *  `enabled: false` means the query never fires automatically on mount;
+ *  the Refresh button owns the explicit refetch lifecycle. */
+export function createWatchlistStockQuery(entry: { symbol: string }) {
+  return {
+    queryKey: ['/api/stock', entry.symbol] as const,
+    queryFn: async (): Promise<StockData> => {
+      const res = await apiRequest('GET', `/api/stock/${entry.symbol}`, undefined);
+      return res.json();
+    },
+    staleTime: 2 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    retry: 1,
+    enabled: false,
+  } as const;
+}
+
+/** Refetches every row result returned by useQueries and returns true when at
+ *  least one row failed (so the caller can show an error toast). */
+export async function refreshWatchlistStockQueries(
+  results: ReadonlyArray<{ refetch: () => Promise<{ isError: boolean }> }>,
+): Promise<boolean> {
+  const settled = await Promise.all(results.map((r) => r.refetch()));
+  return settled.some((r) => r.isError);
+}
+
+// ---------------------------------------------------------------------------
 // Default valuation params used to compute intrinsic value for each watchlist
 // row. These mirror the calculator's defaults so the watchlist's "buy-below"
 // matches what the user would see if they opened the ticker on the home page
@@ -251,22 +283,17 @@ const Watchlist: React.FC = () => {
   const handleOpen = (symbol: string) => navigate(`/?symbol=${encodeURIComponent(symbol)}`);
   const watchlistQuery = useQuery<WatchlistEntry[]>({ queryKey: ['/api/watchlist'] });
   const rawEntries = watchlistQuery.data ?? [];
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Drive every per-symbol fetch from the parent so the parent re-renders
   // (and re-sorts) as scores resolve. Children receive the data + loading
   // flag as props instead of running their own useQuery — a single source
   // of truth keeps the "Sort by score" toggle reactive.
+  //
+  // createWatchlistStockQuery sets enabled:false so no fetches fire on mount;
+  // the Refresh button below owns the explicit refetch lifecycle.
   const stockResults = useQueries({
-    queries: rawEntries.map((entry) => ({
-      queryKey: ['/api/stock', entry.symbol] as const,
-      queryFn: async (): Promise<StockData> => {
-        const res = await apiRequest('GET', `/api/stock/${entry.symbol}`, undefined);
-        return res.json();
-      },
-      staleTime: 2 * 60 * 1000,
-      gcTime: 15 * 60 * 1000,
-      retry: 1,
-    })),
+    queries: rawEntries.map((entry) => createWatchlistStockQuery(entry)),
   });
 
   // Symbol → { stock, isLoading } lookup, recomputed every render so it
@@ -275,7 +302,10 @@ const Watchlist: React.FC = () => {
     const map = new Map<string, { stock: StockData | undefined; isLoading: boolean }>();
     rawEntries.forEach((entry, i) => {
       const r = stockResults[i];
-      map.set(entry.symbol, { stock: r?.data, isLoading: !!r?.isLoading });
+      map.set(entry.symbol, {
+        stock: r?.data,
+        isLoading: !!r?.isLoading || !!r?.isFetching,
+      });
     });
     return map;
   }, [rawEntries, stockResults]);
@@ -299,7 +329,7 @@ const Watchlist: React.FC = () => {
 
   // Loading hint while at least one row is still resolving and the user has
   // asked to sort by score — makes the deferred ranking visible.
-  const scoringPending = sortByScore && stockResults.some((r) => r.isLoading);
+  const scoringPending = sortByScore && (isRefreshing || stockResults.some((r) => r.isFetching));
 
   const removeMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -318,12 +348,23 @@ const Watchlist: React.FC = () => {
     },
   });
 
-  const handleRefresh = () => {
-    // Invalidate the list itself plus every per-row stock query so the page
-    // pulls fresh prices through the existing tiered data pipeline.
-    queryClient.invalidateQueries({ queryKey: ['/api/watchlist'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/stock'] });
+  const handleRefresh = async () => {
+    if (isRefreshing || rawEntries.length === 0) return;
+
+    setIsRefreshing(true);
     toast({ title: 'Refreshing watchlist…', description: 'Fetching latest prices.' });
+    try {
+      const failed = await refreshWatchlistStockQueries(stockResults);
+      if (failed) {
+        toast({
+          title: 'Watchlist refresh incomplete',
+          description: 'Some tickers could not be refreshed. You can try again.',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   // Counts for the header summary — gives users a glanceable sense of where
@@ -369,10 +410,10 @@ const Watchlist: React.FC = () => {
               variant="outline"
               onClick={handleRefresh}
               data-testid="button-refresh-watchlist"
-              disabled={watchlistQuery.isLoading}
+              disabled={watchlistQuery.isLoading || isRefreshing || entries.length === 0}
               className="h-9"
             >
-              <RefreshCw className="w-4 h-4 mr-1" /> Refresh
+              <RefreshCw className={`w-4 h-4 mr-1${isRefreshing ? ' animate-spin' : ''}`} /> {isRefreshing ? 'Refreshing…' : 'Refresh'}
             </Button>
           </div>
         </div>
