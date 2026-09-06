@@ -41,6 +41,7 @@ import {
 import { getYahooFinanceData } from '../server/services/yahooFinance';
 import { getRapidApiStockData } from '../server/services/rapidApiFinance';
 import { getAlphaVantageData } from '../server/services/alphaVantage';
+import { getFmpData } from '../server/services/fmpFinance';
 import { scrapeStockData } from '../server/services/webScraper';
 import { getFallbackStockData } from '../server/services/fallbackData';
 import type { StockResponse } from '../shared/schema';
@@ -230,6 +231,7 @@ describe('getStockData — parallel primary source race', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     __resetStockDataCache();
+    vi.mocked(getFmpData).mockRejectedValue(new Error('mocked out'));
   });
 
   it('returns a fast lower-priority result without waiting for a slow yfinance call', async () => {
@@ -266,6 +268,36 @@ describe('getStockData — parallel primary source race', () => {
     expect(res.dataSource).toBe('yfinance');
     expect(res.price).toBe(111);
     await __awaitPendingSpotChecks();
+  });
+
+  it('keeps the winning cache entry when a lower-priority source resolves after the response', async () => {
+    const symbol = 'RACE4';
+    let resolveFmp!: (value: StockResponse) => void;
+    const lateFmp = new Promise<StockResponse>((resolve) => {
+      resolveFmp = resolve;
+    });
+
+    vi.mocked(getYahooFinanceData).mockResolvedValue(payload({ symbol, price: 111, eps: 5 }));
+    vi.mocked(getRapidApiStockData).mockRejectedValue(new Error('429'));
+    vi.mocked(getAlphaVantageData).mockRejectedValue(new Error('no key'));
+    vi.mocked(getFmpData).mockReturnValue(lateFmp);
+
+    const winner = await getStockData(symbol);
+    expect(winner.dataSource).toBe('yfinance');
+    expect(winner.price).toBe(111);
+
+    // The losing FMP request completes only after the response has returned,
+    // with materially different data that must not replace the selected winner.
+    resolveFmp(payload({ symbol, price: 999, eps: 9 }));
+    await lateFmp;
+    await Promise.resolve();
+    await __awaitPendingSpotChecks();
+
+    const cached = await getStockData(symbol);
+    expect(cached.dataSource).toBe('yfinance');
+    expect(cached.price).toBe(111);
+    expect(cached.eps).toBe(5);
+    expect(cached.crossSourceDivergence).toBeNull();
   });
 
   it('falls through past the primaries when every source fails, without serial-latency stacking', async () => {
