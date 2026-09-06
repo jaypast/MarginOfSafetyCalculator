@@ -31,6 +31,11 @@ interface Change {
   companyName: string;
   membershipSource: string;
   snapshot: Snapshot;
+  evaluationRevision: {
+    calculationVersion: number;
+    revised: boolean;
+    originalEvaluatedAt: string;
+  };
 }
 interface ChangesResponse {
   quarters: Array<{ quarter: string; changes: Change[] }>;
@@ -70,7 +75,11 @@ function ChangeCard({ change }: { change: Change }) {
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
           <span>Effective {dateLabel(change.effectiveDate)}</span>
           {change.announcementDate && <span>Announced {dateLabel(change.announcementDate)}</span>}
-          <span>Evaluated {dateLabel(s.evaluatedAt.slice(0, 10))}</span>
+          <span>{change.evaluationRevision.revised ? "Revised" : "Evaluated"} {dateLabel(s.evaluatedAt.slice(0, 10))}</span>
+          <span>Calculation v{change.evaluationRevision.calculationVersion}</span>
+          {change.evaluationRevision.revised && (
+            <span>Original evaluation {dateLabel(change.evaluationRevision.originalEvaluatedAt.slice(0, 10))}</span>
+          )}
           <span>Source: {s.dataSource}</span>
           <span>Index record: {change.membershipSource}</span>
         </div>

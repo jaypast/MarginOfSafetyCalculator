@@ -376,6 +376,14 @@ export const sp500Changes = pgTable("sp500_changes", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const sp500EvaluationRevisions = pgTable("sp500_evaluation_revisions", {
+  id: serial("id").primaryKey(),
+  changeId: integer("change_id").notNull().references(() => sp500Changes.id, { onDelete: "cascade" }),
+  calculationVersion: integer("calculation_version").notNull(),
+  snapshot: jsonb("snapshot").$type<Sp500EvaluationSnapshot>().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const sp500SyncState = pgTable("sp500_sync_state", {
   id: serial("id").primaryKey(),
   key: varchar("key", { length: 32 }).notNull().unique(),
@@ -384,4 +392,5 @@ export const sp500SyncState = pgTable("sp500_sync_state", {
 });
 
 export type Sp500ChangeRow = typeof sp500Changes.$inferSelect;
+export type Sp500EvaluationRevisionRow = typeof sp500EvaluationRevisions.$inferSelect;
 export type Sp500SyncStateRow = typeof sp500SyncState.$inferSelect;

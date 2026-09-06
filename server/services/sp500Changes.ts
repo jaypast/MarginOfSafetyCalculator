@@ -1,4 +1,4 @@
-import type { Sp500ChangeRow, Sp500EvaluationSnapshot, StockResponse } from "@shared/schema";
+import type { Sp500ChangeRow, Sp500EvaluationRevisionRow, Sp500EvaluationSnapshot, StockResponse } from "@shared/schema";
 import { storage } from "../storage";
 import { getHistoricalSp500Changes } from "./fmpFinance";
 import { getStockData } from "./stockData";
@@ -119,9 +119,13 @@ export function evaluate(data: StockResponse): Sp500EvaluationSnapshot {
   const intrinsicValue = estimateIntrinsicValue(data);
   const discountPct = intrinsicValue > 0 ? ((intrinsicValue - data.price) / intrinsicValue) * 100 : 0;
   const meets = !!quality && discountPct >= 10 && warnings.length === 0;
-  const reason = warnings.length ? "Data quality needs review"
+  const valuationReason = discountPct < 0
+    ? `Price is ${Math.abs(discountPct).toFixed(1)}% above estimated value`
+    : `Only ${discountPct.toFixed(1)}% below estimated value; requires at least 10%`;
+  const reason = discountPct < 0 ? `${valuationReason}${warnings.length ? "; data quality also needs review" : ""}`
+    : warnings.length ? "Data quality needs review"
     : !quality ? `${broaderQuality} quality does not clear the Good threshold`
-    : discountPct < 10 ? `Only ${Math.max(0, discountPct).toFixed(1)}% below estimated value; requires at least 10%`
+    : discountPct < 10 ? valuationReason
     : `${quality} quality and ${discountPct.toFixed(1)}% below estimated value`;
   return {
     status: "complete", evaluatedAt, price: data.price, intrinsicValue: Number(intrinsicValue.toFixed(2)),
@@ -129,6 +133,22 @@ export function evaluate(data: StockResponse): Sp500EvaluationSnapshot {
     quality: broaderQuality, meetsBuyCriteria: meets, reason, dataSource: data.dataSource ?? "unknown",
     fetchedAt: data.fetchedAt ?? null, dataWarnings: warnings,
   };
+}
+
+export const SP500_CALCULATION_VERSION = 3;
+export const SP500_LEGACY_CALCULATION_VERSION = 1;
+const REVISION_BATCH_SIZE = 6;
+
+export function latestCompleteRevision(
+  revisions: Sp500EvaluationRevisionRow[],
+): Sp500EvaluationRevisionRow | undefined {
+  return revisions
+    .filter(revision => revision.snapshot.status === "complete")
+    .sort((a, b) => b.calculationVersion - a.calculationVersion || b.createdAt.getTime() - a.createdAt.getTime())[0];
+}
+
+export function needsCurrentSp500Evaluation(revisions: Sp500EvaluationRevisionRow[]): boolean {
+  return (latestCompleteRevision(revisions)?.calculationVersion ?? SP500_LEGACY_CALCULATION_VERSION) < SP500_CALCULATION_VERSION;
 }
 
 const errorSnapshot = (message: string): Sp500EvaluationSnapshot => ({
@@ -146,31 +166,60 @@ export function isSp500DailyCheckDue(lastCheckedDate: string | undefined, today:
 export async function syncSp500Changes(force = false, now = new Date()): Promise<{ newCount: number; checked: boolean; error?: string }> {
   const today = now.toISOString().slice(0, 10);
   const state = await storage.getSp500SyncState();
-  if (!force && !isSp500DailyCheckDue(state?.lastCheckedDate, today)) return { newCount: 0, checked: false };
+  const membershipCheckDue = force || isSp500DailyCheckDue(state?.lastCheckedDate, today);
   if (inFlight) return inFlight;
   inFlight = (async () => {
     try {
-      const events = await fetchMembershipChanges();
-      const existing = new Set((await storage.listSp500Changes()).map(row => row.eventKey));
-      // Initial import stays bounded: retain two years of event history and evaluate
-      // only records not already snapshotted.
-      const cutoff = new Date(now); cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 2);
-      // Bound each daily run so a large initial backfill cannot monopolize the
-      // stock-data providers. Newest events are captured first; later daily
-      // checks continue the backfill in batches.
-      const pending = events
-        .filter(e => !existing.has(e.eventKey) && e.effectiveDate >= cutoff.toISOString().slice(0, 10))
-        .slice(0, 12);
+       const storedChanges = await storage.listSp500Changes();
+       const revisions = await storage.listSp500EvaluationRevisions();
+       const existing = new Set(storedChanges.map(row => row.eventKey));
       let newCount = 0;
-      for (const event of pending) {
-        let snapshot: Sp500EvaluationSnapshot;
-        try { snapshot = evaluate(await getStockData(event.symbol)); }
-        catch (err) { snapshot = errorSnapshot(err instanceof Error ? err.message : "Evaluation failed"); }
-        const result = await storage.insertSp500Change({ ...event, snapshot });
-        if (result.inserted) newCount++;
-      }
-      await storage.setSp500SyncState(today, now);
-      return { newCount, checked: true };
+       if (membershipCheckDue) {
+         const events = await fetchMembershipChanges();
+         // Initial import stays bounded: retain two years of event history and evaluate
+         // only records not already snapshotted.
+         const cutoff = new Date(now); cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 2);
+         // Bound each daily run so a large initial backfill cannot monopolize the
+         // stock-data providers. Newest events are captured first; later daily
+         // checks continue the backfill in batches.
+         const pending = events
+           .filter(e => !existing.has(e.eventKey) && e.effectiveDate >= cutoff.toISOString().slice(0, 10))
+           .slice(0, 12);
+         for (const event of pending) {
+           let snapshot: Sp500EvaluationSnapshot;
+           try { snapshot = evaluate(await getStockData(event.symbol)); }
+           catch (err) { snapshot = errorSnapshot(err instanceof Error ? err.message : "Evaluation failed"); }
+           const result = await storage.insertSp500Change({ ...event, snapshot });
+           if (result.inserted) {
+             await storage.insertSp500EvaluationRevision(result.row.id, SP500_CALCULATION_VERSION, snapshot);
+             newCount++;
+           }
+         }
+       }
+       const revisionsByChange = new Map<number, Sp500EvaluationRevisionRow[]>();
+       for (const revision of revisions) {
+         revisionsByChange.set(revision.changeId, [...(revisionsByChange.get(revision.changeId) ?? []), revision]);
+       }
+       const stale = storedChanges
+         .filter(row => needsCurrentSp500Evaluation(revisionsByChange.get(row.id) ?? []))
+         .sort((a, b) => {
+           const aAttempted = (revisionsByChange.get(a.id) ?? []).some(r => r.calculationVersion === SP500_CALCULATION_VERSION);
+           const bAttempted = (revisionsByChange.get(b.id) ?? []).some(r => r.calculationVersion === SP500_CALCULATION_VERSION);
+           return Number(aAttempted) - Number(bAttempted) || b.effectiveDate.localeCompare(a.effectiveDate);
+         })
+         .slice(0, REVISION_BATCH_SIZE);
+       for (const row of stale) {
+         const prior = revisionsByChange.get(row.id) ?? [];
+         if (prior.length === 0) {
+           await storage.insertSp500EvaluationRevision(row.id, SP500_LEGACY_CALCULATION_VERSION, row.snapshot);
+         }
+         let snapshot: Sp500EvaluationSnapshot;
+         try { snapshot = evaluate(await getStockData(row.symbol)); }
+         catch (err) { snapshot = errorSnapshot(err instanceof Error ? err.message : "Evaluation failed"); }
+         await storage.insertSp500EvaluationRevision(row.id, SP500_CALCULATION_VERSION, snapshot);
+       }
+       if (membershipCheckDue) await storage.setSp500SyncState(today, now);
+       return { newCount, checked: membershipCheckDue || stale.length > 0 };
     } catch (err) {
       return { newCount: 0, checked: true, error: err instanceof Error ? err.message : "S&P 500 refresh failed" };
     } finally { inFlight = null; }
@@ -179,7 +228,31 @@ export async function syncSp500Changes(force = false, now = new Date()): Promise
 }
 
 export async function getSp500ChangesResponse() {
-  const [changes, state] = await Promise.all([storage.listSp500Changes(), storage.getSp500SyncState()]);
+  const [storedChanges, revisions, state] = await Promise.all([
+    storage.listSp500Changes(),
+    storage.listSp500EvaluationRevisions(),
+    storage.getSp500SyncState(),
+  ]);
+  const byChange = new Map<number, Sp500EvaluationRevisionRow[]>();
+  for (const revision of revisions) {
+    byChange.set(revision.changeId, [...(byChange.get(revision.changeId) ?? []), revision]);
+  }
+  const changes = storedChanges.map(row => {
+    const active = latestCompleteRevision(byChange.get(row.id) ?? []);
+    return {
+      ...row,
+      snapshot: active?.snapshot ?? row.snapshot,
+      evaluationRevision: active ? {
+        calculationVersion: active.calculationVersion,
+        revised: active.calculationVersion > SP500_LEGACY_CALCULATION_VERSION,
+        originalEvaluatedAt: row.snapshot.evaluatedAt,
+      } : {
+        calculationVersion: SP500_LEGACY_CALCULATION_VERSION,
+        revised: false,
+        originalEvaluatedAt: row.snapshot.evaluatedAt,
+      },
+    };
+  });
   const grouped = new Map<string, Sp500ChangeRow[]>();
   for (const row of changes) {
     const quarter = quarterForDate(row.effectiveDate);

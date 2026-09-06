@@ -4,7 +4,8 @@ import {
   watchlist, type WatchlistEntry,
   fundamentalsCache, type FundamentalsCacheRow,
   insiderCache, type InsiderCacheRow, type InsiderTrade,
-  sp500Changes, sp500SyncState, type Sp500ChangeRow, type Sp500SyncStateRow,
+  sp500Changes, sp500EvaluationRevisions, sp500SyncState, type Sp500ChangeRow,
+  type Sp500EvaluationRevisionRow, type Sp500EvaluationSnapshot, type Sp500SyncStateRow,
   type StockResponse,
 } from "@shared/schema";
 import { db } from "./db";
@@ -59,6 +60,8 @@ export interface IStorage {
 
   listSp500Changes(): Promise<Sp500ChangeRow[]>;
   insertSp500Change(event: Omit<Sp500ChangeRow, "id" | "createdAt">): Promise<{ row: Sp500ChangeRow; inserted: boolean }>;
+  listSp500EvaluationRevisions(): Promise<Sp500EvaluationRevisionRow[]>;
+  insertSp500EvaluationRevision(changeId: number, calculationVersion: number, snapshot: Sp500EvaluationSnapshot): Promise<Sp500EvaluationRevisionRow>;
   getSp500SyncState(): Promise<Sp500SyncStateRow | undefined>;
   setSp500SyncState(date: string, checkedAt: Date): Promise<Sp500SyncStateRow>;
 }
@@ -72,12 +75,14 @@ export class MemStorage implements IStorage {
   private fundamentalsCacheRows: Map<string, FundamentalsCacheRow> = new Map();
   private insiderCacheRows: Map<string, InsiderCacheRow> = new Map();
   private sp500ChangeRows: Sp500ChangeRow[] = [];
+  private sp500RevisionRows: Sp500EvaluationRevisionRow[] = [];
   private sp500State: Sp500SyncStateRow | undefined;
   private nextUserId = 1;
   private nextFeedbackId = 1;
   private nextWatchlistId = 1;
   private nextFundamentalsCacheId = 1;
   private nextInsiderCacheId = 1;
+  private nextSp500RevisionId = 1;
   private nextSp500ChangeId = 1;
   
   // User methods
@@ -250,6 +255,16 @@ export class MemStorage implements IStorage {
     const row: Sp500ChangeRow = { ...event, id: this.nextSp500ChangeId++, createdAt: new Date() };
     this.sp500ChangeRows.push(row);
     return { row, inserted: true };
+  }
+
+  async listSp500EvaluationRevisions(): Promise<Sp500EvaluationRevisionRow[]> {
+    return [...this.sp500RevisionRows].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  async insertSp500EvaluationRevision(changeId: number, calculationVersion: number, snapshot: Sp500EvaluationSnapshot): Promise<Sp500EvaluationRevisionRow> {
+    const row = { id: this.nextSp500RevisionId++, changeId, calculationVersion, snapshot, createdAt: new Date() };
+    this.sp500RevisionRows.push(row);
+    return row;
   }
 
   async getSp500SyncState(): Promise<Sp500SyncStateRow | undefined> {
@@ -488,6 +503,17 @@ export class DatabaseStorage implements IStorage {
     return { row: existing, inserted: false };
   }
 
+  async listSp500EvaluationRevisions(): Promise<Sp500EvaluationRevisionRow[]> {
+    if (!db) return [];
+    return db.select().from(sp500EvaluationRevisions).orderBy(sp500EvaluationRevisions.createdAt);
+  }
+
+  async insertSp500EvaluationRevision(changeId: number, calculationVersion: number, snapshot: Sp500EvaluationSnapshot): Promise<Sp500EvaluationRevisionRow> {
+    if (!db) throw new Error("Database connection not available");
+    const [row] = await db.insert(sp500EvaluationRevisions).values({ changeId, calculationVersion, snapshot }).returning();
+    return row;
+  }
+
   async getSp500SyncState(): Promise<Sp500SyncStateRow | undefined> {
     if (!db) return undefined;
     const [row] = await db.select().from(sp500SyncState).where(eq(sp500SyncState.key, "daily"));
@@ -694,6 +720,18 @@ class SafeStorageWrapper implements IStorage {
     try { if (this.dbStorage) return await this.dbStorage.insertSp500Change(event); }
     catch (err) { console.error("Database error inserting S&P change, using memory:", err); }
     return this.memStorage.insertSp500Change(event);
+  }
+
+  async listSp500EvaluationRevisions(): Promise<Sp500EvaluationRevisionRow[]> {
+    try { if (this.dbStorage) return await this.dbStorage.listSp500EvaluationRevisions(); }
+    catch (err) { console.error("Database error listing S&P evaluation revisions, using memory:", err); }
+    return this.memStorage.listSp500EvaluationRevisions();
+  }
+
+  async insertSp500EvaluationRevision(changeId: number, calculationVersion: number, snapshot: Sp500EvaluationSnapshot): Promise<Sp500EvaluationRevisionRow> {
+    try { if (this.dbStorage) return await this.dbStorage.insertSp500EvaluationRevision(changeId, calculationVersion, snapshot); }
+    catch (err) { console.error("Database error inserting S&P evaluation revision, using memory:", err); }
+    return this.memStorage.insertSp500EvaluationRevision(changeId, calculationVersion, snapshot);
   }
 
   async getSp500SyncState(): Promise<Sp500SyncStateRow | undefined> {

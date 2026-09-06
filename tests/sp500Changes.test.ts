@@ -2,8 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../server/db", () => ({ db: null, pool: null }));
 
-import { evaluate, isSp500DailyCheckDue, mergeMembershipChanges, normalizeSp500Changes, quarterForDate } from "../server/services/sp500Changes";
+import {
+  SP500_CALCULATION_VERSION,
+  evaluate,
+  isSp500DailyCheckDue,
+  latestCompleteRevision,
+  mergeMembershipChanges,
+  needsCurrentSp500Evaluation,
+  normalizeSp500Changes,
+  quarterForDate,
+} from "../server/services/sp500Changes";
 import { estimateIntrinsicValue } from "../server/services/researchScan";
+import { MemStorage } from "../server/storage";
 
 describe("S&P 500 change normalization", () => {
   it("splits an FMP replacement row into an addition and deletion", () => {
@@ -107,6 +117,75 @@ describe("S&P 500 valuation gate", () => {
     // it must not be promoted to a positive S&P buy-screen result.
     expect(intrinsicValue).toBeLessThan(redditLike.price);
     expect(snapshot.meetsBuyCriteria).toBe(false);
-    expect(snapshot.reason).toContain("below estimated value");
+    expect(snapshot.reason).toContain("above estimated value");
+  });
+});
+
+describe("S&P 500 evaluation revisions", () => {
+  const snapshot = (status: "complete" | "incomplete" | "error", intrinsicValue: number | null) => ({
+    status,
+    evaluatedAt: "2026-09-06T12:00:00.000Z",
+    price: 154.46,
+    intrinsicValue,
+    discountPct: intrinsicValue ? ((intrinsicValue - 154.46) / intrinsicValue) * 100 : null,
+    marginOfSafetyPct: 0,
+    quality: "Good" as const,
+    meetsBuyCriteria: intrinsicValue != null && intrinsicValue > 154.46,
+    reason: status === "complete" ? "Evaluated" : "Could not evaluate",
+    dataSource: "test",
+    fetchedAt: null,
+    dataWarnings: [],
+  });
+
+  it("detects a legacy evaluation and accepts the current complete revision", () => {
+    const legacy = {
+      id: 1, changeId: 10, calculationVersion: 1,
+      snapshot: snapshot("complete", 228.70), createdAt: new Date("2026-09-01"),
+    };
+    const current = {
+      id: 2, changeId: 10, calculationVersion: SP500_CALCULATION_VERSION,
+      snapshot: snapshot("complete", 133.96), createdAt: new Date("2026-09-06"),
+    };
+    expect(needsCurrentSp500Evaluation([legacy])).toBe(true);
+    expect(needsCurrentSp500Evaluation([legacy, current])).toBe(false);
+    expect(latestCompleteRevision([legacy, current])?.snapshot.intrinsicValue).toBe(133.96);
+  });
+
+  it("does not let failed or incomplete attempts replace the latest complete result", () => {
+    const legacy = {
+      id: 1, changeId: 10, calculationVersion: 1,
+      snapshot: snapshot("complete", 228.70), createdAt: new Date("2026-09-01"),
+    };
+    const failed = {
+      id: 2, changeId: 10, calculationVersion: SP500_CALCULATION_VERSION,
+      snapshot: snapshot("error", null), createdAt: new Date("2026-09-06"),
+    };
+    const incomplete = {
+      id: 3, changeId: 10, calculationVersion: SP500_CALCULATION_VERSION,
+      snapshot: snapshot("incomplete", null), createdAt: new Date("2026-09-07"),
+    };
+    expect(latestCompleteRevision([legacy, failed, incomplete])).toBe(legacy);
+    expect(needsCurrentSp500Evaluation([legacy, failed, incomplete])).toBe(true);
+  });
+
+  it("preserves the original row while recording multiple revision attempts", async () => {
+    const storage = new MemStorage();
+    const original = snapshot("complete", 228.70);
+    const inserted = await storage.insertSp500Change({
+      eventKey: "2026-09-01:addition:RDDT",
+      effectiveDate: "2026-09-01",
+      announcementDate: null,
+      changeType: "addition",
+      symbol: "RDDT",
+      companyName: "Reddit",
+      membershipSource: "test",
+      snapshot: original,
+    });
+    await storage.insertSp500EvaluationRevision(inserted.row.id, 1, original);
+    await storage.insertSp500EvaluationRevision(inserted.row.id, SP500_CALCULATION_VERSION, snapshot("complete", 133.96));
+
+    expect((await storage.listSp500Changes())[0].snapshot.intrinsicValue).toBe(228.70);
+    expect(await storage.listSp500EvaluationRevisions()).toHaveLength(2);
+    expect(latestCompleteRevision(await storage.listSp500EvaluationRevisions())?.snapshot.intrinsicValue).toBe(133.96);
   });
 });
