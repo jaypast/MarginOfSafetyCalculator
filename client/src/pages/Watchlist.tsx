@@ -32,6 +32,7 @@ import {
 } from '@/lib/calculators';
 import type { ValuationParams, ValuationResult } from '@/lib/types';
 import { scoreTicker, compositeBand } from '@/lib/multibaggerScreener';
+import { computeVmsScore } from '@/lib/vmsScore';
 
 // ---------------------------------------------------------------------------
 // Exported helpers — used by production code and unit tests alike so the
@@ -152,6 +153,18 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, isLoading, on
   const score = scoreResult?.composite ?? null;
   const scoreLowConfidence = scoreResult?.lowConfidence ?? false;
   const scoreBand = compositeBand(score);
+  const vmsScore = stockOk ? computeVmsScore(stock!).score : 0;
+  const vmsBadge = vmsScore >= 75
+    ? {
+        label: 'VMS-Like',
+        className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      }
+    : vmsScore >= 50
+      ? {
+          label: 'Software',
+          className: 'bg-blue-50 text-blue-700 border-blue-200',
+        }
+      : null;
 
   return (
     <TableRow
@@ -175,7 +188,18 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, isLoading, on
         {isLoading ? (
           <span className="text-neutral-400">…</span>
         ) : stockOk ? (
-          <span className="block truncate max-w-[220px]" title={stock!.name}>{stock!.name}</span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="block truncate max-w-[220px]" title={stock!.name}>{stock!.name}</span>
+            {vmsBadge ? (
+              <span
+                className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${vmsBadge.className}`}
+                title={`VMS score ${vmsScore}/100 — software-like business model`}
+                data-testid={`watchlist-vms-${entry.symbol}`}
+              >
+                {vmsBadge.label}
+              </span>
+            ) : null}
+          </div>
         ) : (
           <span className="text-neutral-400">—</span>
         )}
