@@ -34,6 +34,11 @@ import {
 import type { ValuationParams, ValuationResult } from '@/lib/types';
 import { scoreTicker, compositeBand } from '@/lib/multibaggerScreener';
 import { computeVmsScore } from '@/lib/vmsScore';
+import {
+  computeInsiderSignal,
+  type InsiderSignal,
+  type InsiderTrade,
+} from '@/lib/insiderSignal';
 
 // ---------------------------------------------------------------------------
 // Exported helpers — used by production code and unit tests alike so the
@@ -54,6 +59,28 @@ export function createWatchlistStockQuery(entry: { symbol: string }) {
     gcTime: 15 * 60 * 1000,
     retry: 1,
     enabled: false,
+  } as const;
+}
+
+interface InsiderResponse {
+  trades?: InsiderTrade[];
+}
+
+export function createWatchlistInsiderQuery(entry: { symbol: string }) {
+  return {
+    queryKey: ['/api/insider', entry.symbol] as const,
+    queryFn: async (): Promise<InsiderSignal> => {
+      const res = await apiRequest(
+        'GET',
+        `/api/insider/${encodeURIComponent(entry.symbol)}`,
+        undefined,
+      );
+      const data = await res.json() as InsiderResponse;
+      return computeInsiderSignal(data.trades ?? []);
+    },
+    staleTime: 24 * 60 * 60 * 1000,
+    gcTime: 25 * 60 * 60 * 1000,
+    retry: 1,
   } as const;
 }
 
@@ -121,6 +148,7 @@ const ZONE_STYLES: Record<BuyZone, { row: string; pill: string; label: string }>
 interface WatchlistRowProps {
   entry: WatchlistEntry;
   stock: StockData | undefined;
+  insiderSignal: InsiderSignal | undefined;
   isLoading: boolean;
   onRemove: (id: number) => void;
   isRemoving: boolean;
@@ -135,7 +163,7 @@ const SCORE_TONE: Record<'positive' | 'neutral' | 'negative' | 'muted', string> 
   muted: 'bg-neutral-100 text-neutral-600 border-neutral-300',
 };
 
-const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, isLoading, onRemove, isRemoving, onOpen }) => {
+const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, insiderSignal, isLoading, onRemove, isRemoving, onOpen }) => {
   const stockOk = !!stock && !stock.error;
   const buyBelow = stockOk ? computeAverageBuyBelow(stock, entry.marginOfSafety) : null;
   const zone: BuyZone = stockOk && buyBelow !== null
@@ -176,7 +204,26 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, isLoading, on
     >
       <TableCell className="font-semibold text-[#1A2942]">
         <div className="flex flex-col">
-          <span>{entry.symbol}</span>
+          <div className="flex items-center gap-1.5">
+            <span>{entry.symbol}</span>
+            {insiderSignal?.tier === 'cluster-buy' ? (
+              <span
+                className="inline-flex shrink-0 items-center rounded-full border border-teal-200 bg-teal-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-teal-800"
+                title={insiderSignal.summary}
+                data-testid={`watchlist-insider-${entry.symbol}`}
+              >
+                Cluster Buy
+              </span>
+            ) : insiderSignal?.tier === 'recent-buy' ? (
+              <span
+                className="inline-flex shrink-0 items-center rounded-full border border-blue-200 bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-blue-800"
+                title={insiderSignal.summary}
+                data-testid={`watchlist-insider-${entry.symbol}`}
+              >
+                Recent Buy
+              </span>
+            ) : null}
+          </div>
           {stock?.fetchedAt && (
             <span className="text-[10px] font-normal text-neutral-400">
               {describeFreshness(stock.fetchedAt)}
@@ -320,6 +367,14 @@ const Watchlist: React.FC = () => {
   const stockResults = useQueries({
     queries: rawEntries.map((entry) => createWatchlistStockQuery(entry)),
   });
+  const insiderResults = useQueries({
+    queries: rawEntries.map((entry) => createWatchlistInsiderQuery(entry)),
+  });
+  const insiderBySymbol = useMemo(() => {
+    const map = new Map<string, InsiderSignal | undefined>();
+    rawEntries.forEach((entry, i) => map.set(entry.symbol, insiderResults[i]?.data));
+    return map;
+  }, [rawEntries, insiderResults]);
 
   // Symbol → { stock, isLoading } lookup, recomputed every render so it
   // stays in sync with whatever useQueries last returned.
@@ -521,6 +576,7 @@ const Watchlist: React.FC = () => {
                       key={entry.id}
                       entry={entry}
                       stock={r?.stock}
+                      insiderSignal={insiderBySymbol.get(entry.symbol)}
                       isLoading={!!r?.isLoading}
                       onRemove={(id) => {
                         const entry = rawEntries.find(item => item.id === id);
