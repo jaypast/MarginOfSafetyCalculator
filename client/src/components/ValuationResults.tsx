@@ -266,7 +266,94 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
         {/* Method Comparison */}
         <div>
           <h3 className="text-base font-medium text-[#21324F] mb-2">Valuation Methods</h3>
-          <div className="overflow-x-auto">
+          <div className="space-y-3 sm:hidden">
+            {valuationResults.map((result) => {
+              const isAverage = result.method === 'Average';
+              return (
+                <div
+                  key={result.method}
+                  className={`rounded-lg border p-3 ${isAverage ? 'border-[#C4CCD9] bg-[#E9ECF1]' : 'border-neutral-200 bg-white'}`}
+                >
+                  <h4 className={`mb-3 text-sm font-semibold ${isAverage ? 'text-[#21324F]' : 'text-neutral-800'}`}>
+                    {result.method}
+                  </h4>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    <div>
+                      <dt className="text-xs text-neutral-500">Intrinsic Value</dt>
+                      <dd className={`mt-0.5 text-sm ${isAverage ? 'font-semibold text-[#21324F]' : 'font-medium text-neutral-800'}`}>
+                        {result.intrinsicValue <= 0 ? 'N/A' : formatCurrency(result.intrinsicValue)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-neutral-500">Buy Below</dt>
+                      <dd className={`mt-0.5 text-sm ${isAverage ? 'font-semibold text-[#21324F]' : 'font-medium text-neutral-800'}`}>
+                        {result.buyBelow <= 0 ? 'N/A' : formatCurrency(result.buyBelow)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-neutral-500">Vs Intrinsic</dt>
+                      <dd className={`mt-0.5 text-sm font-medium ${result.discountPremium < 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {result.intrinsicValue <= 0
+                          ? 'N/A'
+                          : `${result.discountPremium > 0 ? '+' : ''}${result.discountPremium.toFixed(1)}%`}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-neutral-500">Vs Buy Below</dt>
+                      <dd className={`mt-0.5 text-sm font-medium ${result.buyBelowStatus !== undefined && result.buyBelowStatus < 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {result.buyBelowStatus !== undefined && result.buyBelow > 0
+                          ? `${result.buyBelowStatus > 0 ? '+' : ''}${result.buyBelowStatus.toFixed(1)}%`
+                          : 'N/A'}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              );
+            })}
+            {reverseDCFResult && stockData && (() => {
+              const { impliedGrowthRate, status, interpretation } = reverseDCFResult;
+              const isNotApplicable = status === 'not_applicable';
+              const impliedDisplay = isNotApplicable
+                ? 'N/A'
+                : status === 'above_max'
+                ? `>${impliedGrowthRate.toFixed(0)}%`
+                : status === 'below_min'
+                ? `<${impliedGrowthRate.toFixed(0)}%`
+                : `${impliedGrowthRate.toFixed(1)}%`;
+              const hasHistorical = stockData.growthRate > 0;
+              const historicalDisplay = hasHistorical ? `${stockData.growthRate.toFixed(1)}%` : 'N/A';
+              const gap = hasHistorical && status === 'solved'
+                ? parseFloat((impliedGrowthRate - stockData.growthRate).toFixed(1))
+                : null;
+              const gapDisplay = gap === null ? 'N/A' : `${gap > 0 ? '+' : ''}${gap.toFixed(1)} pts`;
+              const gapClass = gap === null ? 'text-neutral-600' : gap > 0 ? 'text-red-600' : 'text-green-600';
+
+              return (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                  <div className="mb-3 flex items-center">
+                    <Activity className="mr-1.5 h-3.5 w-3.5 text-blue-600" />
+                    <h4 className="text-sm font-semibold text-blue-900">Reverse DCF</h4>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    <div>
+                      <dt className="text-xs text-blue-600">Market-implied growth</dt>
+                      <dd className="mt-0.5 text-sm font-semibold text-blue-900">{impliedDisplay}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-blue-600">Historical growth</dt>
+                      <dd className="mt-0.5 text-sm font-semibold text-blue-900">{historicalDisplay}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-blue-600">Gap vs historical</dt>
+                      <dd className={`mt-0.5 text-sm font-semibold ${gapClass}`}>{gapDisplay}</dd>
+                    </div>
+                  </dl>
+                  <p className="mt-3 text-xs italic text-blue-800">{interpretation}</p>
+                </div>
+              );
+            })()}
+          </div>
+          <div className="hidden overflow-x-auto sm:block">
             <Table>
               <TableHeader>
                 <TableRow>
