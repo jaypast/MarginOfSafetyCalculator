@@ -101,13 +101,15 @@ export default function Sp500Changes() {
       const next: ChangesResponse = await res.json();
       setData(next);
       setSelected(current => current || next.quarters[0]?.quarter || "");
-      if (next.update.error) setError(next.update.error);
-      else if (force) {
+      if (force) {
         trackEvent('sp500_check_requested', {
           outcome: next.update.error ? 'error' : 'success',
           new_count: next.update.newCount,
           location: 'sp500_changes',
         });
+      }
+      if (next.update.error) setError(next.update.error);
+      else if (force) {
         toast({ title: next.update.newCount ? `${next.update.newCount} changes just added` : "S&P 500 changes are up to date" });
       }
     } catch (err) { setError(err instanceof Error ? err.message : "Refresh failed"); }

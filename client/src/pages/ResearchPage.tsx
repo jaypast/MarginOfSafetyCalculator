@@ -74,7 +74,10 @@ const ResearchPage: React.FC = () => {
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchScan = async (refresh = false) => {
-    trackEvent('research_scan_started', { refresh, location: 'research' });
+    const startsNewScan = refresh || !scanData || scanData.status !== 'scanning';
+    if (startsNewScan) {
+      trackEvent('research_scan_started', { refresh, location: 'research' });
+    }
     try {
       const url = refresh ? '/api/research/scan?refresh=true' : '/api/research/scan';
       const res = await fetch(url);

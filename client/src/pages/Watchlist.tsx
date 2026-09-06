@@ -526,7 +526,7 @@ const Watchlist: React.FC = () => {
                         const entry = rawEntries.find(item => item.id === id);
                         if (entry) removeMutation.mutate({ id, symbol: entry.symbol });
                       }}
-                      isRemoving={removeMutation.isPending && removeMutation.variables === entry.id}
+                      isRemoving={removeMutation.isPending && removeMutation.variables?.id === entry.id}
                       onOpen={handleOpen}
                     />
                   );
