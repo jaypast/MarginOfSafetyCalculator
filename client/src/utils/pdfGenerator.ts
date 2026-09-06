@@ -1,5 +1,6 @@
 import { StockData, ValuationParams, ValuationResult, MarginOfSafetyParams as MoSParams } from '@/lib/types';
 import { formatCurrency, formatPercent } from '@/lib/utils';
+import { computeSectorWarning, computeVmsScore } from '@/lib/vmsScore';
 
 export const generateCalculationsPDF = (
   stockData: StockData,
@@ -154,6 +155,28 @@ export const generateCalculationsPDF = (
       
       text += `${method}${intrinsicValue}${buyBelow}${premium}\n`;
     });
+    text += `\n`;
+
+    // Business model context (informational only; does not affect valuation scores)
+    const vmsAssessment = computeVmsScore(stockData);
+    const sectorWarning = computeSectorWarning(stockData, vmsAssessment.score);
+
+    text += `============ BUSINESS MODEL ASSESSMENT ============\n`;
+    text += `INFORMATIONAL / NON-SCORING — This assessment does not change any valuation result.\n`;
+    text += `VMS Score: ${vmsAssessment.score}/100\n`;
+    text += `Tier: ${vmsAssessment.tier}\n`;
+    text += `Signals Fired:\n`;
+    if (vmsAssessment.signals.length > 0) {
+      vmsAssessment.signals.forEach(signal => {
+        text += `- ${signal}\n`;
+      });
+    } else {
+      text += `- None based on the available financial data\n`;
+    }
+    if (sectorWarning) {
+      text += `Sector Warning: ${sectorWarning.title}\n`;
+      text += `${sectorWarning.message}\n`;
+    }
     text += `\n`;
     
     // Conclusion
