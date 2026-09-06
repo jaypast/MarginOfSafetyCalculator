@@ -4,6 +4,7 @@ import {
   watchlist, type WatchlistEntry,
   fundamentalsCache, type FundamentalsCacheRow,
   insiderCache, type InsiderCacheRow, type InsiderTrade,
+  sp500Changes, sp500SyncState, type Sp500ChangeRow, type Sp500SyncStateRow,
   type StockResponse,
 } from "@shared/schema";
 import { db } from "./db";
@@ -55,6 +56,11 @@ export interface IStorage {
     payload: InsiderTrade[],
     fetchedAt: Date,
   ): Promise<InsiderCacheRow>;
+
+  listSp500Changes(): Promise<Sp500ChangeRow[]>;
+  insertSp500Change(event: Omit<Sp500ChangeRow, "id" | "createdAt">): Promise<{ row: Sp500ChangeRow; inserted: boolean }>;
+  getSp500SyncState(): Promise<Sp500SyncStateRow | undefined>;
+  setSp500SyncState(date: string, checkedAt: Date): Promise<Sp500SyncStateRow>;
 }
 
 // Memory storage for fallback when database is not available.
@@ -65,11 +71,14 @@ export class MemStorage implements IStorage {
   private watchlistEntries: WatchlistEntry[] = [];
   private fundamentalsCacheRows: Map<string, FundamentalsCacheRow> = new Map();
   private insiderCacheRows: Map<string, InsiderCacheRow> = new Map();
+  private sp500ChangeRows: Sp500ChangeRow[] = [];
+  private sp500State: Sp500SyncStateRow | undefined;
   private nextUserId = 1;
   private nextFeedbackId = 1;
   private nextWatchlistId = 1;
   private nextFundamentalsCacheId = 1;
   private nextInsiderCacheId = 1;
+  private nextSp500ChangeId = 1;
   
   // User methods
   async getUser(id: number): Promise<User | undefined> {
@@ -229,6 +238,27 @@ export class MemStorage implements IStorage {
     };
     this.insiderCacheRows.set(upper, row);
     return row;
+  }
+
+  async listSp500Changes(): Promise<Sp500ChangeRow[]> {
+    return [...this.sp500ChangeRows].sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
+  }
+
+  async insertSp500Change(event: Omit<Sp500ChangeRow, "id" | "createdAt">): Promise<{ row: Sp500ChangeRow; inserted: boolean }> {
+    const existing = this.sp500ChangeRows.find(row => row.eventKey === event.eventKey);
+    if (existing) return { row: existing, inserted: false };
+    const row: Sp500ChangeRow = { ...event, id: this.nextSp500ChangeId++, createdAt: new Date() };
+    this.sp500ChangeRows.push(row);
+    return { row, inserted: true };
+  }
+
+  async getSp500SyncState(): Promise<Sp500SyncStateRow | undefined> {
+    return this.sp500State;
+  }
+
+  async setSp500SyncState(lastCheckedDate: string, lastCheckedAt: Date): Promise<Sp500SyncStateRow> {
+    this.sp500State = { id: 1, key: "daily", lastCheckedDate, lastCheckedAt };
+    return this.sp500State;
   }
 }
 
@@ -444,6 +474,34 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return row;
   }
+
+  async listSp500Changes(): Promise<Sp500ChangeRow[]> {
+    if (!db) return [];
+    return db.select().from(sp500Changes).orderBy(sp500Changes.effectiveDate);
+  }
+
+  async insertSp500Change(event: Omit<Sp500ChangeRow, "id" | "createdAt">): Promise<{ row: Sp500ChangeRow; inserted: boolean }> {
+    if (!db) throw new Error("Database connection not available");
+    const inserted = await db.insert(sp500Changes).values(event).onConflictDoNothing({ target: sp500Changes.eventKey }).returning();
+    if (inserted[0]) return { row: inserted[0], inserted: true };
+    const [existing] = await db.select().from(sp500Changes).where(eq(sp500Changes.eventKey, event.eventKey));
+    return { row: existing, inserted: false };
+  }
+
+  async getSp500SyncState(): Promise<Sp500SyncStateRow | undefined> {
+    if (!db) return undefined;
+    const [row] = await db.select().from(sp500SyncState).where(eq(sp500SyncState.key, "daily"));
+    return row;
+  }
+
+  async setSp500SyncState(lastCheckedDate: string, lastCheckedAt: Date): Promise<Sp500SyncStateRow> {
+    if (!db) throw new Error("Database connection not available");
+    const [row] = await db.insert(sp500SyncState)
+      .values({ key: "daily", lastCheckedDate, lastCheckedAt })
+      .onConflictDoUpdate({ target: sp500SyncState.key, set: { lastCheckedDate, lastCheckedAt } })
+      .returning();
+    return row;
+  }
 }
 
 // Handle the case when errors occur with the database storage
@@ -624,6 +682,30 @@ class SafeStorageWrapper implements IStorage {
       console.error("Database error in upsertInsiderCache, falling back to memory storage:", err);
     }
     return this.memStorage.upsertInsiderCache(symbol, payload, fetchedAt);
+  }
+
+  async listSp500Changes(): Promise<Sp500ChangeRow[]> {
+    try { if (this.dbStorage) return await this.dbStorage.listSp500Changes(); }
+    catch (err) { console.error("Database error listing S&P changes, using memory:", err); }
+    return this.memStorage.listSp500Changes();
+  }
+
+  async insertSp500Change(event: Omit<Sp500ChangeRow, "id" | "createdAt">): Promise<{ row: Sp500ChangeRow; inserted: boolean }> {
+    try { if (this.dbStorage) return await this.dbStorage.insertSp500Change(event); }
+    catch (err) { console.error("Database error inserting S&P change, using memory:", err); }
+    return this.memStorage.insertSp500Change(event);
+  }
+
+  async getSp500SyncState(): Promise<Sp500SyncStateRow | undefined> {
+    try { if (this.dbStorage) return await this.dbStorage.getSp500SyncState(); }
+    catch (err) { console.error("Database error reading S&P sync state, using memory:", err); }
+    return this.memStorage.getSp500SyncState();
+  }
+
+  async setSp500SyncState(date: string, checkedAt: Date): Promise<Sp500SyncStateRow> {
+    try { if (this.dbStorage) return await this.dbStorage.setSp500SyncState(date, checkedAt); }
+    catch (err) { console.error("Database error writing S&P sync state, using memory:", err); }
+    return this.memStorage.setSp500SyncState(date, checkedAt);
   }
 }
 

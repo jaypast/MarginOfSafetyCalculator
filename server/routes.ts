@@ -12,6 +12,7 @@ import { getStockData, acquireYfinanceSlot, releaseYfinanceSlot } from "./servic
 import { getInsiderTrades } from "./services/fmpFinance";
 import { getFedRateEnvironment } from "./services/fedRate";
 import { getScanState, startScanIfNeeded } from "./services/researchScan";
+import { getSp500ChangesResponse, syncSp500Changes } from "./services/sp500Changes";
 import { getMarketSentiment, getMostActiveStocks, RealTimeSentiment } from "./services/marketSentiment";
 import { getHistoricalData } from "./services/yahooFinance";
 import { getRapidApiHistoricalData } from "./services/rapidApiFinance";
@@ -104,6 +105,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } 
   } = {};
   const HISTORICAL_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours cache for historical data
+
+  app.get("/api/sp500/changes", async (req, res) => {
+    const shouldCheck = req.query.check === "true";
+    const sync = shouldCheck ? await syncSp500Changes(false) : { newCount: 0, checked: false };
+    const data = await getSp500ChangesResponse();
+    return res.json({ ...data, update: sync });
+  });
+
+  app.post("/api/sp500/changes/refresh", async (_req, res) => {
+    // Manual checks still honor the global daily gate. This prevents a public
+    // endpoint from being used to exhaust upstream provider quotas.
+    const sync = await syncSp500Changes(false);
+    const data = await getSp500ChangesResponse();
+    return res.json({ ...data, update: sync });
+  });
 
   // Historical data route - must be defined before the general stock route
   app.get('/api/stock/:symbol/history', async (req, res) => {

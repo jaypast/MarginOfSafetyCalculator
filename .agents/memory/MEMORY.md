@@ -1,3 +1,4 @@
 - [Prod-vs-dev bug reports](prod-vs-dev-bug-reports.md) — check the deployed bundle for recent feature markers before chasing "still broken" screenshots taken on the .replit.app domain.
 - [drizzle-zod $type columns](drizzle-zod-enum-columns.md) — createInsertSchema widens `$type<Union>()` varchars to z.string(); override with z.enum in the refinement arg or tsc breaks.
 - [Common-stock universe filtering](security-name-filtering.md) — `\bdue 20\b` never matches "due 2066"; test exclusion regexes against real security names, share them between generator and integrity test.
+- [S&P constituent history source](sp500-constituent-source.md) — FMP’s historical constituent endpoint is premium-gated; keep the public S&P-release mirror fallback explicit and validated.

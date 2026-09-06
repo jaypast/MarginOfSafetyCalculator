@@ -29,6 +29,11 @@ async function fmpGet(path: string, params: Record<string, string>): Promise<any
   return response.data;
 }
 
+export async function getHistoricalSp500Changes(): Promise<unknown> {
+  if (!FMP_API_KEY) throw new Error('FINANCIAL_MODELING_PREP_API_KEY not configured');
+  return fmpGet('/historical-sp500-constituent', {});
+}
+
 // FMP numeric fields can arrive as numbers, numeric strings, or null.
 function num(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;

@@ -344,3 +344,44 @@ export const insiderCache = pgTable("insider_cache", {
 export const insertInsiderCacheSchema = createInsertSchema(insiderCache).omit({ id: true });
 export type InsertInsiderCache = z.infer<typeof insertInsiderCacheSchema>;
 export type InsiderCacheRow = typeof insiderCache.$inferSelect;
+
+// ------------------------------------------------------------------------------
+// S&P 500 constituent-change snapshots
+// ------------------------------------------------------------------------------
+export interface Sp500EvaluationSnapshot {
+  status: "complete" | "incomplete" | "error";
+  evaluatedAt: string;
+  price: number | null;
+  intrinsicValue: number | null;
+  discountPct: number | null;
+  marginOfSafetyPct: number | null;
+  quality: "Exceptional" | "Good" | "Average" | "Speculative" | null;
+  meetsBuyCriteria: boolean;
+  reason: string;
+  dataSource: string;
+  fetchedAt: string | null;
+  dataWarnings: string[];
+}
+
+export const sp500Changes = pgTable("sp500_changes", {
+  id: serial("id").primaryKey(),
+  eventKey: varchar("event_key", { length: 160 }).notNull().unique(),
+  effectiveDate: varchar("effective_date", { length: 10 }).notNull(),
+  announcementDate: varchar("announcement_date", { length: 10 }),
+  changeType: varchar("change_type", { length: 10 }).$type<"addition" | "deletion">().notNull(),
+  symbol: varchar("symbol", { length: 16 }).notNull(),
+  companyName: text("company_name").notNull(),
+  membershipSource: varchar("membership_source", { length: 32 }).notNull().default("fmp"),
+  snapshot: jsonb("snapshot").$type<Sp500EvaluationSnapshot>().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const sp500SyncState = pgTable("sp500_sync_state", {
+  id: serial("id").primaryKey(),
+  key: varchar("key", { length: 32 }).notNull().unique(),
+  lastCheckedDate: varchar("last_checked_date", { length: 10 }).notNull(),
+  lastCheckedAt: timestamp("last_checked_at").notNull(),
+});
+
+export type Sp500ChangeRow = typeof sp500Changes.$inferSelect;
+export type Sp500SyncStateRow = typeof sp500SyncState.$inferSelect;
