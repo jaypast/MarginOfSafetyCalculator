@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { trackEvent } from "@/lib/analytics";
 
 interface Snapshot {
   status: "complete" | "incomplete" | "error";
@@ -101,7 +102,14 @@ export default function Sp500Changes() {
       setData(next);
       setSelected(current => current || next.quarters[0]?.quarter || "");
       if (next.update.error) setError(next.update.error);
-      else if (force) toast({ title: next.update.newCount ? `${next.update.newCount} changes just added` : "S&P 500 changes are up to date" });
+      else if (force) {
+        trackEvent('sp500_check_requested', {
+          outcome: next.update.error ? 'error' : 'success',
+          new_count: next.update.newCount,
+          location: 'sp500_changes',
+        });
+        toast({ title: next.update.newCount ? `${next.update.newCount} changes just added` : "S&P 500 changes are up to date" });
+      }
     } catch (err) { setError(err instanceof Error ? err.message : "Refresh failed"); }
     finally { setLoading(false); setRefreshing(false); }
   };
@@ -120,7 +128,10 @@ export default function Sp500Changes() {
         </div>
         <div className="flex items-center gap-2">
           {data?.quarters.length ? (
-            <select aria-label="Quarter" value={selected} onChange={e => setSelected(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm">
+            <select aria-label="Quarter" value={selected} onChange={e => {
+              setSelected(e.target.value);
+              trackEvent('sp500_quarter_selected', { quarter: e.target.value, location: 'sp500_changes' });
+            }} className="h-9 rounded-md border bg-white px-3 text-sm">
               {data.quarters.map(q => <option key={q.quarter}>{q.quarter}</option>)}
             </select>
           ) : null}

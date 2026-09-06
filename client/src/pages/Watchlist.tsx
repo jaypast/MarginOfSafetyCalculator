@@ -23,6 +23,7 @@ import { useLocation } from 'wouter';
 import { StockData, WatchlistEntry } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
 import { classifyBuyZone, priceVsBuyBelowPct, describeFreshness, type BuyZone } from '@/lib/watchlist';
+import { trackEvent } from '@/lib/analytics';
 import {
   calculateDCFDetailed,
   calculatePEDetailed,
@@ -356,11 +357,12 @@ const Watchlist: React.FC = () => {
   const scoringPending = sortByScore && (isRefreshing || stockResults.some((r) => r.isFetching));
 
   const removeMutation = useMutation({
-    mutationFn: async (id: number) => {
+    mutationFn: async ({ id, symbol }: { id: number; symbol: string }) => {
       await apiRequest('DELETE', `/api/watchlist/${id}`, undefined);
-      return id;
+      return { id, symbol };
     },
-    onSuccess: () => {
+    onSuccess: ({ symbol }) => {
+      trackEvent('watchlist_changed', { action: 'remove', ticker: symbol, location: 'watchlist' });
       queryClient.invalidateQueries({ queryKey: ['/api/watchlist'] });
     },
     onError: (err: Error) => {
@@ -520,7 +522,10 @@ const Watchlist: React.FC = () => {
                       entry={entry}
                       stock={r?.stock}
                       isLoading={!!r?.isLoading}
-                      onRemove={(id) => removeMutation.mutate(id)}
+                      onRemove={(id) => {
+                        const entry = rawEntries.find(item => item.id === id);
+                        if (entry) removeMutation.mutate({ id, symbol: entry.symbol });
+                      }}
                       isRemoving={removeMutation.isPending && removeMutation.variables === entry.id}
                       onOpen={handleOpen}
                     />

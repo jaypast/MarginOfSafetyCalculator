@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { ResearchStock, getCachedResearchData, saveResearchDataToCache, getCacheExpirationDate, getCacheLastUpdated } from '@/lib/researchCache';
 import { computeStockQuality } from '@/lib/researchCalculations';
 import { computeVmsScore } from '@/lib/vmsScore';
+import { trackEvent } from '@/lib/analytics';
 
 const MIN_DISCOUNT_PCT = 10;
 const POLL_INTERVAL_MS = 3000;
@@ -73,6 +74,7 @@ const ResearchPage: React.FC = () => {
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchScan = async (refresh = false) => {
+    trackEvent('research_scan_started', { refresh, location: 'research' });
     try {
       const url = refresh ? '/api/research/scan?refresh=true' : '/api/research/scan';
       const res = await fetch(url);
@@ -90,10 +92,21 @@ const ResearchPage: React.FC = () => {
         saveResearchDataToCache(converted);
         setLastUpdated(getCacheLastUpdated());
         setCacheExpiration(getCacheExpirationDate());
+        trackEvent('research_scan_completed', {
+          outcome: 'success',
+          result_count: converted.length,
+          location: 'research',
+        });
       } else if (data.status === 'done') {
         setStocks([]);
+        trackEvent('research_scan_completed', {
+          outcome: 'success',
+          result_count: 0,
+          location: 'research',
+        });
       }
     } catch (err) {
+      trackEvent('research_scan_completed', { outcome: 'error', result_count: 0, location: 'research' });
       console.error('Research scan fetch failed:', err);
     }
   };

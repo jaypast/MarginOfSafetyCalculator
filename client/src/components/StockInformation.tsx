@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Search, RefreshCcw, Database, Clock, AlertTriangle, AlertOctagon, BookmarkPlus, Check } from 'lucide-react';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { getMultibaggerSignalNotes } from '@/components/ValueInvestorVerdict';
+import { trackEvent } from '@/lib/analytics';
 
 // Map upstream IDs to short, user-friendly labels for the divergence popover.
 const SOURCE_DISPLAY_NAMES: Record<string, string> = {
@@ -100,6 +101,11 @@ const StockInformation: React.FC<StockInformationProps> = ({
       return res.json();
     },
     onSuccess: (_data, variables) => {
+      trackEvent('watchlist_changed', {
+        action: 'add',
+        ticker: variables.symbol,
+        location: 'calculator',
+      });
       setJustAddedSymbol(variables.symbol);
       queryClient.invalidateQueries({ queryKey: ['/api/watchlist'] });
       toast({
@@ -123,6 +129,21 @@ const StockInformation: React.FC<StockInformationProps> = ({
     }
   }, [stockData?.symbol, justAddedSymbol]);
 
+  const lastTrackedSearch = useRef<string | null>(null);
+  useEffect(() => {
+    if (!stockData) return;
+    const outcome = stockData.error ? 'error' : 'success';
+    const key = `${stockData.symbol}:${outcome}:${stockData.fetchedAt ?? ''}`;
+    if (lastTrackedSearch.current === key) return;
+    lastTrackedSearch.current = key;
+    trackEvent('stock_search_completed', {
+      outcome,
+      ticker: stockData.symbol,
+      source: stockData.dataSource ?? 'unknown',
+      location: 'calculator',
+    });
+  }, [stockData]);
+
   // NOTE: the app used to prefetch five popular tickers (AAPL, MSFT, ...) on
   // mount. Removed (Task #88): those five requests competed with the ticker
   // the user actually searched for — both for server capacity and for the
@@ -145,14 +166,13 @@ const StockInformation: React.FC<StockInformationProps> = ({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      if (inputValue) {
-        onFetchData(inputValue);
-      }
+      handleFetchData();
     }
   };
 
   const handleFetchData = () => {
     if (inputValue) {
+      trackEvent('stock_search_submitted', { ticker: inputValue, location: 'calculator' });
       onFetchData(inputValue);
     }
   };

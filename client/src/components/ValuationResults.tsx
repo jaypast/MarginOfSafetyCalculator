@@ -15,6 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { StockData, ValuationResult, CalculationMethod, ValuationParams, MarginOfSafetyParams, ReverseDCFResult } from '@/lib/types';
 import { formatCurrency, isETF, getInvestmentRecommendation } from '@/lib/utils';
 import { generateCalculationsPDF } from '@/utils/pdfGenerator';
+import { trackEvent } from '@/lib/analytics';
 import { calculateDiscountPremium } from '@/lib/calculators';
 import EntryTimingBanner from './EntryTimingBanner';
 import { computeVmsScore } from '@/lib/vmsScore';
@@ -436,6 +437,10 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                   marginOfSafetyParams,
                   valuationResults
                 );
+                trackEvent('report_generated', {
+                  ticker: stockData.symbol,
+                  location: 'valuation_results',
+                });
                 setReportContent(content);
                 setShowReportDialog(true);
               }}

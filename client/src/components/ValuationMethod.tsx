@@ -15,6 +15,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { StockData, ValuationParams, CalculationMethod } from '@/lib/types';
+import { trackEvent } from '@/lib/analytics';
 
 interface ValuationMethodProps {
   activeMethod: CalculationMethod;
@@ -56,19 +57,28 @@ const ValuationMethod: React.FC<ValuationMethodProps> = ({
       <div className="flex border border-neutral-200 rounded-lg overflow-hidden mb-4">
         <button
           className={`flex-1 py-2 text-sm font-medium ${activeMethod === 'dcf' ? 'bg-[#1A2942] text-white' : 'bg-white text-neutral-600 hover:bg-neutral-50'}`}
-          onClick={() => setActiveMethod('dcf')}
+          onClick={() => {
+            setActiveMethod('dcf');
+            trackEvent('valuation_method_changed', { method: 'dcf', location: 'calculator' });
+          }}
         >
           DCF
         </button>
         <button
           className={`flex-1 py-2 text-sm font-medium border-l border-neutral-200 ${activeMethod === 'pe' ? 'bg-[#1A2942] text-white' : 'bg-white text-neutral-600 hover:bg-neutral-50'}`}
-          onClick={() => setActiveMethod('pe')}
+          onClick={() => {
+            setActiveMethod('pe');
+            trackEvent('valuation_method_changed', { method: 'pe', location: 'calculator' });
+          }}
         >
           P/E Based
         </button>
         <button
           className={`flex-1 py-2 text-sm font-medium border-l border-neutral-200 ${activeMethod === 'graham' ? 'bg-[#1A2942] text-white' : 'bg-white text-neutral-600 hover:bg-neutral-50'}`}
-          onClick={() => setActiveMethod('graham')}
+          onClick={() => {
+            setActiveMethod('graham');
+            trackEvent('valuation_method_changed', { method: 'graham', location: 'calculator' });
+          }}
         >
           Graham
         </button>
