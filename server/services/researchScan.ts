@@ -1,5 +1,6 @@
 import { StockResponse } from '@shared/schema';
 import { getStockData } from './stockData';
+import { calculateIntrinsicValue } from '../../client/src/lib/researchCalculations';
 
 const TARGET_MIN_RESULTS    = 3;
 const PER_CALL_TIMEOUT_MS   = 8_000;       // abort per-symbol fetch after 8s
@@ -101,36 +102,11 @@ export function hasUsableQualityMetrics(data: StockResponse): boolean {
   );
 }
 
-// Server-side intrinsic value estimate. Used only as a discount gate;
-// the client re-computes the authoritative figure with the full calculator.
+// Server-side intrinsic value estimate. Keep this on the same calculator used
+// by the detail page so screens cannot disagree about whether a stock clears
+// the value gate.
 export function estimateIntrinsicValue(data: StockResponse): number {
-  const fcf = (data.fcfPerShare && data.fcfPerShare > 0)
-    ? data.fcfPerShare
-    : (data.eps || 0) * 0.75;
-  const eps = data.eps || 0;
-  const g   = Math.min((data.growthRate || 8) / 100, 0.25);
-  const r   = 0.10;
-  const terminal = 15;
-
-  let dcf = 0, cf = fcf;
-  for (let i = 1; i <= 10; i++) {
-    cf *= (1 + g);
-    dcf += cf / Math.pow(1 + r, i);
-  }
-  dcf += (cf * terminal) / Math.pow(1 + r, 10);
-
-  const pe = data.peRatio > 0 ? Math.min(data.peRatio, 25) : 15;
-  const peValue = eps * pe;
-
-  // Graham Number: sqrt(22.5 * EPS * BookValuePerShare)
-  const bvps = data.bookValuePerShare ?? 0;
-  const grahamNumber = (eps > 0 && bvps > 0)
-    ? Math.sqrt(22.5 * eps * bvps)
-    : 0;
-
-  const values = [dcf, peValue, grahamNumber].filter(v => v > 0);
-  if (values.length === 0) return 0;
-  return values.reduce((a, b) => a + b, 0) / values.length;
+  return calculateIntrinsicValue(data);
 }
 
 function shuffle<T>(arr: T[]): T[] {

@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../server/db", () => ({ db: null, pool: null }));
 
-import { isSp500DailyCheckDue, mergeMembershipChanges, normalizeSp500Changes, quarterForDate } from "../server/services/sp500Changes";
+import { evaluate, isSp500DailyCheckDue, mergeMembershipChanges, normalizeSp500Changes, quarterForDate } from "../server/services/sp500Changes";
+import { estimateIntrinsicValue } from "../server/services/researchScan";
 
 describe("S&P 500 change normalization", () => {
   it("splits an FMP replacement row into an addition and deletion", () => {
@@ -78,5 +79,34 @@ describe("S&P 500 daily refresh gate", () => {
 
   it("checks again on the next calendar date", () => {
     expect(isSp500DailyCheckDue("2026-09-06", "2026-09-07")).toBe(true);
+  });
+});
+
+describe("S&P 500 valuation gate", () => {
+  it("uses the same intrinsic-value calculation as the stock detail page", () => {
+    const redditLike = {
+      symbol: "RDDT",
+      name: "Reddit, Inc.",
+      price: 154.46,
+      eps: 2.25,
+      peRatio: 68.65,
+      fcfPerShare: 3.7,
+      growthRate: 20,
+      roe: 35,
+      debtToEquity: 0.4,
+      currentRatio: 2,
+      revenueGrowth: 25,
+      earningsStability: "High",
+      competitivePosition: "Strong",
+    };
+
+    const intrinsicValue = estimateIntrinsicValue(redditLike as any);
+    const snapshot = evaluate(redditLike as any);
+
+    // Reddit's market price is above the full calculator's average value;
+    // it must not be promoted to a positive S&P buy-screen result.
+    expect(intrinsicValue).toBeLessThan(redditLike.price);
+    expect(snapshot.meetsBuyCriteria).toBe(false);
+    expect(snapshot.reason).toContain("below estimated value");
   });
 });

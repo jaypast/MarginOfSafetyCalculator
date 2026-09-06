@@ -106,7 +106,7 @@ export function quarterForDate(date: string): string {
   return `${year} Q${Math.ceil(month / 3)}`;
 }
 
-function evaluate(data: StockResponse): Sp500EvaluationSnapshot {
+export function evaluate(data: StockResponse): Sp500EvaluationSnapshot {
   const evaluatedAt = new Date().toISOString();
   const warnings = [...(data.appliedAdjustments ?? [])];
   if (data.crossSourceDivergence?.fields.length) warnings.push("Financial-data providers disagree");

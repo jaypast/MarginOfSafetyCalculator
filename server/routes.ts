@@ -564,8 +564,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const INSIDER_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
     try {
-      // Check persistent cache first
-      const cached = await storage.getInsiderCache(upper);
+      // Check persistent cache first. A missing/unmigrated cache table must not
+      // prevent fresh FMP data from reaching the caller.
+      let cached;
+      try {
+        cached = await storage.getInsiderCache(upper);
+      } catch (err) {
+        console.warn(`insider cache read failed for ${upper}:`, (err as Error).message);
+      }
       if (cached) {
         const ageMs = Date.now() - new Date(cached.fetchedAt).getTime();
         if (ageMs < INSIDER_TTL_MS) {
