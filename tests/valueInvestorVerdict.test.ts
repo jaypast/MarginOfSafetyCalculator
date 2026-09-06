@@ -652,4 +652,154 @@ describe('ValueInvestorVerdict — gate logic', () => {
       expect(v.action).toBe('WATCH');
     });
   });
+
+  describe('decideVerdict — insider cluster-buy upgrade pathway', () => {
+    const methods = makeMethods([100, 100, 100]);
+
+    it('promotes WATCH → BUY when cluster-buy is true and all guards pass', () => {
+      const v = decideVerdict(
+        'Good',
+        'adequate',
+        'aggressive',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'neutral',
+        0,
+        0,
+        3,
+        true,
+      );
+      expect(v.action).toBe('BUY');
+      expect(v.rationale.toLowerCase()).toContain('insider');
+    });
+
+    it('keeps WATCH when cluster-buy is true but MoS is inadequate', () => {
+      const v = decideVerdict(
+        'Good',
+        'inadequate',
+        'reasonable',
+        makeAvg(100, 90),
+        methods,
+        false,
+        false,
+        'neutral',
+        0,
+        0,
+        3,
+        true,
+      );
+      expect(v.action).toBe('WATCH');
+    });
+
+    it('keeps WATCH when cluster-buy is true but quality is Speculative', () => {
+      const v = decideVerdict(
+        'Speculative',
+        'adequate',
+        'reasonable',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'neutral',
+        0,
+        0,
+        3,
+        true,
+      );
+      expect(v.action).toBe('WATCH');
+    });
+
+    it('keeps WATCH when cluster-buy is true but FCF per share is non-positive', () => {
+      const v = decideVerdict(
+        'Good',
+        'adequate',
+        'aggressive',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'neutral',
+        0,
+        0,
+        0,
+        true,
+      );
+      expect(v.action).toBe('WATCH');
+    });
+
+    it('keeps WATCH when cluster-buy is true but reverse-DCF is heroic', () => {
+      const v = decideVerdict(
+        'Good',
+        'adequate',
+        'heroic',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'neutral',
+        0,
+        0,
+        3,
+        true,
+      );
+      expect(v.action).toBe('WATCH');
+    });
+
+    it('keeps WATCH when cluster-buy is true but a modifier chip is active', () => {
+      const v = decideVerdict(
+        'Good',
+        'adequate',
+        'aggressive',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'neutral',
+        1,
+        0,
+        3,
+        true,
+      );
+      expect(v.action).toBe('WATCH');
+    });
+
+    it('keeps WATCH when cluster-buy is true but cash quality is negative', () => {
+      const v = decideVerdict(
+        'Good',
+        'adequate',
+        'aggressive',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'negative',
+        0,
+        0,
+        3,
+        true,
+      );
+      expect(v.action).toBe('WATCH');
+    });
+
+    it('keeps a base BUY as BUY without double-promotion', () => {
+      const v = decideVerdict(
+        'Good',
+        'adequate',
+        'reasonable',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'neutral',
+        0,
+        0,
+        3,
+        true,
+      );
+      expect(v.action).toBe('BUY');
+      expect(v.rationale.toLowerCase()).not.toContain('insider');
+    });
+  });
 });
