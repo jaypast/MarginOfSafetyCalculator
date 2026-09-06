@@ -551,4 +551,105 @@ describe('ValueInvestorVerdict — gate logic', () => {
       expect(legacy.action).toBe('BUY');
     });
   });
+
+  // -----------------------------------------------------------------
+  // Task #71 — VMS upgrade pathway (Task #70 additions)
+  // -----------------------------------------------------------------
+  describe('decideVerdict — VMS upgrade pathway', () => {
+    const methods = makeMethods([100, 100, 100]);
+
+    // Good + adequate + aggressive → base WATCH (market expectations aggressive
+    // but MoS is met). With vmsScore ≥ 75 + neutral cashQuality + positive FCF
+    // the VMS gate should promote to BUY.
+    it('promotes WATCH → BUY when VMS score ≥ 75, adequate MoS, neutral cashQuality', () => {
+      const v = decideVerdict(
+        'Good',
+        'adequate',
+        'aggressive',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'neutral',  // cashQuality — positive but below 5% threshold
+        0,          // modifierChipCount
+        80,         // vmsScore ≥ 75
+        3,          // fcfPerShare > 0
+      );
+      expect(v.action).toBe('BUY');
+      expect(v.rationale.toLowerCase()).toContain('vms');
+    });
+
+    it('does NOT promote when VMS score ≥ 75 but reverse-DCF is heroic', () => {
+      // Good + adequate + heroic → base WATCH (heroic but quality ≥ Good).
+      // VMS gate checks realityCheck !== 'heroic' — must not fire.
+      const v = decideVerdict(
+        'Good',
+        'adequate',
+        'heroic',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'neutral',
+        0,
+        80,
+        3,
+      );
+      expect(v.action).toBe('WATCH');
+    });
+
+    it('does NOT promote when VMS score ≥ 75 but cashQuality is negative', () => {
+      // cashQuality 'negative' blocks the VMS gate (cashQuality !== 'negative' check).
+      const v = decideVerdict(
+        'Good',
+        'adequate',
+        'aggressive',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'negative',
+        0,
+        80,
+        3,
+      );
+      expect(v.action).toBe('WATCH');
+    });
+
+    it('does NOT promote when VMS score ≥ 75 but modifierChipCount > 0', () => {
+      const v = decideVerdict(
+        'Good',
+        'adequate',
+        'aggressive',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'neutral',
+        1,   // one modifier chip active
+        80,
+        3,
+      );
+      expect(v.action).toBe('WATCH');
+    });
+
+    it('does NOT promote when VMS score ≥ 75 but quality is Speculative', () => {
+      // Speculative + adequate + reasonable → base WATCH (quality gate).
+      // VMS gate checks quality !== 'Speculative' — must not fire.
+      const v = decideVerdict(
+        'Speculative',
+        'adequate',
+        'reasonable',
+        makeAvg(100, 70),
+        methods,
+        false,
+        false,
+        'neutral',
+        0,
+        80,
+        3,
+      );
+      expect(v.action).toBe('WATCH');
+    });
+  });
 });
