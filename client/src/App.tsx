@@ -32,7 +32,7 @@ function Router() {
   }, [toast]);
   return (
     <>
-      <nav className="bg-[#1A2942] text-white p-4">
+      <nav className="bg-[#1A2942] text-white p-4" data-testid="mobile-nav">
         <div className="container mx-auto flex flex-row justify-between items-center gap-2">
           <Link href="/" className="text-base sm:text-xl font-bold whitespace-nowrap shrink-0">
             <span className="sm:hidden">MoS Calc</span>
