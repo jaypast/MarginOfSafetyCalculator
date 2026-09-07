@@ -2,7 +2,8 @@ import type { Sp500ChangeRow, Sp500EvaluationRevisionRow, Sp500EvaluationSnapsho
 import { storage } from "../storage";
 import { getHistoricalSp500Changes } from "./fmpFinance";
 import { getStockData } from "./stockData";
-import { computeQuality, estimateIntrinsicValue, hasUsableQualityMetrics } from "./researchScan";
+import { estimateIntrinsicValue, hasUsableQualityMetrics } from "./researchScan";
+import { evaluateCompanyQuality, isResearchQuality } from "@shared/companyQuality";
 import axios from "axios";
 
 export interface NormalizedSp500Change {
@@ -114,28 +115,29 @@ export function evaluate(data: StockResponse): Sp500EvaluationSnapshot {
   if (!data.price || data.price <= 0 || !hasUsableQualityMetrics(data)) {
     return { status: "incomplete", evaluatedAt, price: data.price || null, intrinsicValue: null, discountPct: null, marginOfSafetyPct: null, quality: null, meetsBuyCriteria: false, reason: "Insufficient reliable financial data", dataSource: data.dataSource ?? "unknown", fetchedAt: data.fetchedAt ?? null, dataWarnings: warnings };
   }
-  const quality = computeQuality(data);
-  const broaderQuality = quality ?? (data.roe < 10 || data.debtToEquity > 2 || data.currentRatio < 1 ? "Speculative" : "Average");
+  const qualityEvaluation = evaluateCompanyQuality(data);
+  const broaderQuality = qualityEvaluation.quality;
   const intrinsicValue = estimateIntrinsicValue(data);
   const discountPct = intrinsicValue > 0 ? ((intrinsicValue - data.price) / intrinsicValue) * 100 : 0;
-  const meets = !!quality && discountPct >= 10 && warnings.length === 0;
+  const meets = isResearchQuality(broaderQuality) && discountPct >= 10 && warnings.length === 0;
   const valuationReason = discountPct < 0
     ? `Price is ${Math.abs(discountPct).toFixed(1)}% above estimated value`
     : `Only ${discountPct.toFixed(1)}% below estimated value; requires at least 10%`;
   const reason = discountPct < 0 ? `${valuationReason}${warnings.length ? "; data quality also needs review" : ""}`
     : warnings.length ? "Data quality needs review"
-    : !quality ? `${broaderQuality} quality does not clear the Good threshold`
+    : !isResearchQuality(broaderQuality) ? `${broaderQuality} quality does not clear the Good threshold`
     : discountPct < 10 ? valuationReason
-    : `${quality} quality and ${discountPct.toFixed(1)}% below estimated value`;
+    : `${broaderQuality} quality and ${discountPct.toFixed(1)}% below estimated value`;
   return {
     status: "complete", evaluatedAt, price: data.price, intrinsicValue: Number(intrinsicValue.toFixed(2)),
     discountPct: Number(discountPct.toFixed(1)), marginOfSafetyPct: Number(Math.max(0, discountPct).toFixed(1)),
-    quality: broaderQuality, meetsBuyCriteria: meets, reason, dataSource: data.dataSource ?? "unknown",
+    quality: broaderQuality, qualityVersion: qualityEvaluation.version, qualityReasons: qualityEvaluation.reasons,
+    meetsBuyCriteria: meets, reason, dataSource: data.dataSource ?? "unknown",
     fetchedAt: data.fetchedAt ?? null, dataWarnings: warnings,
   };
 }
 
-export const SP500_CALCULATION_VERSION = 3;
+export const SP500_CALCULATION_VERSION = 4;
 export const SP500_LEGACY_CALCULATION_VERSION = 1;
 const REVISION_BATCH_SIZE = 6;
 

@@ -1,3 +1,5 @@
+import type { CompanyQuality } from '@shared/companyQuality';
+
 export type DataSource =
   | 'yfinance'
   | 'rapidapi'
@@ -134,8 +136,11 @@ export interface ValuationResult {
 }
 
 export interface CompanyQualityResult {
-  quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative';
+  quality: CompanyQuality;
   recommendedMarginOfSafety: string;
+  score: number;
+  reasons: string[];
+  version: number;
 }
 
 export type CalculationMethod = 'dcf' | 'pe' | 'graham';

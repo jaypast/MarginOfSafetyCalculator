@@ -1,6 +1,7 @@
 import { StockResponse } from '@shared/schema';
 import { getStockData } from './stockData';
 import { calculateIntrinsicValue } from '../../client/src/lib/researchCalculations';
+import { evaluateCompanyQuality, isResearchQuality } from '@shared/companyQuality';
 
 const TARGET_MIN_RESULTS    = 3;
 const PER_CALL_TIMEOUT_MS   = 8_000;       // abort per-symbol fetch after 8s
@@ -27,6 +28,8 @@ export interface ScanCandidate {
   grossMargin: number | null;
   operatingMargin: number | null;
   quality: ScanQuality;
+  qualityVersion: number;
+  qualityReasons: string[];
   dataSource: string;
   intrinsicValue: number;
   discountPct: number;
@@ -83,23 +86,15 @@ const SCAN_POOL: string[] = [
 // both scans grade companies identically.
 // ---------------------------------------------------------------------------
 export function computeQuality(data: StockResponse): ScanQuality | null {
-  const roe = data.roe ?? 0;
-  const dte = data.debtToEquity ?? 0;
-  const cr  = data.currentRatio ?? 0;
-  if (roe > 20 && dte < 0.5 && cr > 1.5) return 'Exceptional';
-  if (roe > 15 && dte < 1   && cr > 1.2) return 'Good';
-  return null;
+  const quality = evaluateCompanyQuality(data).quality;
+  return isResearchQuality(quality) ? quality : null;
 }
 
 // Returns true when the quality metrics needed for scoring are present.
 // Accepts fallback data for well-specified large-caps (AAPL, MSFT, V, etc.)
 // which carry valid ROE / D-E / currentRatio in the static dataset.
 export function hasUsableQualityMetrics(data: StockResponse): boolean {
-  return (
-    typeof data.roe === 'number'          && data.roe !== 0 &&
-    typeof data.debtToEquity === 'number' &&
-    typeof data.currentRatio === 'number' && data.currentRatio > 0
-  );
+  return evaluateCompanyQuality(data).confidence === 'high';
 }
 
 // Server-side intrinsic value estimate. Keep this on the same calculator used
@@ -186,8 +181,9 @@ async function runScan(): Promise<void> {
         continue;
       }
 
-      const quality = computeQuality(data);
-      if (!quality) continue;
+      const qualityEvaluation = evaluateCompanyQuality(data);
+      const quality = qualityEvaluation.quality;
+      if (!isResearchQuality(quality)) continue;
 
       const iv = estimateIntrinsicValue(data);
       const discountPct = iv > 0 ? ((iv - data.price) / iv) * 100 : 0;
@@ -201,14 +197,16 @@ async function runScan(): Promise<void> {
         peRatio: data.peRatio,
         fcfPerShare: data.fcfPerShare,
         growthRate: data.growthRate,
-        roe: data.roe ?? 0,
-        debtToEquity: data.debtToEquity ?? 0,
-        currentRatio: data.currentRatio ?? 0,
-        revenueGrowth: data.revenueGrowth ?? 0,
-        earningsStability: data.earningsStability ?? 'Medium',
+        roe: data.roe,
+        debtToEquity: data.debtToEquity,
+        currentRatio: data.currentRatio,
+        revenueGrowth: data.revenueGrowth,
+        earningsStability: data.earningsStability,
         grossMargin: data.grossMargin ?? null,
         operatingMargin: data.operatingMargin ?? null,
         quality,
+        qualityVersion: qualityEvaluation.version,
+        qualityReasons: qualityEvaluation.reasons,
         dataSource: data.dataSource || 'unknown',
         intrinsicValue: parseFloat(iv.toFixed(2)),
         discountPct: parseFloat(discountPct.toFixed(1)),

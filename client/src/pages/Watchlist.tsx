@@ -39,6 +39,7 @@ import {
   type InsiderSignal,
   type InsiderTrade,
 } from '@/lib/insiderSignal';
+import { evaluateCompanyQuality } from '@shared/companyQuality';
 
 // ---------------------------------------------------------------------------
 // Exported helpers — used by production code and unit tests alike so the
@@ -183,6 +184,7 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, insiderSignal
   const scoreLowConfidence = scoreResult?.lowConfidence ?? false;
   const scoreBand = compositeBand(score);
   const vmsScore = stockOk ? computeVmsScore(stock!).score : 0;
+  const companyQuality = stockOk ? evaluateCompanyQuality(stock!).quality : null;
   const vmsBadge = vmsScore >= 75
     ? {
         label: 'VMS-Like',
@@ -247,6 +249,13 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, insiderSignal
                 {vmsBadge.label}
               </span>
             ) : null}
+            <span
+              className="inline-flex shrink-0 items-center rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[10px] font-medium text-neutral-700"
+              data-testid={`watchlist-quality-${entry.symbol}`}
+              title="Canonical six-factor company quality"
+            >
+              Quality: {companyQuality ?? 'Unavailable'}
+            </span>
           </div>
         ) : (
           <span className="text-neutral-400">—</span>

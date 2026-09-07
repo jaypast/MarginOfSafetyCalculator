@@ -215,6 +215,7 @@ describe('fallback data handling', () => {
       symbol: 'MSFT', name: 'Microsoft', price: 100,
       eps: 10, peRatio: 25, fcfPerShare: 8, growthRate: 15,
       roe: 25, debtToEquity: 0.4, currentRatio: 2.0,
+      revenueGrowth: 18, earningsStability: 'High', competitivePosition: 'Strong',
       dataSource: 'fallback', error: null,
     } as any;
 

@@ -14,6 +14,8 @@ import { ChevronDown, ChevronUp, Calendar, TrendingUp, TrendingDown, Minus } fro
 import { StockSentiment, AnalyzedStock } from '@/lib/sentimentAnalysis';
 import { formatCurrency, formatPercent } from '@/lib/utils';
 import { StockData } from '@/lib/types';
+import { evaluateCompanyQuality } from '@shared/companyQuality';
+import { getDefaultMarginOfSafety } from '@/lib/utils';
 import { 
   calculateDCF, 
   calculateGraham, 
@@ -103,7 +105,7 @@ const TopSentimentResearch: React.FC = () => {
                 intrinsicValue: null,
                 buyBelowPrice: null,
                 valueGap: null,
-                quality: 'Average' as 'Average'
+                quality: null
               };
             }
             
@@ -119,7 +121,7 @@ const TopSentimentResearch: React.FC = () => {
                 intrinsicValue: null,
                 buyBelowPrice: null,
                 valueGap: null,
-                quality: 'Average' as 'Average'
+                quality: null
               };
             }
             
@@ -154,19 +156,9 @@ const TopSentimentResearch: React.FC = () => {
             }
             
             // Determine company quality
-            let quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative' = 'Average';
+            const quality = evaluateCompanyQuality(stockData).quality;
             let marginOfSafety = 25; // Default 25%
-            
-            if (stockData.roe > 20 && stockData.debtToEquity < 0.5 && stockData.currentRatio > 1.5) {
-              quality = 'Exceptional';
-              marginOfSafety = 15; // 15% for exceptional companies
-            } else if (stockData.roe > 15 && stockData.debtToEquity < 1 && stockData.currentRatio > 1.2) {
-              quality = 'Good';
-              marginOfSafety = 20; // 20% for good companies
-            } else if (stockData.roe < 10 || stockData.debtToEquity > 2 || stockData.currentRatio < 1) {
-              quality = 'Speculative';
-              marginOfSafety = 40; // 40% for speculative companies
-            }
+            if (quality) marginOfSafety = getDefaultMarginOfSafety(quality);
             
             // Calculate buy-below price with MoS
             const buyBelowPrice = intrinsicValue > 0 ? calculateBuyBelow(intrinsicValue, marginOfSafety) : null;
@@ -198,7 +190,7 @@ const TopSentimentResearch: React.FC = () => {
               intrinsicValue: null,
               buyBelowPrice: null,
               valueGap: null,
-              quality: 'Average' as 'Average'
+                quality: null
             };
           }
         })
@@ -215,9 +207,11 @@ const TopSentimentResearch: React.FC = () => {
           // Both undervalued, compare by quality then by value gap
           if (a.valueGap < 0 && b.valueGap < 0) {
             // Higher quality comes first
-            const qualityOrder = { 'Exceptional': 1, 'Good': 2, 'Average': 3, 'Speculative': 4 };
-            if (qualityOrder[a.quality] !== qualityOrder[b.quality]) {
-              return qualityOrder[a.quality] - qualityOrder[b.quality];
+            const qualityOrder = { 'Exceptional': 1, 'Good': 2, 'Average': 3, 'Speculative': 4 } as const;
+            const aQuality = a.quality ? qualityOrder[a.quality] : 5;
+            const bQuality = b.quality ? qualityOrder[b.quality] : 5;
+            if (aQuality !== bQuality) {
+              return aQuality - bQuality;
             }
             // If same quality, more undervalued comes first
             return a.valueGap - b.valueGap;
@@ -368,8 +362,8 @@ const TopSentimentResearch: React.FC = () => {
                             {stock.price > 0 ? formatCurrency(stock.price) : "N/A"}
                           </TableCell>
                           <TableCell className="text-right">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getQualityColor(stock.quality)}`}>
-                              {stock.quality}
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getQualityColor(stock.quality ?? '')}`}>
+                              {stock.quality ?? 'Unavailable'}
                             </span>
                           </TableCell>
                           <TableCell className="text-right font-medium">

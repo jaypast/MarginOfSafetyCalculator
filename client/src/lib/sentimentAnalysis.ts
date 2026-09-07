@@ -21,7 +21,7 @@ export interface AnalyzedStock {
   intrinsicValue: number | null;
   buyBelowPrice: number | null;
   valueGap: number | null;
-  quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative';
+  quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative' | null;
 }
 
 // Use top 20 popular stocks as the source pool

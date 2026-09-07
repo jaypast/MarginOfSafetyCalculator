@@ -7,7 +7,6 @@ import { formatCurrency } from '@/lib/utils';
 import { AlertTriangle, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ResearchStock, getCachedResearchData, saveResearchDataToCache, getCacheExpirationDate, getCacheLastUpdated } from '@/lib/researchCache';
-import { computeStockQuality } from '@/lib/researchCalculations';
 import { computeVmsScore } from '@/lib/vmsScore';
 import { trackEvent } from '@/lib/analytics';
 
@@ -30,6 +29,8 @@ interface ScanCandidate {
   grossMargin: number | null;
   operatingMargin: number | null;
   quality: 'Exceptional' | 'Good';
+  qualityVersion: number;
+  qualityReasons: string[];
   dataSource: string;
   intrinsicValue: number;
   discountPct: number;
@@ -61,6 +62,8 @@ function candidateToResearchStock(c: ScanCandidate): ResearchStock {
     intrinsicValue: c.intrinsicValue,
     discount: c.discountPct,
     quality: c.quality,
+    qualityVersion: c.qualityVersion,
+    qualityReasons: c.qualityReasons,
     vmsScore: score,
   };
 }
@@ -251,7 +254,11 @@ const ResearchPage: React.FC = () => {
                       <TableCell className="text-right text-green-600 font-medium">-{stock.discount.toFixed(1)}%</TableCell>
                       <TableCell>
                         <div className="flex flex-wrap items-center gap-1">
-                          <Badge variant="outline" className={getQualityBadgeColor(stock.quality)}>
+                          <Badge
+                            variant="outline"
+                            className={getQualityBadgeColor(stock.quality)}
+                            title={stock.qualityReasons?.join(' · ')}
+                          >
                             {stock.quality}
                           </Badge>
                           {(stock.vmsScore ?? 0) >= 75 && (
@@ -281,7 +288,7 @@ const ResearchPage: React.FC = () => {
           <div className="mt-6 text-xs text-neutral-500 space-y-1">
             {lastUpdated && <p>Last updated: {lastUpdated}</p>}
             {cacheExpiration && <p>Next full refresh: {cacheExpiration}</p>}
-            <p>Quality: Exceptional = ROE &gt; 20%, D/E &lt; 0.5, current ratio &gt; 1.5 · Good = ROE &gt; 15%, D/E &lt; 1, current ratio &gt; 1.2</p>
+            <p>Quality uses ROE, debt, liquidity, revenue growth, earnings stability, and competitive position. Severe leverage, weak liquidity, or ROE below 10% forces a Speculative rating.</p>
             <p>Discount = gap between current price and average DCF / P/E / Graham intrinsic value. Only gaps ≥ {MIN_DISCOUNT_PCT}% shown.</p>
             <p className="font-medium">Server scans the Russell 3000 one company at a time to avoid API rate limits. Results are cached for 24 hours.</p>
           </div>

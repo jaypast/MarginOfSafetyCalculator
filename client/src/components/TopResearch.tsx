@@ -58,6 +58,7 @@ const TopResearch = () => {
       }
       
       const quality = computeStockQuality(data);
+      if (!quality) return null;
 
       return {
         symbol: data.symbol,

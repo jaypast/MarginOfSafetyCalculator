@@ -356,6 +356,8 @@ export interface Sp500EvaluationSnapshot {
   discountPct: number | null;
   marginOfSafetyPct: number | null;
   quality: "Exceptional" | "Good" | "Average" | "Speculative" | null;
+  qualityVersion?: number;
+  qualityReasons?: string[];
   meetsBuyCriteria: boolean;
   reason: string;
   dataSource: string;

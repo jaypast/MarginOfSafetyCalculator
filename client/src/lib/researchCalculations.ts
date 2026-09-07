@@ -1,29 +1,22 @@
 import { StockData, ValuationParams, ValuationResult } from './types';
 import { calculateDCF, calculatePE, calculateGraham, calculateAverageValuation, calculateBuyBelow, calculateDiscountPremium, calculateBuyBelowStatus } from './calculators';
+import { evaluateCompanyQuality, type CompanyQuality } from '@shared/companyQuality';
 
-export type StockQuality = 'Exceptional' | 'Good' | 'Average' | 'Speculative';
+export type StockQuality = CompanyQuality;
 
 /**
- * Shared quality scorer used by both the Research page and TopResearch component.
- * Grades are based on return on equity, debt load, and liquidity.
- *   Exceptional — ROE > 20%, D/E < 0.5, current ratio > 1.5
- *   Good        — ROE > 15%, D/E < 1,   current ratio > 1.2
- *   Speculative — ROE < 10%  OR  D/E > 2  OR  current ratio < 1
- *   Average     — everything else
+ * Compatibility adapter for the canonical shared six-factor quality evaluator.
+ * Returns null when any required input is missing or invalid.
  */
 export function computeStockQuality(stockData: {
   roe?: number | null;
   debtToEquity?: number | null;
   currentRatio?: number | null;
-}): StockQuality {
-  const roe = stockData.roe ?? 0;
-  const dte = stockData.debtToEquity ?? 0;
-  const cr  = stockData.currentRatio ?? 0;
-
-  if (roe > 20 && dte < 0.5 && cr > 1.5) return 'Exceptional';
-  if (roe > 15 && dte < 1   && cr > 1.2) return 'Good';
-  if (roe < 10 || dte > 2   || cr < 1)   return 'Speculative';
-  return 'Average';
+  revenueGrowth?: number | null;
+  earningsStability?: string | null;
+  competitivePosition?: string | null;
+}): StockQuality | null {
+  return evaluateCompanyQuality(stockData).quality;
 }
 
 /**

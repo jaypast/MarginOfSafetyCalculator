@@ -1,6 +1,7 @@
 import { StockData, ValuationParams, ValuationResult, MarginOfSafetyParams as MoSParams } from '@/lib/types';
 import { formatCurrency, formatPercent } from '@/lib/utils';
 import { computeSectorWarning, computeVmsScore } from '@/lib/vmsScore';
+import { evaluateCompanyQuality } from '@shared/companyQuality';
 
 export const generateCalculationsPDF = (
   stockData: StockData,
@@ -23,6 +24,9 @@ export const generateCalculationsPDF = (
     text += `Return on Equity: ${formatPercent(stockData.roe)}\n`;
     text += `Debt to Equity: ${stockData.debtToEquity.toFixed(2)}\n`;
     text += `Current Ratio: ${stockData.currentRatio.toFixed(2)}\n`;
+    const qualityEvaluation = evaluateCompanyQuality(stockData);
+    text += `Company Quality: ${qualityEvaluation.quality ?? 'Unavailable'} (quality model v${qualityEvaluation.version})\n`;
+    text += `Quality Basis: ${qualityEvaluation.reasons.join('; ')}\n`;
     text += `Margin of Safety Applied: ${formatPercent(marginOfSafetyParams.marginOfSafety)}\n\n`;
     
     // DCF Calculation Section

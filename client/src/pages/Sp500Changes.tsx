@@ -16,6 +16,8 @@ interface Snapshot {
   discountPct: number | null;
   marginOfSafetyPct: number | null;
   quality: string | null;
+  qualityVersion?: number;
+  qualityReasons?: string[];
   meetsBuyCriteria: boolean;
   reason: string;
   dataSource: string;
@@ -69,7 +71,13 @@ function ChangeCard({ change }: { change: Change }) {
           <div><dt className="text-neutral-500">Price</dt><dd className="font-medium">{s.price == null ? "—" : formatCurrency(s.price)}</dd></div>
           <div><dt className="text-neutral-500">Intrinsic value</dt><dd className="font-medium">{s.intrinsicValue == null ? "—" : formatCurrency(s.intrinsicValue)}</dd></div>
           <div><dt className="text-neutral-500">Margin of safety</dt><dd className="font-medium">{s.marginOfSafetyPct == null ? "—" : `${s.marginOfSafetyPct.toFixed(1)}%`}</dd></div>
-          <div><dt className="text-neutral-500">Quality</dt><dd className="font-medium">{s.quality ?? "Unavailable"}</dd></div>
+          <div>
+            <dt className="text-neutral-500">Quality</dt>
+            <dd className="font-medium" title={s.qualityReasons?.join(" · ")}>
+              {s.quality ?? "Unavailable"}
+              {s.qualityVersion ? <span className="ml-1 text-[10px] font-normal text-neutral-400">v{s.qualityVersion}</span> : null}
+            </dd>
+          </div>
         </dl>
         <p className="mt-3 text-sm text-neutral-700">{s.reason}</p>
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">

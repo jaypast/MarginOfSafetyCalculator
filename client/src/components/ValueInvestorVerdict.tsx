@@ -21,7 +21,7 @@ import {
   MarginOfSafetyParams,
   FedRateResponse,
 } from '@/lib/types';
-import { isETF, getRecommendedMarginOfSafety } from '@/lib/utils';
+import { isETF, getDefaultMarginOfSafety, getRecommendedMarginOfSafety } from '@/lib/utils';
 import { computeVmsScore, VmsTier } from '@/lib/vmsScore';
 import { type InsiderSignalTier } from '@/lib/insiderSignal';
 
@@ -60,16 +60,6 @@ interface Risk {
   detail: string;
   severity: number;
 }
-
-const QUALITY_DEFAULT_MOS: Record<
-  'Exceptional' | 'Good' | 'Average' | 'Speculative',
-  number
-> = {
-  Exceptional: 20,
-  Good: 30,
-  Average: 38,
-  Speculative: 45,
-};
 
 const describeMoat = (
   competitivePosition: string,
@@ -865,7 +855,7 @@ const ValueInvestorVerdict: React.FC<ValueInvestorVerdictProps> = ({
   const recommendedMosLabel = quality
     ? getRecommendedMarginOfSafety(quality)
     : '—';
-  const recommendedMosNumeric = quality ? QUALITY_DEFAULT_MOS[quality] : marginOfSafetyParams.marginOfSafety;
+  const recommendedMosNumeric = quality ? getDefaultMarginOfSafety(quality) : marginOfSafetyParams.marginOfSafety;
 
   const heavyAdjustments = valuationResults
     .filter(r => r.method !== 'Average')

@@ -1,5 +1,9 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import {
+  evaluateCompanyQuality,
+  type CompanyQuality,
+} from "@shared/companyQuality";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -29,50 +33,17 @@ export const getCompanyQuality = (
   revenueGrowth: number,
   earningsStability: string,
   competitivePosition: string
-): 'Exceptional' | 'Good' | 'Average' | 'Speculative' => {
-  // This is a simplified logic to determine company quality
-  let score = 0;
-  
-  // ROE scoring
-  if (roe >= 30) score += 4;
-  else if (roe >= 20) score += 3;
-  else if (roe >= 15) score += 2;
-  else if (roe >= 10) score += 1;
-  
-  // Debt to Equity scoring
-  if (debtToEquity < 0.3) score += 4;
-  else if (debtToEquity < 0.5) score += 3;
-  else if (debtToEquity < 1.0) score += 2;
-  else if (debtToEquity < 1.5) score += 1;
-  
-  // Current Ratio scoring
-  if (currentRatio >= 2.0) score += 3;
-  else if (currentRatio >= 1.5) score += 2;
-  else if (currentRatio >= 1.0) score += 1;
-  
-  // Revenue Growth scoring
-  if (revenueGrowth >= 15) score += 3;
-  else if (revenueGrowth >= 10) score += 2;
-  else if (revenueGrowth >= 5) score += 1;
-  
-  // Earnings Stability scoring
-  if (earningsStability === 'High') score += 3;
-  else if (earningsStability === 'Medium') score += 2;
-  else if (earningsStability === 'Low') score += 1;
-  
-  // Competitive Position scoring
-  if (competitivePosition === 'Strong') score += 3;
-  else if (competitivePosition === 'Good') score += 2;
-  else if (competitivePosition === 'Average') score += 1;
-  
-  // Determine quality category based on score
-  if (score >= 16) return 'Exceptional';
-  else if (score >= 12) return 'Good';
-  else if (score >= 8) return 'Average';
-  else return 'Speculative';
-};
+): CompanyQuality | null =>
+  evaluateCompanyQuality({
+    roe,
+    debtToEquity,
+    currentRatio,
+    revenueGrowth,
+    earningsStability,
+    competitivePosition,
+  }).quality;
 
-export const getRecommendedMarginOfSafety = (quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative'): string => {
+export const getRecommendedMarginOfSafety = (quality: CompanyQuality): string => {
   switch (quality) {
     case 'Exceptional':
       return '15-25%';
@@ -87,7 +58,7 @@ export const getRecommendedMarginOfSafety = (quality: 'Exceptional' | 'Good' | '
   }
 };
 
-export const getDefaultMarginOfSafety = (quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative'): number => {
+export const getDefaultMarginOfSafety = (quality: CompanyQuality): number => {
   switch (quality) {
     case 'Exceptional':
       return 20;

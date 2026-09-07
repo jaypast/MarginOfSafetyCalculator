@@ -33,12 +33,14 @@ import {
   calculateBuyBelowStatus,
   calculateReverseDCFDetailed
 } from '@/lib/calculators';
-import { getCompanyQuality, getRecommendedMarginOfSafety, getDefaultMarginOfSafety } from '@/lib/utils';
+import { getRecommendedMarginOfSafety, getDefaultMarginOfSafety } from '@/lib/utils';
 import SectorWarningCard from './SectorWarningCard';
 import VmsEducationCard from './VmsEducationCard';
 import { computeVmsScore, computeSectorWarning } from '@/lib/vmsScore';
 import { computeInsiderSignal, type InsiderSignal } from '@/lib/insiderSignal';
 import { useSearch } from 'wouter';
+import { evaluateCompanyQuality } from '@shared/companyQuality';
+import { useToast } from '@/hooks/use-toast';
 
 type FedRateWireResponse = FedRateResponse | { environment: null };
 
@@ -92,6 +94,7 @@ const SectionPanel: React.FC<SectionPanelProps> = ({
 
 const MarginOfSafetyCalculator: React.FC = () => {
   const { stockData, isLoading, isError, error, fetchStockData } = useStockData();
+  const { toast } = useToast();
 
   // Auto-load a symbol passed via ?symbol=AAPL (e.g. from watchlist row click).
   // Runs once on mount; ignores subsequent search-string changes so the user
@@ -140,6 +143,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
   const [companyQuality, setCompanyQuality] = useState<CompanyQualityResult | null>(null);
   const [reverseDCFResult, setReverseDCFResult] = useState<ReverseDCFResult | null>(null);
   const [insiderSignal, setInsiderSignal] = useState<InsiderSignal | null>(null);
+  const qualityDefaultedForSymbol = React.useRef<string | null>(null);
 
   // Fetch insider activity whenever the symbol changes (Task #74).
   // The `cancelled` flag prevents a slow response from a previous symbol
@@ -166,19 +170,36 @@ const MarginOfSafetyCalculator: React.FC = () => {
 
   useEffect(() => {
     if (stockData && !stockData.error) {
-      const quality = getCompanyQuality(
-        stockData.roe,
-        stockData.debtToEquity,
-        stockData.currentRatio,
-        stockData.revenueGrowth,
-        stockData.earningsStability,
-        stockData.competitivePosition,
-      );
-      const recommendedMoS = getRecommendedMarginOfSafety(quality);
-      const defaultMoS = getDefaultMarginOfSafety(quality);
-      setCompanyQuality({ quality, recommendedMarginOfSafety: recommendedMoS });
-      setMarginOfSafetyParams({ marginOfSafety: defaultMoS });
-      setTimeout(() => calculateIntrinsicValue(), 500);
+      const evaluation = evaluateCompanyQuality(stockData);
+      if (!evaluation.quality || evaluation.score === null) {
+        setCompanyQuality(null);
+        return;
+      }
+      const recommendedMoS = getRecommendedMarginOfSafety(evaluation.quality);
+      const defaultMoS = getDefaultMarginOfSafety(evaluation.quality);
+      const storageKey = `company_quality_v${evaluation.version}:${stockData.symbol}`;
+      const previousQuality = localStorage.getItem(storageKey);
+      if (previousQuality && previousQuality !== evaluation.quality) {
+        toast({
+          title: `Quality reassessed: ${evaluation.quality}`,
+          description: `${previousQuality} → ${evaluation.quality}. The recommended margin of safety is now ${recommendedMoS}; your selected valuation settings were preserved.`,
+          duration: 6000,
+        });
+      }
+      localStorage.setItem(storageKey, evaluation.quality);
+      setCompanyQuality({
+        quality: evaluation.quality,
+        recommendedMarginOfSafety: recommendedMoS,
+        score: evaluation.score,
+        reasons: evaluation.reasons,
+        version: evaluation.version,
+      });
+      // A refreshed provider payload may change quality, but it must not erase
+      // the user's chosen valuation buffer for the same company.
+      if (qualityDefaultedForSymbol.current !== stockData.symbol) {
+        qualityDefaultedForSymbol.current = stockData.symbol;
+        setMarginOfSafetyParams({ marginOfSafety: defaultMoS });
+      }
     }
   }, [stockData]);
 
@@ -412,7 +433,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
           </SectionPanel>
         )}
 
-        {stockData && !stockData.error && companyQuality && (
+        {stockData && !stockData.error && (
           <SectionPanel
             title="Quality Indicators"
             subtitle="Financial strength · earnings stability · competitive position · recommended MoS"

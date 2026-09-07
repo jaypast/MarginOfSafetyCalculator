@@ -245,14 +245,24 @@ const QualityIndicators: React.FC<QualityIndicatorsProps> = ({
           </div>
         </div>
         
-        {companyQuality && (
+        {companyQuality ? (
           <div className="mt-6 p-4 bg-neutral-50 rounded-md border border-neutral-200">
             <h3 className="text-sm font-medium text-[#21324F] mb-2">Margin of Safety Recommendation</h3>
             <p className="text-sm text-neutral-600 mb-2">
               Based on the quality indicators, this stock qualifies as an <strong className={getQualityColorClass(companyQuality.quality)}>{companyQuality.quality} Quality</strong> company.
             </p>
+            <p className="text-xs text-neutral-500 mb-2" data-testid="quality-explanation">
+              {companyQuality.reasons.join(' · ')}
+            </p>
             <p className="text-sm text-neutral-600">
               Recommended Margin of Safety: <strong>{companyQuality.recommendedMarginOfSafety}</strong>
+            </p>
+          </div>
+        ) : (
+          <div className="mt-6 p-4 bg-amber-50 rounded-md border border-amber-200" data-testid="quality-unavailable">
+            <h3 className="text-sm font-medium text-amber-900 mb-1">Company quality unavailable</h3>
+            <p className="text-sm text-amber-800">
+              All six quality inputs must be present and valid. Missing data is not treated as zero.
             </p>
           </div>
         )}
