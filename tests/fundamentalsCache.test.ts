@@ -37,6 +37,7 @@ import {
   FUNDAMENTALS_TTL_MS,
   RANGE_TTL_MS,
   PE_HISTORY_TTL_MS,
+  MAX_CONCURRENT_BACKGROUND_REFRESHES,
 } from '../server/services/stockData';
 import { getYahooFinanceData } from '../server/services/yahooFinance';
 import { getRapidApiStockData } from '../server/services/rapidApiFinance';
@@ -268,6 +269,50 @@ describe('getStockData — persistent cache hit (age < 7 days)', () => {
     await __awaitPendingSpotChecks();
     expect(getYahooFinanceData).toHaveBeenCalled();
     expect(storage.upsertFundamentalsCache).toHaveBeenCalled();
+  });
+
+  it('limits distinct stale-while-revalidate refreshes while excess work waits', async () => {
+    const symbols = ['SWRQ1', 'SWRQ2', 'SWRQ3', 'SWRQ4'];
+    vi.mocked(storage.getFundamentalsCache).mockImplementation(async (symbol) =>
+      cacheRow(payload({ symbol }), 8 * DAY),
+    );
+    vi.mocked(getQuickPrice).mockResolvedValue(111);
+
+    const releases: Array<() => void> = [];
+    let active = 0;
+    let peakActive = 0;
+    vi.mocked(getYahooFinanceData).mockImplementation((symbol) =>
+      new Promise<StockResponse>((resolve) => {
+        active++;
+        peakActive = Math.max(peakActive, active);
+        releases.push(() => {
+          active--;
+          resolve(payload({ symbol, price: 90 }));
+        });
+      }),
+    );
+
+    const staleResponses = await Promise.all(symbols.map((symbol) => getStockData(symbol)));
+    expect(staleResponses.map((result) => result.price)).toEqual([111, 111, 111, 111]);
+    expect(getYahooFinanceData).toHaveBeenCalledTimes(MAX_CONCURRENT_BACKGROUND_REFRESHES);
+    expect(peakActive).toBe(MAX_CONCURRENT_BACKGROUND_REFRESHES);
+
+    releases.shift()!();
+    await vi.waitFor(() => {
+      expect(getYahooFinanceData).toHaveBeenCalledTimes(MAX_CONCURRENT_BACKGROUND_REFRESHES + 1);
+    });
+    expect(peakActive).toBe(MAX_CONCURRENT_BACKGROUND_REFRESHES);
+
+    while (releases.length > 0) {
+      releases.shift()!();
+      await Promise.resolve();
+    }
+    await vi.waitFor(() => {
+      expect(getYahooFinanceData).toHaveBeenCalledTimes(symbols.length);
+    });
+    while (releases.length > 0) releases.shift()!();
+    await __awaitPendingSpotChecks();
+    expect(peakActive).toBe(MAX_CONCURRENT_BACKGROUND_REFRESHES);
   });
 
   it('ignores an expired cache row (age > 14 days) and uses the live chain', async () => {

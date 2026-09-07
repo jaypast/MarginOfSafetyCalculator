@@ -199,8 +199,49 @@ function persistFundamentals(symbol: string, stamped: StockResponse): void {
 const inFlightSpotChecks: Set<Promise<void>> = new Set();
 
 // Tracks symbols whose background stale-while-revalidate refresh is in progress,
-// so we don't stack duplicate refreshes for the same symbol.
+// or queued, so we don't stack duplicate refreshes for the same symbol.
 const pendingBackgroundRefreshes = new Set<string>();
+// Keep background work below the yfinance limit of 3, leaving capacity for a
+// user-initiated lookup even when stale cache entries arrive in a burst.
+export const MAX_CONCURRENT_BACKGROUND_REFRESHES = 2;
+let activeBackgroundRefreshes = 0;
+const backgroundRefreshQueue: Array<() => void> = [];
+
+function drainBackgroundRefreshQueue(): void {
+  while (
+    activeBackgroundRefreshes < MAX_CONCURRENT_BACKGROUND_REFRESHES &&
+    backgroundRefreshQueue.length > 0
+  ) {
+    activeBackgroundRefreshes++;
+    backgroundRefreshQueue.shift()!();
+  }
+}
+
+function scheduleBackgroundRefresh(symbol: string): void {
+  if (pendingBackgroundRefreshes.has(symbol)) return;
+  pendingBackgroundRefreshes.add(symbol);
+
+  let refreshP: Promise<void>;
+  refreshP = new Promise<void>((resolve) => {
+    backgroundRefreshQueue.push(() => {
+      _fetchStockData(symbol, true)
+        .then((fresh) => console.log(`[${symbol}] Background refresh completed via ${fresh.dataSource}`))
+        .catch((err) => console.log(`[${symbol}] Background refresh failed: ${err}`))
+        .finally(() => {
+          activeBackgroundRefreshes--;
+          pendingBackgroundRefreshes.delete(symbol);
+          drainBackgroundRefreshQueue();
+          resolve();
+        });
+    });
+    drainBackgroundRefreshQueue();
+  }).finally(() => {
+    inFlightSpotChecks.delete(refreshP);
+  });
+  // Track the full queued + running lifecycle so test/process waiters do not
+  // mistake queued work for completed work.
+  inFlightSpotChecks.add(refreshP);
+}
 
 // Test helpers — never used by production code paths.
 export async function __awaitPendingSpotChecks(): Promise<void> {
@@ -431,17 +472,7 @@ async function _fetchStockData(symbol: string, forceRefresh = false): Promise<St
         // always hit the live sources rather than re-serving from the stale DB entry.
         // Note: pendingRequests still holds *this* request's symbol here, so it
         // cannot be used as a guard — pendingBackgroundRefreshes is the dedup.
-        if (!pendingBackgroundRefreshes.has(symbol)) {
-          pendingBackgroundRefreshes.add(symbol);
-          const refreshP: Promise<void> = _fetchStockData(symbol, true)
-            .then((fresh) => console.log(`[${symbol}] Background refresh completed via ${fresh.dataSource}`))
-            .catch((err) => console.log(`[${symbol}] Background refresh failed: ${err}`))
-            .finally(() => {
-              pendingBackgroundRefreshes.delete(symbol);
-              inFlightSpotChecks.delete(refreshP);
-            });
-          inFlightSpotChecks.add(refreshP);
-        }
+        scheduleBackgroundRefresh(symbol);
         return attachDivergence(symbol, combined);
       } catch (err) {
         console.log(`[${symbol}] Stale-while-revalidate price refresh failed — falling through to live sources: ${err}`);
