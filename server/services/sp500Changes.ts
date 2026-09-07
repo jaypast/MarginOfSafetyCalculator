@@ -5,6 +5,7 @@ import { getStockData } from "./stockData";
 import { estimateIntrinsicValue, hasUsableQualityMetrics } from "./researchScan";
 import { evaluateCompanyQuality, isResearchQuality } from "@shared/companyQuality";
 import axios from "axios";
+import { randomUUID } from "node:crypto";
 
 export interface NormalizedSp500Change {
   eventKey: string;
@@ -140,6 +141,9 @@ export function evaluate(data: StockResponse): Sp500EvaluationSnapshot {
 export const SP500_CALCULATION_VERSION = 4;
 export const SP500_LEGACY_CALCULATION_VERSION = 1;
 const REVISION_BATCH_SIZE = 6;
+const REFRESH_LEASE_MS = 45 * 60 * 1000;
+const REFRESH_LEASE_HEARTBEAT_MS = 10 * 60 * 1000;
+const LEASE_POLL_MS = 250;
 
 export function latestCompleteRevision(
   revisions: Sp500EvaluationRevisionRow[],
@@ -165,13 +169,42 @@ export function isSp500DailyCheckDue(lastCheckedDate: string | undefined, today:
   return lastCheckedDate !== today;
 }
 
-export async function syncSp500Changes(force = false, now = new Date()): Promise<{ newCount: number; checked: boolean; error?: string }> {
+async function waitForSp500Refresh(date: string): Promise<"completed" | "expired"> {
+  while (true) {
+    const [state, lease] = await Promise.all([
+      storage.getSp500SyncState(),
+      storage.getSp500RefreshLease(date),
+    ]);
+    if (!lease) return state?.lastCheckedDate === date ? "completed" : "expired";
+    const delay = lease.expiresAt.getTime() - Date.now();
+    if (delay <= 0) return "expired";
+    await new Promise(resolve => setTimeout(resolve, Math.min(LEASE_POLL_MS, delay)));
+  }
+}
+
+async function runSp500Sync(force: boolean, now: Date): Promise<{ newCount: number; checked: boolean; error?: string }> {
   const today = now.toISOString().slice(0, 10);
   const state = await storage.getSp500SyncState();
   const membershipCheckDue = force || isSp500DailyCheckDue(state?.lastCheckedDate, today);
-  if (inFlight) return inFlight;
-  inFlight = (async () => {
-    try {
+  const ownerToken = randomUUID();
+  const leaseExpiresAt = new Date(Date.now() + REFRESH_LEASE_MS);
+  const acquired = await storage.acquireSp500RefreshLease(today, ownerToken, leaseExpiresAt, new Date());
+  if (!acquired) {
+    const outcome = await waitForSp500Refresh(today);
+    if (outcome === "expired") return runSp500Sync(force, new Date());
+    return { newCount: 0, checked: false };
+  }
+  const heartbeat = setInterval(() => {
+    void storage.renewSp500RefreshLease(
+      today,
+      ownerToken,
+      new Date(Date.now() + REFRESH_LEASE_MS),
+    ).catch(err => {
+      console.error("[S&P 500 changes] Could not renew refresh lease:", err);
+    });
+  }, REFRESH_LEASE_HEARTBEAT_MS);
+  heartbeat.unref();
+  try {
        const storedChanges = await storage.listSp500Changes();
        const revisions = await storage.listSp500EvaluationRevisions();
        const existing = new Set(storedChanges.map(row => row.eventKey));
@@ -222,11 +255,27 @@ export async function syncSp500Changes(force = false, now = new Date()): Promise
        }
        if (membershipCheckDue) await storage.setSp500SyncState(today, now);
        return { newCount, checked: membershipCheckDue || stale.length > 0 };
+  } catch (err) {
+    return { newCount: 0, checked: true, error: err instanceof Error ? err.message : "S&P 500 refresh failed" };
+  } finally {
+    clearInterval(heartbeat);
+    try {
+      await storage.releaseSp500RefreshLease(today, ownerToken);
     } catch (err) {
-      return { newCount: 0, checked: true, error: err instanceof Error ? err.message : "S&P 500 refresh failed" };
-    } finally { inFlight = null; }
-  })();
-  return inFlight;
+      console.error("[S&P 500 changes] Could not release refresh lease:", err);
+    }
+  }
+}
+
+export async function syncSp500Changes(force = false, now = new Date()): Promise<{ newCount: number; checked: boolean; error?: string }> {
+  if (inFlight) return inFlight;
+  const operation = runSp500Sync(force, now);
+  inFlight = operation;
+  try {
+    return await operation;
+  } finally {
+    if (inFlight === operation) inFlight = null;
+  }
 }
 
 export async function getSp500ChangesResponse() {

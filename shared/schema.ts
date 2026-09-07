@@ -393,6 +393,13 @@ export const sp500SyncState = pgTable("sp500_sync_state", {
   lastCheckedAt: timestamp("last_checked_at").notNull(),
 });
 
+export const sp500RefreshLeases = pgTable("sp500_refresh_leases", {
+  refreshDate: varchar("refresh_date", { length: 10 }).primaryKey(),
+  ownerToken: varchar("owner_token", { length: 64 }).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
 export type Sp500ChangeRow = typeof sp500Changes.$inferSelect;
 export type Sp500EvaluationRevisionRow = typeof sp500EvaluationRevisions.$inferSelect;
 export type Sp500SyncStateRow = typeof sp500SyncState.$inferSelect;
+export type Sp500RefreshLeaseRow = typeof sp500RefreshLeases.$inferSelect;

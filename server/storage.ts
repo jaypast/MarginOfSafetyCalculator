@@ -4,12 +4,12 @@ import {
   watchlist, type WatchlistEntry,
   fundamentalsCache, type FundamentalsCacheRow,
   insiderCache, type InsiderCacheRow, type InsiderTrade,
-  sp500Changes, sp500EvaluationRevisions, sp500SyncState, type Sp500ChangeRow,
+  sp500Changes, sp500EvaluationRevisions, sp500SyncState, sp500RefreshLeases, type Sp500ChangeRow,
   type Sp500EvaluationRevisionRow, type Sp500EvaluationSnapshot, type Sp500SyncStateRow,
-  type StockResponse,
+  type Sp500RefreshLeaseRow, type StockResponse,
 } from "@shared/schema";
 import { db } from "./db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, lte } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -64,6 +64,10 @@ export interface IStorage {
   insertSp500EvaluationRevision(changeId: number, calculationVersion: number, snapshot: Sp500EvaluationSnapshot): Promise<Sp500EvaluationRevisionRow>;
   getSp500SyncState(): Promise<Sp500SyncStateRow | undefined>;
   setSp500SyncState(date: string, checkedAt: Date): Promise<Sp500SyncStateRow>;
+  acquireSp500RefreshLease(date: string, ownerToken: string, expiresAt: Date, now: Date): Promise<boolean>;
+  getSp500RefreshLease(date: string): Promise<Sp500RefreshLeaseRow | undefined>;
+  renewSp500RefreshLease(date: string, ownerToken: string, expiresAt: Date): Promise<boolean>;
+  releaseSp500RefreshLease(date: string, ownerToken: string): Promise<void>;
 }
 
 // Memory storage for fallback when database is not available.
@@ -77,6 +81,7 @@ export class MemStorage implements IStorage {
   private sp500ChangeRows: Sp500ChangeRow[] = [];
   private sp500RevisionRows: Sp500EvaluationRevisionRow[] = [];
   private sp500State: Sp500SyncStateRow | undefined;
+  private sp500RefreshLeases = new Map<string, Sp500RefreshLeaseRow>();
   private nextUserId = 1;
   private nextFeedbackId = 1;
   private nextWatchlistId = 1;
@@ -274,6 +279,30 @@ export class MemStorage implements IStorage {
   async setSp500SyncState(lastCheckedDate: string, lastCheckedAt: Date): Promise<Sp500SyncStateRow> {
     this.sp500State = { id: 1, key: "daily", lastCheckedDate, lastCheckedAt };
     return this.sp500State;
+  }
+
+  async acquireSp500RefreshLease(date: string, ownerToken: string, expiresAt: Date, now: Date): Promise<boolean> {
+    const current = this.sp500RefreshLeases.get(date);
+    if (current && current.expiresAt > now) return false;
+    this.sp500RefreshLeases.set(date, { refreshDate: date, ownerToken, expiresAt });
+    return true;
+  }
+
+  async getSp500RefreshLease(date: string): Promise<Sp500RefreshLeaseRow | undefined> {
+    return this.sp500RefreshLeases.get(date);
+  }
+
+  async renewSp500RefreshLease(date: string, ownerToken: string, expiresAt: Date): Promise<boolean> {
+    const current = this.sp500RefreshLeases.get(date);
+    if (!current || current.ownerToken !== ownerToken) return false;
+    this.sp500RefreshLeases.set(date, { ...current, expiresAt });
+    return true;
+  }
+
+  async releaseSp500RefreshLease(date: string, ownerToken: string): Promise<void> {
+    if (this.sp500RefreshLeases.get(date)?.ownerToken === ownerToken) {
+      this.sp500RefreshLeases.delete(date);
+    }
   }
 }
 
@@ -528,6 +557,45 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return row;
   }
+
+  async acquireSp500RefreshLease(date: string, ownerToken: string, expiresAt: Date, now: Date): Promise<boolean> {
+    if (!db) throw new Error("Database connection not available");
+    const rows = await db.insert(sp500RefreshLeases)
+      .values({ refreshDate: date, ownerToken, expiresAt })
+      .onConflictDoUpdate({
+        target: sp500RefreshLeases.refreshDate,
+        set: { ownerToken, expiresAt },
+        setWhere: lte(sp500RefreshLeases.expiresAt, now),
+      })
+      .returning({ ownerToken: sp500RefreshLeases.ownerToken });
+    return rows[0]?.ownerToken === ownerToken;
+  }
+
+  async getSp500RefreshLease(date: string): Promise<Sp500RefreshLeaseRow | undefined> {
+    if (!db) throw new Error("Database connection not available");
+    const [row] = await db.select().from(sp500RefreshLeases).where(eq(sp500RefreshLeases.refreshDate, date));
+    return row;
+  }
+
+  async renewSp500RefreshLease(date: string, ownerToken: string, expiresAt: Date): Promise<boolean> {
+    if (!db) throw new Error("Database connection not available");
+    const rows = await db.update(sp500RefreshLeases)
+      .set({ expiresAt })
+      .where(and(
+        eq(sp500RefreshLeases.refreshDate, date),
+        eq(sp500RefreshLeases.ownerToken, ownerToken),
+      ))
+      .returning({ ownerToken: sp500RefreshLeases.ownerToken });
+    return rows[0]?.ownerToken === ownerToken;
+  }
+
+  async releaseSp500RefreshLease(date: string, ownerToken: string): Promise<void> {
+    if (!db) throw new Error("Database connection not available");
+    await db.delete(sp500RefreshLeases).where(and(
+      eq(sp500RefreshLeases.refreshDate, date),
+      eq(sp500RefreshLeases.ownerToken, ownerToken),
+    ));
+  }
 }
 
 // Handle the case when errors occur with the database storage
@@ -744,6 +812,26 @@ class SafeStorageWrapper implements IStorage {
     try { if (this.dbStorage) return await this.dbStorage.setSp500SyncState(date, checkedAt); }
     catch (err) { console.error("Database error writing S&P sync state, using memory:", err); }
     return this.memStorage.setSp500SyncState(date, checkedAt);
+  }
+
+  async acquireSp500RefreshLease(date: string, ownerToken: string, expiresAt: Date, now: Date): Promise<boolean> {
+    if (this.dbStorage) return this.dbStorage.acquireSp500RefreshLease(date, ownerToken, expiresAt, now);
+    return this.memStorage.acquireSp500RefreshLease(date, ownerToken, expiresAt, now);
+  }
+
+  async getSp500RefreshLease(date: string): Promise<Sp500RefreshLeaseRow | undefined> {
+    if (this.dbStorage) return this.dbStorage.getSp500RefreshLease(date);
+    return this.memStorage.getSp500RefreshLease(date);
+  }
+
+  async renewSp500RefreshLease(date: string, ownerToken: string, expiresAt: Date): Promise<boolean> {
+    if (this.dbStorage) return this.dbStorage.renewSp500RefreshLease(date, ownerToken, expiresAt);
+    return this.memStorage.renewSp500RefreshLease(date, ownerToken, expiresAt);
+  }
+
+  async releaseSp500RefreshLease(date: string, ownerToken: string): Promise<void> {
+    if (this.dbStorage) return this.dbStorage.releaseSp500RefreshLease(date, ownerToken);
+    return this.memStorage.releaseSp500RefreshLease(date, ownerToken);
   }
 }
 

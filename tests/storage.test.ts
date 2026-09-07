@@ -150,3 +150,27 @@ describe('MemStorage — fundamentals cache (Task #58)', () => {
     expect(m!.payload.symbol).toBe('MSFT');
   });
 });
+
+describe('MemStorage — S&P refresh leases', () => {
+  it('allows one owner, permits takeover after expiry, and protects the replacement lease', async () => {
+    const storage = new MemStorage();
+    const now = new Date('2026-09-07T12:00:00Z');
+    const expiry = new Date('2026-09-07T12:45:00Z');
+
+    expect(await storage.acquireSp500RefreshLease('2026-09-07', 'owner-a', expiry, now)).toBe(true);
+    expect(await storage.acquireSp500RefreshLease('2026-09-07', 'owner-b', expiry, now)).toBe(false);
+    expect((await storage.getSp500RefreshLease('2026-09-07'))?.ownerToken).toBe('owner-a');
+    const renewedExpiry = new Date('2026-09-07T13:00:00Z');
+    expect(await storage.renewSp500RefreshLease('2026-09-07', 'owner-b', renewedExpiry)).toBe(false);
+    expect(await storage.renewSp500RefreshLease('2026-09-07', 'owner-a', renewedExpiry)).toBe(true);
+    expect((await storage.getSp500RefreshLease('2026-09-07'))?.expiresAt).toEqual(renewedExpiry);
+
+    const later = new Date('2026-09-07T13:01:00Z');
+    expect(await storage.acquireSp500RefreshLease('2026-09-07', 'owner-b', new Date('2026-09-07T13:31:00Z'), later)).toBe(true);
+    await storage.releaseSp500RefreshLease('2026-09-07', 'owner-a');
+    expect((await storage.getSp500RefreshLease('2026-09-07'))?.ownerToken).toBe('owner-b');
+
+    await storage.releaseSp500RefreshLease('2026-09-07', 'owner-b');
+    expect(await storage.getSp500RefreshLease('2026-09-07')).toBeUndefined();
+  });
+});
