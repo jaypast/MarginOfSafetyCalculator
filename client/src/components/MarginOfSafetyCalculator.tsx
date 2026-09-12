@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import StockInformation from './StockInformation';
 import KeyMetrics from './KeyMetrics';
 import ValuationMethod from './ValuationMethod';
@@ -41,6 +41,7 @@ import { computeInsiderSignal, type InsiderSignal } from '@/lib/insiderSignal';
 import { useSearch } from 'wouter';
 import { evaluateCompanyQuality } from '@shared/companyQuality';
 import { useToast } from '@/hooks/use-toast';
+import { trackEvent } from '@/lib/analytics';
 
 type FedRateWireResponse = FedRateResponse | { environment: null };
 
@@ -144,6 +145,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
   const [reverseDCFResult, setReverseDCFResult] = useState<ReverseDCFResult | null>(null);
   const [insiderSignal, setInsiderSignal] = useState<InsiderSignal | null>(null);
   const qualityDefaultedForSymbol = React.useRef<string | null>(null);
+  const lastTrackedValuation = useRef<string | null>(null);
 
   // Fetch insider activity whenever the symbol changes (Task #74).
   // The `cancelled` flag prevents a slow response from a previous symbol
@@ -204,7 +206,17 @@ const MarginOfSafetyCalculator: React.FC = () => {
   }, [stockData]);
 
   const calculateIntrinsicValue = () => {
-    if (!stockData || stockData.error) return;
+    if (!stockData || stockData.error) {
+      if (stockData?.error && lastTrackedValuation.current !== 'error') {
+        lastTrackedValuation.current = 'error';
+        trackEvent('valuation_calculated', {
+          outcome: 'error',
+          quality_available: false,
+          location: 'calculator',
+        });
+      }
+      return;
+    }
     const price = stockData.price;
 
     const dcf = calculateDCFDetailed(stockData, valuationParams);
@@ -251,6 +263,15 @@ const MarginOfSafetyCalculator: React.FC = () => {
 
     const avgResult = calculateAverageValuation(results, price);
     setValuationResults([...results, avgResult]);
+    const valuationKey = `${stockData.fetchedAt ?? 'loaded'}:${marginOfSafetyParams.marginOfSafety}`;
+    if (lastTrackedValuation.current !== valuationKey) {
+      lastTrackedValuation.current = valuationKey;
+      trackEvent('valuation_calculated', {
+        outcome: 'success',
+        quality_available: evaluateCompanyQuality(stockData).quality !== null,
+        location: 'calculator',
+      });
+    }
 
     const reverse = calculateReverseDCFDetailed(stockData, valuationParams);
     setReverseDCFResult(reverse);
@@ -260,7 +281,7 @@ const MarginOfSafetyCalculator: React.FC = () => {
     if (stockData && !stockData.error) {
       calculateIntrinsicValue();
     }
-  }, [marginOfSafetyParams, valuationParams]);
+  }, [stockData, marginOfSafetyParams, valuationParams]);
 
   const hasResults = stockData && !stockData.error && valuationResults.length > 0;
 

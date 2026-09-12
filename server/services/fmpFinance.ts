@@ -21,10 +21,11 @@ if (!FMP_API_KEY) {
   console.warn('FINANCIAL_MODELING_PREP_API_KEY is not set. FMP fallback tier will be skipped.');
 }
 
-async function fmpGet(path: string, params: Record<string, string>): Promise<any> {
+async function fmpGet(path: string, params: Record<string, string>, signal?: AbortSignal): Promise<any> {
   const response = await axios.get(`${BASE_URL}${path}`, {
     params: { ...params, apikey: FMP_API_KEY },
     timeout: 15000,
+    signal,
   });
   return response.data;
 }
@@ -65,7 +66,7 @@ function parse52WeekRange(range: unknown): { high: number | null; low: number | 
  * Only the profile is mandatory; the other three degrade to safe defaults
  * (matching the other adapters' pattern) when unavailable on the free tier.
  */
-export async function getFmpData(symbol: string): Promise<StockResponse> {
+export async function getFmpData(symbol: string, signal?: AbortSignal): Promise<StockResponse> {
   console.log(`Fetching FMP data for ${symbol}`);
 
   if (!FMP_API_KEY) {
@@ -73,10 +74,10 @@ export async function getFmpData(symbol: string): Promise<StockResponse> {
   }
 
   const [profileRaw, ratiosRaw, keyMetricsRaw, incomeRaw] = await Promise.all([
-    fmpGet('/profile', { symbol }),
-    fmpGet('/ratios-ttm', { symbol }).catch(() => null),
-    fmpGet('/key-metrics-ttm', { symbol }).catch(() => null),
-    fmpGet('/income-statement', { symbol, limit: '2' }).catch(() => null),
+    fmpGet('/profile', { symbol }, signal),
+    fmpGet('/ratios-ttm', { symbol }, signal).catch(() => null),
+    fmpGet('/key-metrics-ttm', { symbol }, signal).catch(() => null),
+    fmpGet('/income-statement', { symbol, limit: '2' }, signal).catch(() => null),
   ]);
 
   // FMP returns [] for unknown symbols and { "Error Message": ... } for

@@ -103,7 +103,6 @@ const StockInformation: React.FC<StockInformationProps> = ({
     onSuccess: (_data, variables) => {
       trackEvent('watchlist_changed', {
         action: 'add',
-        ticker: variables.symbol,
         location: 'calculator',
       });
       setJustAddedSymbol(variables.symbol);
@@ -138,7 +137,6 @@ const StockInformation: React.FC<StockInformationProps> = ({
     lastTrackedSearch.current = key;
     trackEvent('stock_search_completed', {
       outcome,
-      ticker: stockData.symbol,
       source: stockData.dataSource ?? 'unknown',
       location: 'calculator',
     });
@@ -172,7 +170,7 @@ const StockInformation: React.FC<StockInformationProps> = ({
 
   const handleFetchData = () => {
     if (inputValue) {
-      trackEvent('stock_search_submitted', { ticker: inputValue, location: 'calculator' });
+      trackEvent('stock_search_submitted', { location: 'calculator' });
       onFetchData(inputValue);
     }
   };

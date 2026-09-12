@@ -279,16 +279,36 @@ const MAX_CONCURRENT_YFINANCE = 3;
 let activeYfinanceCalls = 0;
 const yfinanceQueue: Array<() => void> = [];
 
-export function acquireYfinanceSlot(): Promise<void> {
-  return new Promise((resolve) => {
-    if (activeYfinanceCalls < MAX_CONCURRENT_YFINANCE) {
+export function acquireYfinanceSlot(signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error('yfinance request aborted'));
+      return;
+    }
+
+    let queued = true;
+    let start: () => void;
+    const onAbort = () => {
+      if (!queued) return;
+      const index = yfinanceQueue.indexOf(start);
+      if (index >= 0) yfinanceQueue.splice(index, 1);
+      queued = false;
+      reject(new Error('yfinance request aborted'));
+    };
+
+    start = () => {
+      if (!queued) return;
+      queued = false;
+      signal?.removeEventListener('abort', onAbort);
       activeYfinanceCalls++;
       resolve();
+    };
+
+    if (activeYfinanceCalls < MAX_CONCURRENT_YFINANCE) {
+      start();
     } else {
-      yfinanceQueue.push(() => {
-        activeYfinanceCalls++;
-        resolve();
-      });
+      yfinanceQueue.push(start);
+      signal?.addEventListener('abort', onAbort, { once: true });
     }
   });
 }
@@ -301,10 +321,10 @@ export function releaseYfinanceSlot(): void {
   }
 }
 
-async function fetchYfinanceWithQueue(symbol: string): Promise<StockResponse> {
-  await acquireYfinanceSlot();
+async function fetchYfinanceWithQueue(symbol: string, signal?: AbortSignal): Promise<StockResponse> {
+  await acquireYfinanceSlot(signal);
   try {
-    return await getYahooFinanceData(symbol);
+    return await getYahooFinanceData(symbol, signal);
   } finally {
     releaseYfinanceSlot();
   }
@@ -488,11 +508,12 @@ async function _fetchStockData(symbol: string, forceRefresh = false): Promise<St
   // Helper: try a source, derive missing metrics, check quality gate
   async function trySource(
     label: string,
-    fetcher: () => Promise<StockResponse>
+    fetcher: (signal?: AbortSignal) => Promise<StockResponse>,
+    signal?: AbortSignal,
   ): Promise<StockResponse | null> {
     try {
       console.log(`[${symbol}] Trying ${label}...`);
-      let data = await fetcher();
+      let data = await fetcher(signal);
       data = deriveMetrics(data);
       // Preserve any live price even if fundamentals are missing — used to
       // patch the static fallback price so users never see a years-old price.
@@ -571,17 +592,17 @@ async function _fetchStockData(symbol: string, forceRefresh = false): Promise<St
   interface PrimarySourceDef {
     label: string;
     source: DataSource;
-    fetcher: () => Promise<StockResponse>;
+    fetcher: (signal?: AbortSignal) => Promise<StockResponse>;
     spotCheckSource: DataSource;
     spotCheckFetcher: () => Promise<StockResponse>;
   }
   const primaryDefs: PrimarySourceDef[] = [
-    { label: 'yfinance',      source: 'yfinance',     fetcher: () => fetchYfinanceWithQueue(symbol), spotCheckSource: 'rapidapi',     spotCheckFetcher: () => getRapidApiStockData(symbol) },
-    { label: 'RapidAPI',      source: 'rapidapi',     fetcher: () => getRapidApiStockData(symbol),   spotCheckSource: 'alphavantage', spotCheckFetcher: () => getAlphaVantageData(symbol) },
-    { label: 'Alpha Vantage', source: 'alphavantage', fetcher: () => getAlphaVantageData(symbol),   spotCheckSource: 'rapidapi',     spotCheckFetcher: () => getRapidApiStockData(symbol) },
+    { label: 'yfinance',      source: 'yfinance',     fetcher: (signal) => fetchYfinanceWithQueue(symbol, signal), spotCheckSource: 'rapidapi',     spotCheckFetcher: () => getRapidApiStockData(symbol) },
+    { label: 'RapidAPI',      source: 'rapidapi',     fetcher: (signal) => getRapidApiStockData(symbol, signal),   spotCheckSource: 'alphavantage', spotCheckFetcher: () => getAlphaVantageData(symbol) },
+    { label: 'Alpha Vantage', source: 'alphavantage', fetcher: (signal) => getAlphaVantageData(symbol, signal),   spotCheckSource: 'rapidapi',     spotCheckFetcher: () => getRapidApiStockData(symbol) },
     // FMP: fundamentals for mid/small-caps. Skipped gracefully (throws immediately)
     // when the API key is not configured.
-    { label: 'FMP',           source: 'fmp',          fetcher: () => getFmpData(symbol),             spotCheckSource: 'rapidapi',     spotCheckFetcher: () => getRapidApiStockData(symbol) },
+    { label: 'FMP',           source: 'fmp',          fetcher: (signal) => getFmpData(symbol, signal),             spotCheckSource: 'rapidapi',     spotCheckFetcher: () => getRapidApiStockData(symbol) },
   ];
 
   // Start every source now (parallel) and select in completion order, with a
@@ -599,17 +620,22 @@ async function _fetchStockData(symbol: string, forceRefresh = false): Promise<St
     let pending = primaryDefs.length;
     let done = false;
     let graceTimer: NodeJS.Timeout | null = null;
+    const controllers = primaryDefs.map(() => new AbortController());
 
     const bestSettledSuccess = () => successes.find((s) => s !== null) ?? null;
     const finish = (w: PrimaryWin | null) => {
       if (done) return;
       done = true;
       if (graceTimer) clearTimeout(graceTimer);
+      const winnerIndex = w ? primaryDefs.findIndex((def) => def === w.def) : -1;
+      controllers.forEach((controller, index) => {
+        if (index !== winnerIndex) controller.abort();
+      });
       resolve(w);
     };
 
     primaryDefs.forEach((def, i) => {
-      trySource(def.label, def.fetcher)
+      trySource(def.label, def.fetcher, controllers[i].signal)
         .catch(() => null)
         .then((result) => {
           if (done) return;

@@ -426,7 +426,7 @@ const Watchlist: React.FC = () => {
       return { id, symbol };
     },
     onSuccess: ({ symbol }) => {
-      trackEvent('watchlist_changed', { action: 'remove', ticker: symbol, location: 'watchlist' });
+      trackEvent('watchlist_changed', { action: 'remove', location: 'watchlist' });
       queryClient.invalidateQueries({ queryKey: ['/api/watchlist'] });
     },
     onError: (err: Error) => {

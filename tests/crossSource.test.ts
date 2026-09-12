@@ -37,6 +37,8 @@ import {
   __awaitPendingSpotChecks,
   __resetStockDataCache,
   __expireStockDataCache,
+  acquireYfinanceSlot,
+  releaseYfinanceSlot,
 } from '../server/services/stockData';
 import { getYahooFinanceData } from '../server/services/yahooFinance';
 import { getRapidApiStockData } from '../server/services/rapidApiFinance';
@@ -298,6 +300,44 @@ describe('getStockData — parallel primary source race', () => {
     expect(cached.price).toBe(111);
     expect(cached.eps).toBe(5);
     expect(cached.crossSourceDivergence).toBeNull();
+  });
+
+  it('aborts unfinished losing provider requests after a winner is selected', async () => {
+    const symbol = 'RACE5';
+    let aborted = false;
+    vi.mocked(getYahooFinanceData).mockImplementation((_symbol, signal) =>
+      new Promise<StockResponse>((_resolve, reject) => {
+        signal?.addEventListener('abort', () => {
+          aborted = true;
+          reject(new Error('aborted'));
+        }, { once: true });
+      }),
+    );
+    vi.mocked(getRapidApiStockData).mockResolvedValue(payload({ symbol, price: 222 }));
+    vi.mocked(getAlphaVantageData).mockRejectedValue(new Error('no key'));
+
+    const result = await getStockData(symbol);
+    expect(result.dataSource).toBe('rapidapi');
+    expect(aborted).toBe(true);
+    await __awaitPendingSpotChecks();
+  });
+
+  it('removes an aborted yfinance request from the waiting queue', async () => {
+    const heldSlots = await Promise.all([
+      acquireYfinanceSlot(),
+      acquireYfinanceSlot(),
+      acquireYfinanceSlot(),
+    ]);
+    expect(heldSlots).toHaveLength(3);
+
+    const controller = new AbortController();
+    const queued = acquireYfinanceSlot(controller.signal);
+    controller.abort();
+
+    await expect(queued).rejects.toThrow('aborted');
+    releaseYfinanceSlot();
+    releaseYfinanceSlot();
+    releaseYfinanceSlot();
   });
 
   it('falls through past the primaries when every source fails, without serial-latency stacking', async () => {

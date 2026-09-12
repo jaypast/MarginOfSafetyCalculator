@@ -12,7 +12,7 @@ const execAsync = promisify(exec);
 const YFINANCE_TIMEOUT_MS = 12_000;
 
 // Function to get stock data from Yahoo Finance using the Python yfinance package
-export async function getYahooFinanceData(symbol: string): Promise<StockResponse> {
+export async function getYahooFinanceData(symbol: string, signal?: AbortSignal): Promise<StockResponse> {
   try {
     console.log(`Fetching Yahoo Finance data for ${symbol} using yfinance`);
     
@@ -21,7 +21,7 @@ export async function getYahooFinanceData(symbol: string): Promise<StockResponse
     // Python process never blocks the concurrency slot indefinitely.
     const { stdout, stderr } = await execAsync(
       `python3 server/services/yfinance_service.py ${symbol}`,
-      { timeout: YFINANCE_TIMEOUT_MS },
+      { timeout: YFINANCE_TIMEOUT_MS, signal },
     );
     
     if (stderr) {

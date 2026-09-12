@@ -21,19 +21,22 @@ const STOCK_DATA_HOST = 'stock-data-yahoo-finance-alternative.p.rapidapi.com';
 /**
  * Get real-time stock data using Yahoo Finance API via RapidAPI
  */
-export async function getRapidApiStockData(symbol: string): Promise<StockResponse> {
+export async function getRapidApiStockData(symbol: string, signal?: AbortSignal): Promise<StockResponse> {
   console.log(`Fetching stock data for ${symbol} using RapidAPI`);
   
   try {
+    if (signal?.aborted) throw new Error('RapidAPI request aborted');
     // First try the Stock Data API (has higher rate limits)
     try {
-      return await getStockDataApiInfo(symbol);
+      return await getStockDataApiInfo(symbol, signal);
     } catch (error) {
+      if (signal?.aborted) throw error;
       console.log(`Stock Data API failed, trying Yahoo Finance API: ${error}`);
     }
     
     // Fall back to Yahoo Finance API via RapidAPI
-    return await getYahooFinanceApiInfo(symbol);
+    if (signal?.aborted) throw new Error('RapidAPI request aborted');
+    return await getYahooFinanceApiInfo(symbol, signal);
   } catch (error: any) {
     console.error('Error fetching RapidAPI stock data:', error.message);
     throw new Error(`Failed to fetch data for ${symbol} via RapidAPI`);
@@ -110,7 +113,7 @@ export async function getRapidApiHistoricalData(
 /**
  * Get stock data from Stock Data API (higher rate limits)
  */
-async function getStockDataApiInfo(symbol: string): Promise<StockResponse> {
+async function getStockDataApiInfo(symbol: string, signal?: AbortSignal): Promise<StockResponse> {
   const response = await axios.get(`https://${STOCK_DATA_HOST}/price`, {
     params: {
       symbol,
@@ -121,6 +124,7 @@ async function getStockDataApiInfo(symbol: string): Promise<StockResponse> {
       'X-RapidAPI-Host': STOCK_DATA_HOST
     },
     timeout: RAPIDAPI_TIMEOUT_MS,
+    signal,
   });
   
   const data = response.data;
@@ -139,9 +143,11 @@ async function getStockDataApiInfo(symbol: string): Promise<StockResponse> {
         'X-RapidAPI-Host': STOCK_DATA_HOST
       },
       timeout: RAPIDAPI_TIMEOUT_MS,
+      signal,
     });
     companyData = profileResponse.data || {};
   } catch (err) {
+    if (signal?.aborted) throw err;
     console.warn(`Couldn't fetch company profile for ${symbol}, using limited data`);
   }
   
@@ -217,7 +223,8 @@ async function getStockDataApiInfo(symbol: string): Promise<StockResponse> {
 /**
  * Get stock data from Yahoo Finance API via RapidAPI (backup option)
  */
-async function getYahooFinanceApiInfo(symbol: string): Promise<StockResponse> {
+async function getYahooFinanceApiInfo(symbol: string, signal?: AbortSignal): Promise<StockResponse> {
+  if (signal?.aborted) throw new Error('RapidAPI request aborted');
   // Get quote information
   const quoteResponse = await axios.get(`https://${YAHOO_FINANCE_HOST}/stock/v2/get-summary`, {
     params: {
@@ -229,6 +236,7 @@ async function getYahooFinanceApiInfo(symbol: string): Promise<StockResponse> {
       'X-RapidAPI-Host': YAHOO_FINANCE_HOST
     },
     timeout: RAPIDAPI_TIMEOUT_MS,
+    signal,
   });
   
   const quoteData = quoteResponse.data;

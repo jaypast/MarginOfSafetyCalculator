@@ -13,14 +13,16 @@ if (!ALPHA_VANTAGE_KEY) {
 let lastCallTime = 0;
 const MIN_CALL_GAP_MS = 13000; // ~4.6 calls/min to stay safely under 5/min
 
-async function rateLimitedGet(params: Record<string, string>): Promise<any> {
+async function rateLimitedGet(params: Record<string, string>, signal?: AbortSignal): Promise<any> {
+  if (signal?.aborted) throw new Error('Alpha Vantage request aborted');
   const now = Date.now();
   const gap = now - lastCallTime;
   if (gap < MIN_CALL_GAP_MS) {
     await new Promise(r => setTimeout(r, MIN_CALL_GAP_MS - gap));
   }
+  if (signal?.aborted) throw new Error('Alpha Vantage request aborted');
   lastCallTime = Date.now();
-  const response = await axios.get(BASE_URL, { params, timeout: 15000 });
+  const response = await axios.get(BASE_URL, { params, timeout: 15000, signal });
   return response.data;
 }
 
@@ -28,7 +30,7 @@ async function rateLimitedGet(params: Record<string, string>): Promise<any> {
  * Fetch complete stock fundamentals + price from Alpha Vantage.
  * Uses OVERVIEW (fundamentals) + GLOBAL_QUOTE (current price).
  */
-export async function getAlphaVantageData(symbol: string): Promise<StockResponse> {
+export async function getAlphaVantageData(symbol: string, signal?: AbortSignal): Promise<StockResponse> {
   console.log(`Fetching Alpha Vantage data for ${symbol}`);
 
   if (!ALPHA_VANTAGE_KEY) {
@@ -40,7 +42,7 @@ export async function getAlphaVantageData(symbol: string): Promise<StockResponse
     function: 'OVERVIEW',
     symbol,
     apikey: ALPHA_VANTAGE_KEY,
-  });
+  }, signal);
 
   // Alpha Vantage returns an empty object {} for unknown symbols
   if (!overview || !overview.Symbol) {
@@ -54,9 +56,10 @@ export async function getAlphaVantageData(symbol: string): Promise<StockResponse
       function: 'GLOBAL_QUOTE',
       symbol,
       apikey: ALPHA_VANTAGE_KEY,
-    });
+    }, signal);
     price = parseFloat(quote?.['Global Quote']?.['05. price'] ?? '0') || 0;
   } catch {
+    if (signal?.aborted) throw new Error('Alpha Vantage request aborted');
     // Fall back to 52-week average estimate if price fetch fails
     const high = parseFloat(overview['52WeekHigh'] ?? '0');
     const low = parseFloat(overview['52WeekLow'] ?? '0');

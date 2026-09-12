@@ -524,8 +524,8 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                   marginOfSafetyParams,
                   valuationResults
                 );
-                trackEvent('report_generated', {
-                  ticker: stockData.symbol,
+                trackEvent('valuation_report_exported', {
+                  format: 'printable',
                   location: 'valuation_results',
                 });
                 setReportContent(content);

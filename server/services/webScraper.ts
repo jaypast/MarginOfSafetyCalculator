@@ -33,9 +33,13 @@ async function fetchWithTimeout<T>(
   url: string,
   options: Record<string, any>,
   decode: (response: import('node-fetch').Response) => Promise<T>,
+  externalSignal?: AbortSignal,
 ): Promise<T> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const abortFromCaller = () => controller.abort();
+  externalSignal?.addEventListener('abort', abortFromCaller, { once: true });
+  if (externalSignal?.aborted) controller.abort();
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
@@ -54,6 +58,7 @@ async function fetchWithTimeout<T>(
     ]);
   } finally {
     clearTimeout(timer);
+    externalSignal?.removeEventListener('abort', abortFromCaller);
   }
 }
 
@@ -93,7 +98,7 @@ export async function getQuickPrice(symbol: string): Promise<number> {
  * Get real-time stock quote from a simpler API
  * This should bypass complex website scraping issues
  */
-async function getSimpleQuote(symbol: string): Promise<{price: number, name: string}> {
+async function getSimpleQuote(symbol: string, signal?: AbortSignal): Promise<{price: number, name: string}> {
   try {
     // Try a simpler API endpoint that's less likely to be blocked
     const data = await fetchWithTimeout(
@@ -111,6 +116,7 @@ async function getSimpleQuote(symbol: string): Promise<{price: number, name: str
         if (!r.ok) throw new Error(`Failed to fetch JSON quote for ${symbol}`);
         return r.json() as Promise<any>;
       },
+      signal,
     );
     
     // Extract the current price with proper type checking
@@ -129,15 +135,17 @@ async function getSimpleQuote(symbol: string): Promise<{price: number, name: str
  * Web scraper to extract stock data directly from Yahoo Finance website
  * This bypasses API rate limits by scraping the data directly from the website
  */
-export async function scrapeStockData(symbol: string): Promise<StockResponse> {
+export async function scrapeStockData(symbol: string, signal?: AbortSignal): Promise<StockResponse> {
   console.log(`Scraping Yahoo Finance website for ${symbol}`);
   
   try {
     // First try to get the current price using the simple API
-    const { price, name } = await getSimpleQuote(symbol);
+    const { price, name } = await getSimpleQuote(symbol, signal);
+    if (signal?.aborted) throw new Error('Scraper request aborted');
     
     // Add a small delay to space out requests
     await delay(500);
+    if (signal?.aborted) throw new Error('Scraper request aborted');
 
     // Fetch the summary page. Wrapped in try/catch so a "Header overflow"
     // (Yahoo Finance now returns >8 KB response headers) doesn't abort the
@@ -164,13 +172,16 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
           },
         },
         async (r) => r.ok ? r.text() : '',
+        signal,
       );
     } catch {
+      if (signal?.aborted) throw new Error('Scraper request aborted');
       // Header overflow or network error — proceed with empty HTML
     }
 
     // Add another delay before the next request
     await delay(800);
+    if (signal?.aborted) throw new Error('Scraper request aborted');
 
     // Get statistics page for more detailed metrics
     let statsHtml = '';
@@ -194,8 +205,10 @@ export async function scrapeStockData(symbol: string): Promise<StockResponse> {
           },
         },
         async (r) => r.ok ? r.text() : '',
+        signal,
       );
     } catch {
+      if (signal?.aborted) throw new Error('Scraper request aborted');
       // Header overflow or network error — proceed with empty stats HTML
     }
 

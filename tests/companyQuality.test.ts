@@ -7,6 +7,7 @@ import {
 } from '../shared/companyQuality';
 import { computeStockQuality } from '../client/src/lib/researchCalculations';
 import { computeQuality, hasUsableQualityMetrics } from '../server/services/researchScan';
+import { getDefaultMarginOfSafety, getRecommendedMarginOfSafety } from '../client/src/lib/utils';
 
 const strongCompany = {
   roe: 30.7,
@@ -64,5 +65,19 @@ describe('canonical company quality', () => {
     expect(normalizeCompanyQuality('Speculative')).toBe('Caution');
     expect(normalizeCompanyQuality('Caution')).toBe('Caution');
     expect(normalizeCompanyQuality('unknown')).toBeNull();
+  });
+
+  it('keeps the Caution margin recommendation and default aligned', () => {
+    expect(getRecommendedMarginOfSafety('Caution')).toBe('40-50%+');
+    expect(getDefaultMarginOfSafety('Caution')).toBe(45);
+  });
+
+  it('maps every quality tier to the documented margin range and midpoint', () => {
+    expect(getRecommendedMarginOfSafety('Exceptional')).toBe('15-25%');
+    expect(getDefaultMarginOfSafety('Exceptional')).toBe(20);
+    expect(getRecommendedMarginOfSafety('Good')).toBe('25-35%');
+    expect(getDefaultMarginOfSafety('Good')).toBe(30);
+    expect(getRecommendedMarginOfSafety('Average')).toBe('35-40%');
+    expect(getDefaultMarginOfSafety('Average')).toBe(35);
   });
 });
