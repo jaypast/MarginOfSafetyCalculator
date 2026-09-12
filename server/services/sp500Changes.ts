@@ -273,6 +273,10 @@ export async function syncSp500Changes(force = false, now = new Date()): Promise
   inFlight = operation;
   try {
     return await operation;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "S&P 500 refresh failed";
+    console.error("[S&P 500 changes] Refresh coordination failed:", err);
+    return { newCount: 0, checked: false, error: message };
   } finally {
     if (inFlight === operation) inFlight = null;
   }

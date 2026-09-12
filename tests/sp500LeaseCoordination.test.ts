@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const storage = vi.hoisted(() => ({
   getSp500SyncState: vi.fn(),
@@ -20,6 +20,25 @@ vi.mock("../server/services/stockData", () => ({ getStockData: vi.fn() }));
 import { syncSp500Changes } from "../server/services/sp500Changes";
 
 describe("S&P 500 cross-server lease coordination", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns an explicit refresh error instead of crashing when lease storage is unavailable", async () => {
+    storage.getSp500SyncState.mockRejectedValueOnce(
+      new Error('relation "sp500_refresh_leases" does not exist'),
+    );
+
+    const result = await syncSp500Changes(false, new Date("2026-09-07T12:00:00Z"));
+
+    expect(result).toEqual({
+      newCount: 0,
+      checked: false,
+      error: 'relation "sp500_refresh_leases" does not exist',
+    });
+    expect(storage.acquireSp500RefreshLease).not.toHaveBeenCalled();
+  });
+
   it("shares one database waiter among concurrent callers on the non-owning server", async () => {
     storage.getSp500SyncState
       .mockResolvedValueOnce(undefined)
