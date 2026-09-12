@@ -1,19 +1,50 @@
 type AnalyticsData = Record<string, string | number | boolean>;
-type AnalyticsEvent =
-  | 'stock_search_submitted'
-  | 'stock_search_completed'
-  | 'valuation_calculated'
-  | 'valuation_method_changed'
-  | 'watchlist_changed'
-  | 'valuation_report_exported'
-  | string;
+
+export type ValuationMethodDimension = 'dcf' | 'pe' | 'graham';
+export type ValuationOutcome =
+  | 'undervalued'
+  | 'fairly_valued'
+  | 'overvalued'
+  | 'unavailable';
+
+interface DecisionFunnelEventMap {
+  stock_search_submitted: {
+    location: 'calculator';
+  };
+  stock_search_completed: {
+    outcome: 'success' | 'error';
+    source: string;
+    location: 'calculator';
+  };
+  valuation_completed: {
+    method: ValuationMethodDimension;
+    outcome: ValuationOutcome;
+    location: 'calculator';
+  };
+  report_generated: {
+    method: ValuationMethodDimension;
+    outcome: ValuationOutcome;
+    format: 'show_work';
+    location: 'valuation_results';
+  };
+  watchlist_changed: {
+    action: 'add' | 'remove';
+    location: 'calculator' | 'watchlist';
+    method?: ValuationMethodDimension;
+    outcome?: ValuationOutcome;
+  };
+}
+
+export type DecisionFunnelEventName = keyof DecisionFunnelEventMap;
 
 const FUNNEL_EVENT_PROPERTIES: Record<string, readonly string[]> = {
   stock_search_submitted: ['location'],
   stock_search_completed: ['outcome', 'source', 'location'],
-  valuation_calculated: ['outcome', 'quality_available', 'location'],
+  valuation_completed: ['method', 'outcome', 'location'],
+  report_generated: ['method', 'outcome', 'format', 'location'],
+  watchlist_changed: ['action', 'location', 'method', 'outcome'],
   valuation_method_changed: ['method', 'location'],
-  watchlist_changed: ['action', 'location'],
+  valuation_calculated: ['outcome', 'quality_available', 'location'],
   valuation_report_exported: ['format', 'location'],
 };
 
@@ -36,7 +67,7 @@ declare global {
   }
 }
 
-export function trackEvent(name: AnalyticsEvent, data?: AnalyticsData): void {
+export function trackEvent(name: string, data?: AnalyticsData): void {
   if (typeof window === "undefined") return;
 
   try {
@@ -44,4 +75,29 @@ export function trackEvent(name: AnalyticsEvent, data?: AnalyticsData): void {
   } catch {
     // Analytics must never affect the user experience.
   }
+}
+
+export function trackDecisionFunnelEvent<Name extends DecisionFunnelEventName>(
+  name: Name,
+  data: DecisionFunnelEventMap[Name],
+): void {
+  trackEvent(name, data);
+}
+
+export function classifyValuationOutcome(
+  intrinsicValue: number | undefined,
+  discountPremium: number | undefined,
+): ValuationOutcome {
+  if (
+    intrinsicValue === undefined
+    || discountPremium === undefined
+    || !Number.isFinite(intrinsicValue)
+    || !Number.isFinite(discountPremium)
+    || intrinsicValue <= 0
+  ) {
+    return 'unavailable';
+  }
+  if (discountPremium <= -10) return 'undervalued';
+  if (discountPremium < 10) return 'fairly_valued';
+  return 'overvalued';
 }

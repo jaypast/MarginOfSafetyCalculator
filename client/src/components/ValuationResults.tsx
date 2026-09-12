@@ -15,7 +15,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { StockData, ValuationResult, CalculationMethod, ValuationParams, MarginOfSafetyParams, ReverseDCFResult } from '@/lib/types';
 import { formatCurrency, isETF, getInvestmentRecommendation } from '@/lib/utils';
 import { generateCalculationsPDF } from '@/utils/pdfGenerator';
-import { trackEvent } from '@/lib/analytics';
+import {
+  trackDecisionFunnelEvent,
+  type ValuationOutcome,
+} from '@/lib/analytics';
 import { calculateDiscountPremium } from '@/lib/calculators';
 import EntryTimingBanner from './EntryTimingBanner';
 import { computeVmsScore } from '@/lib/vmsScore';
@@ -27,6 +30,7 @@ interface ValuationResultsProps {
   valuationParams?: ValuationParams;
   marginOfSafetyParams?: MarginOfSafetyParams;
   reverseDCFResult?: ReverseDCFResult | null;
+  valuationOutcome: ValuationOutcome;
 }
 
 const ValuationResults: React.FC<ValuationResultsProps> = ({
@@ -35,7 +39,8 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
   activeMethod,
   valuationParams,
   marginOfSafetyParams,
-  reverseDCFResult
+  reverseDCFResult,
+  valuationOutcome,
 }) => {
   // Add state for dialog control and report content
   const [showReportDialog, setShowReportDialog] = useState(false);
@@ -524,8 +529,10 @@ const ValuationResults: React.FC<ValuationResultsProps> = ({
                   marginOfSafetyParams,
                   valuationResults
                 );
-                trackEvent('valuation_report_exported', {
-                  format: 'printable',
+                trackDecisionFunnelEvent('report_generated', {
+                  method: activeMethod,
+                  outcome: valuationOutcome,
+                  format: 'show_work',
                   location: 'valuation_results',
                 });
                 setReportContent(content);

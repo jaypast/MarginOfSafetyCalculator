@@ -20,10 +20,10 @@ account data, or free-form user content.
 | --- | --- |
 | `stock_search_submitted` | `location` |
 | `stock_search_completed` | `outcome`, `source`, `location` |
-| `valuation_calculated` | `outcome`, `quality_available`, `location` |
+| `valuation_completed` | `method`, `outcome`, `location` |
 | `valuation_method_changed` | `method`, `location` |
-| `watchlist_changed` | `action`, `location` |
-| `valuation_report_exported` | `format`, `location` |
+| `watchlist_changed` | `action`, `location`, optional `method` and `outcome` |
+| `report_generated` | `method`, `outcome`, `format`, `location` |
 
 Property values are primitive strings, numbers, or booleans. Event names use
 snake_case. The existing shared analytics wrapper remains the only call site
@@ -58,3 +58,18 @@ not injected.
   practical.
 - Run TypeScript, the full Vitest suite, and the production build.
 - Confirm the development app still works when `window.umami` is absent.
+
+## Findings and product decisions
+
+The 30-day analytics baseline queried on September 12, 2026 contained no custom
+events for these funnel stages. Conversion rates cannot be calculated until
+analytics is enabled and this instrumentation is published. The first useful
+review should compare distinct sessions at each stage rather than raw event
+counts, because visitors can search or recalculate more than once.
+
+- If successful stock loads frequently stop before `valuation_completed`, make
+  the valuation result panel open by default for first-time searches or move the
+  primary result above the collapsed evidence panels.
+- If undervalued results convert to watchlist additions but fairly valued and
+  overvalued results rarely do, change the terminal action copy by outcome (for
+  example, “Watch for a better price” instead of a generic save action).

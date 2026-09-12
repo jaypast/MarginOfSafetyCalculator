@@ -9,7 +9,11 @@ import { useToast } from '@/hooks/use-toast';
 import { Search, RefreshCcw, Database, Clock, AlertTriangle, AlertOctagon, BookmarkPlus, Check } from 'lucide-react';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { getMultibaggerSignalNotes } from '@/components/ValueInvestorVerdict';
-import { trackEvent } from '@/lib/analytics';
+import {
+  trackDecisionFunnelEvent,
+  type ValuationMethodDimension,
+  type ValuationOutcome,
+} from '@/lib/analytics';
 
 // Map upstream IDs to short, user-friendly labels for the divergence popover.
 const SOURCE_DISPLAY_NAMES: Record<string, string> = {
@@ -75,6 +79,9 @@ interface StockInformationProps {
   // button so the saved entry reflects what the user is actually looking at.
   // Optional (defaults to 25) so older callers don't break.
   marginOfSafety?: number;
+  valuationMethod: ValuationMethodDimension;
+  valuationOutcome: ValuationOutcome;
+  onSearchCompleted?: (outcome: 'success' | 'error') => void;
 }
 
 const StockInformation: React.FC<StockInformationProps> = ({ 
@@ -84,11 +91,15 @@ const StockInformation: React.FC<StockInformationProps> = ({
   error,
   errorMessage,
   marginOfSafety = 25,
+  valuationMethod,
+  valuationOutcome,
+  onSearchCompleted,
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [isCached, setIsCached] = useState(false);
   const [justAddedSymbol, setJustAddedSymbol] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const pendingSearchSymbol = useRef<string | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -101,9 +112,11 @@ const StockInformation: React.FC<StockInformationProps> = ({
       return res.json();
     },
     onSuccess: (_data, variables) => {
-      trackEvent('watchlist_changed', {
+      trackDecisionFunnelEvent('watchlist_changed', {
         action: 'add',
         location: 'calculator',
+        method: valuationMethod,
+        outcome: valuationOutcome,
       });
       setJustAddedSymbol(variables.symbol);
       queryClient.invalidateQueries({ queryKey: ['/api/watchlist'] });
@@ -128,19 +141,23 @@ const StockInformation: React.FC<StockInformationProps> = ({
     }
   }, [stockData?.symbol, justAddedSymbol]);
 
-  const lastTrackedSearch = useRef<string | null>(null);
   useEffect(() => {
-    if (!stockData) return;
-    const outcome = stockData.error ? 'error' : 'success';
-    const key = `${stockData.symbol}:${outcome}:${stockData.fetchedAt ?? ''}`;
-    if (lastTrackedSearch.current === key) return;
-    lastTrackedSearch.current = key;
-    trackEvent('stock_search_completed', {
+    const pendingSymbol = pendingSearchSymbol.current;
+    if (!pendingSymbol || isLoading) return;
+
+    const loadedSubmittedSymbol =
+      stockData?.symbol?.toUpperCase() === pendingSymbol;
+    if (!loadedSubmittedSymbol && !error) return;
+
+    const outcome = error || stockData?.error ? 'error' : 'success';
+    trackDecisionFunnelEvent('stock_search_completed', {
       outcome,
-      source: stockData.dataSource ?? 'unknown',
+      source: loadedSubmittedSymbol ? stockData?.dataSource ?? 'unknown' : 'unknown',
       location: 'calculator',
     });
-  }, [stockData]);
+    pendingSearchSymbol.current = null;
+    onSearchCompleted?.(outcome);
+  }, [error, isLoading, onSearchCompleted, stockData]);
 
   // NOTE: the app used to prefetch five popular tickers (AAPL, MSFT, ...) on
   // mount. Removed (Task #88): those five requests competed with the ticker
@@ -170,7 +187,8 @@ const StockInformation: React.FC<StockInformationProps> = ({
 
   const handleFetchData = () => {
     if (inputValue) {
-      trackEvent('stock_search_submitted', { location: 'calculator' });
+      pendingSearchSymbol.current = inputValue.trim().toUpperCase();
+      trackDecisionFunnelEvent('stock_search_submitted', { location: 'calculator' });
       onFetchData(inputValue);
     }
   };

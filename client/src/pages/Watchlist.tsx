@@ -23,7 +23,7 @@ import { useLocation } from 'wouter';
 import { StockData, WatchlistEntry } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
 import { classifyBuyZone, priceVsBuyBelowPct, describeFreshness, type BuyZone } from '@/lib/watchlist';
-import { trackEvent } from '@/lib/analytics';
+import { trackDecisionFunnelEvent } from '@/lib/analytics';
 import {
   calculateDCFDetailed,
   calculatePEDetailed,
@@ -426,7 +426,10 @@ const Watchlist: React.FC = () => {
       return { id, symbol };
     },
     onSuccess: ({ symbol }) => {
-      trackEvent('watchlist_changed', { action: 'remove', location: 'watchlist' });
+      trackDecisionFunnelEvent('watchlist_changed', {
+        action: 'remove',
+        location: 'watchlist',
+      });
       queryClient.invalidateQueries({ queryKey: ['/api/watchlist'] });
     },
     onError: (err: Error) => {
