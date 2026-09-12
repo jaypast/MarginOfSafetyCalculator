@@ -318,8 +318,15 @@ describe('getStockData — parallel primary source race', () => {
 
     const result = await getStockData(symbol);
     expect(result.dataSource).toBe('rapidapi');
+    expect(result.price).toBe(222);
     expect(aborted).toBe(true);
     await __awaitPendingSpotChecks();
+
+    // Cancellation must not let the losing request alter the winner selected
+    // by the race or the cache entry returned on the next lookup.
+    const cached = await getStockData(symbol);
+    expect(cached.dataSource).toBe('rapidapi');
+    expect(cached.price).toBe(222);
   });
 
   it('removes an aborted yfinance request from the waiting queue', async () => {

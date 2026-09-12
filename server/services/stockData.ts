@@ -585,10 +585,11 @@ async function _fetchStockData(symbol: string, forceRefresh = false): Promise<St
 
   // --- 1–4. Primary sources — fired in parallel; first complete result wins ---
   // All four sources start simultaneously. The first one to return complete data
-  // resolves the race; the losers continue running in the background (their only
-  // side-effect is updating bestPartialPrice, which is harmless for the fallback
-  // path). This replaces the previous serial waterfall where a slow or failing
-  // first source added its full latency before the second was even attempted.
+  // resolves the race; any remaining requests receive an abort signal. Adapters
+  // that support cancellation stop their upstream work, while adapters that
+  // ignore the signal remain safely contained by the `done` guard below. This
+  // replaces the previous serial waterfall where a slow or failing first source
+  // added its full latency before the second was even attempted.
   interface PrimarySourceDef {
     label: string;
     source: DataSource;
