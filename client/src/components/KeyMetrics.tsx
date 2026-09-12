@@ -6,7 +6,7 @@ import { formatCurrency } from '@/lib/utils';
 interface KeyMetricsProps {
   stockData: StockData | undefined;
   isLoading: boolean;
-  companyQuality?: 'Exceptional' | 'Good' | 'Average' | 'Speculative';
+  companyQuality?: 'Exceptional' | 'Good' | 'Average' | 'Caution';
 }
 
 const getQualityColorClass = (quality?: string) => {
@@ -17,7 +17,7 @@ const getQualityColorClass = (quality?: string) => {
       return 'bg-blue-100 text-blue-800';
     case 'Average':
       return 'bg-yellow-100 text-yellow-800';
-    case 'Speculative':
+    case 'Caution':
       return 'bg-red-100 text-red-800';
     default:
       return 'bg-neutral-100 text-neutral-800';

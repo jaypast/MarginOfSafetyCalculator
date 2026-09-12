@@ -51,7 +51,7 @@ export const getRecommendedMarginOfSafety = (quality: CompanyQuality): string =>
       return '25-35%';
     case 'Average':
       return '35-40%';
-    case 'Speculative':
+    case 'Caution':
       return '40-50%+';
     default:
       return '35-40%';
@@ -66,7 +66,7 @@ export const getDefaultMarginOfSafety = (quality: CompanyQuality): number => {
       return 30;
     case 'Average':
       return 35;
-    case 'Speculative':
+    case 'Caution':
       return 45;
     default:
       return 35;

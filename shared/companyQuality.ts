@@ -4,10 +4,11 @@ export const COMPANY_QUALITY_TIERS = [
   "Exceptional",
   "Good",
   "Average",
-  "Speculative",
+  "Caution",
 ] as const;
 
 export type CompanyQuality = (typeof COMPANY_QUALITY_TIERS)[number];
+export type StoredCompanyQuality = CompanyQuality | "Speculative";
 export type QualityConfidence = "high" | "unavailable";
 
 export interface CompanyQualityInputs {
@@ -26,6 +27,16 @@ export interface CompanyQualityEvaluation {
   version: number;
   reasons: string[];
   missingInputs: Array<keyof CompanyQualityInputs>;
+}
+
+/** Converts quality labels stored before the Caution rename for presentation. */
+export function normalizeCompanyQuality(
+  quality: string | null | undefined,
+): CompanyQuality | null {
+  if (quality === "Speculative") return "Caution";
+  return COMPANY_QUALITY_TIERS.includes(quality as CompanyQuality)
+    ? quality as CompanyQuality
+    : null;
 }
 
 const STABILITY_SCORES: Record<string, number> = { High: 3, Medium: 2, Low: 1 };
@@ -74,11 +85,11 @@ export function evaluateCompanyQuality(inputs: CompanyQualityInputs): CompanyQua
   if (roe < 10) hardRisks.push(`ROE of ${roe.toFixed(1)}% is below 10%`);
 
   const quality: CompanyQuality = hardRisks.length > 0
-    ? "Speculative"
+    ? "Caution"
     : score >= 16 ? "Exceptional"
     : score >= 12 ? "Good"
     : score >= 8 ? "Average"
-    : "Speculative";
+    : "Caution";
 
   const reasons = hardRisks.length > 0
     ? hardRisks

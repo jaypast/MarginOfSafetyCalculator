@@ -90,7 +90,7 @@ const TopResearch = () => {
         .filter((stock): stock is ResearchStock => stock !== null)
         .sort((a, b) => {
           // Primary sort by quality
-          const qualityOrder = { 'Exceptional': 0, 'Good': 1, 'Average': 2, 'Speculative': 3 };
+          const qualityOrder = { 'Exceptional': 0, 'Good': 1, 'Average': 2, 'Caution': 3 };
           return qualityOrder[a.quality] - qualityOrder[b.quality];
         });
       
@@ -124,7 +124,7 @@ const TopResearch = () => {
         return 'bg-green-100 text-green-800';
       case 'Average':
         return 'bg-yellow-100 text-yellow-800';
-      case 'Speculative':
+      case 'Caution':
         return 'bg-red-100 text-red-800';
       default:
         return 'bg-gray-100 text-gray-800';

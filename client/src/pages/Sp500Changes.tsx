@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { trackEvent } from "@/lib/analytics";
+import { normalizeCompanyQuality } from "@shared/companyQuality";
 
 interface Snapshot {
   status: "complete" | "incomplete" | "error";
@@ -74,7 +75,7 @@ function ChangeCard({ change }: { change: Change }) {
           <div>
             <dt className="text-neutral-500">Quality</dt>
             <dd className="font-medium" title={s.qualityReasons?.join(" · ")}>
-              {s.quality ?? "Unavailable"}
+              {normalizeCompanyQuality(s.quality) ?? "Unavailable"}
               {s.qualityVersion ? <span className="ml-1 text-[10px] font-normal text-neutral-400">v{s.qualityVersion}</span> : null}
             </dd>
           </div>

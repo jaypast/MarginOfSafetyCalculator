@@ -151,7 +151,7 @@ const ResearchPage: React.FC = () => {
       case 'Exceptional': return 'bg-green-100 text-green-800';
       case 'Good':        return 'bg-blue-100 text-blue-800';
       case 'Average':     return 'bg-yellow-100 text-yellow-800';
-      case 'Speculative': return 'bg-red-100 text-red-800';
+      case 'Caution': return 'bg-red-100 text-red-800';
       default:            return 'bg-neutral-100 text-neutral-800';
     }
   };
@@ -288,7 +288,7 @@ const ResearchPage: React.FC = () => {
           <div className="mt-6 text-xs text-neutral-500 space-y-1">
             {lastUpdated && <p>Last updated: {lastUpdated}</p>}
             {cacheExpiration && <p>Next full refresh: {cacheExpiration}</p>}
-            <p>Quality uses ROE, debt, liquidity, revenue growth, earnings stability, and competitive position. Severe leverage, weak liquidity, or ROE below 10% forces a Speculative rating.</p>
+            <p>Quality uses ROE, debt, liquidity, revenue growth, earnings stability, and competitive position. Severe leverage, weak liquidity, or ROE below 10% triggers a Caution rating.</p>
             <p>Discount = gap between current price and average DCF / P/E / Graham intrinsic value. Only gaps ≥ {MIN_DISCOUNT_PCT}% shown.</p>
             <p className="font-medium">Server scans the Russell 3000 one company at a time to avoid API rate limits. Results are cached for 24 hours.</p>
           </div>

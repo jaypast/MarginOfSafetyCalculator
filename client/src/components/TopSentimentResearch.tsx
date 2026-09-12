@@ -207,7 +207,7 @@ const TopSentimentResearch: React.FC = () => {
           // Both undervalued, compare by quality then by value gap
           if (a.valueGap < 0 && b.valueGap < 0) {
             // Higher quality comes first
-            const qualityOrder = { 'Exceptional': 1, 'Good': 2, 'Average': 3, 'Speculative': 4 } as const;
+            const qualityOrder = { 'Exceptional': 1, 'Good': 2, 'Average': 3, 'Caution': 4 } as const;
             const aQuality = a.quality ? qualityOrder[a.quality] : 5;
             const bQuality = b.quality ? qualityOrder[b.quality] : 5;
             if (aQuality !== bQuality) {
@@ -251,7 +251,7 @@ const TopSentimentResearch: React.FC = () => {
         return 'bg-green-100 text-green-800';
       case 'Average':
         return 'bg-yellow-100 text-yellow-800';
-      case 'Speculative':
+      case 'Caution':
         return 'bg-red-100 text-red-800';
       default:
         return 'bg-gray-100 text-gray-800';

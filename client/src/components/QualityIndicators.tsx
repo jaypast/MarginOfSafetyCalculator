@@ -100,7 +100,7 @@ const QualityIndicators: React.FC<QualityIndicatorsProps> = ({
         return 'text-teal-700';
       case 'Average':
         return 'text-amber-700';
-      case 'Speculative':
+      case 'Caution':
         return 'text-rose-700';
       default:
         return 'text-neutral-700';

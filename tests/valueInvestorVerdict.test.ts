@@ -155,9 +155,9 @@ describe('ValueInvestorVerdict — gate logic', () => {
     });
 
     it('returns PASS when implied growth is heroic and the rest is mediocre', () => {
-      // Speculative quality + heroic implied growth → PASS regardless of MoS.
+      // Caution quality + heroic implied growth → PASS regardless of MoS.
       const verdict = decideVerdict(
-        'Speculative',
+        'Caution',
         'adequate',
         'heroic',
         makeAvg(100, 70),
@@ -211,7 +211,7 @@ describe('ValueInvestorVerdict — gate logic', () => {
       // 4× spread across DCF / P/E / Graham → wild disagreement.
       const wildMethods = makeMethods([400, 100, 80]);
       const verdict = decideVerdict(
-        'Speculative',
+        'Caution',
         'adequate',
         'reasonable',
         makeAvg(193, 100), // 48% discount vs. average
@@ -231,9 +231,9 @@ describe('ValueInvestorVerdict — gate logic', () => {
       expect(isOutsideCircleSignal('Good', tight, true, false)).toBe(false);
     });
 
-    it('fires when method spread is ≥ 4× and quality is speculative', () => {
+    it('fires when method spread is ≥ 4× and quality is caution', () => {
       const wide = makeMethods([400, 100, 80]);
-      expect(isOutsideCircleSignal('Speculative', wide, false, false)).toBe(true);
+      expect(isOutsideCircleSignal('Caution', wide, false, false)).toBe(true);
     });
 
     it('fires when method spread is ≥ 4× and the model leaned heavily on adjustments', () => {
@@ -241,9 +241,9 @@ describe('ValueInvestorVerdict — gate logic', () => {
       expect(isOutsideCircleSignal('Good', wide, true, false)).toBe(true);
     });
 
-    it('fires when speculative + heavy adjustments + source divergence all coincide (even with a tight spread)', () => {
+    it('fires when caution + heavy adjustments + source divergence all coincide (even with a tight spread)', () => {
       const tight = makeMethods([100, 95, 105]);
-      expect(isOutsideCircleSignal('Speculative', tight, true, true)).toBe(true);
+      expect(isOutsideCircleSignal('Caution', tight, true, true)).toBe(true);
     });
   });
 
@@ -416,7 +416,7 @@ describe('ValueInvestorVerdict — gate logic', () => {
 
     it('does not escalate a PASS or WATCH when cash quality is negative', () => {
       const passVerdict = decideVerdict(
-        'Speculative',
+        'Caution',
         'adequate',
         'heroic',
         makeAvg(100, 70),
@@ -429,7 +429,7 @@ describe('ValueInvestorVerdict — gate logic', () => {
       expect(passVerdict.action).toBe('PASS');
     });
 
-    it('promotes a base WATCH to BUY when FCF yield is strong, MoS adequate, no chips, non-Speculative', () => {
+    it('promotes a base WATCH to BUY when FCF yield is strong, MoS adequate, no chips, non-Caution', () => {
       // Good quality + adequate MoS + aggressive reverse-DCF → base WATCH
       const v = decideVerdict(
         'Good',
@@ -446,9 +446,9 @@ describe('ValueInvestorVerdict — gate logic', () => {
       expect(v.rationale.toLowerCase()).toContain('multibagger');
     });
 
-    it('does not promote a Speculative WATCH', () => {
+    it('does not promote a Caution WATCH', () => {
       const v = decideVerdict(
-        'Speculative',
+        'Caution',
         'adequate',
         'reasonable',
         makeAvg(100, 70),
@@ -633,11 +633,11 @@ describe('ValueInvestorVerdict — gate logic', () => {
       expect(v.action).toBe('WATCH');
     });
 
-    it('does NOT promote when VMS score ≥ 75 but quality is Speculative', () => {
-      // Speculative + adequate + reasonable → base WATCH (quality gate).
-      // VMS gate checks quality !== 'Speculative' — must not fire.
+    it('does NOT promote when VMS score ≥ 75 but quality is Caution', () => {
+      // Caution + adequate + reasonable → base WATCH (quality gate).
+      // VMS gate checks quality !== 'Caution' — must not fire.
       const v = decideVerdict(
-        'Speculative',
+        'Caution',
         'adequate',
         'reasonable',
         makeAvg(100, 70),
@@ -693,9 +693,9 @@ describe('ValueInvestorVerdict — gate logic', () => {
       expect(v.action).toBe('WATCH');
     });
 
-    it('keeps WATCH when cluster-buy is true but quality is Speculative', () => {
+    it('keeps WATCH when cluster-buy is true but quality is Caution', () => {
       const v = decideVerdict(
-        'Speculative',
+        'Caution',
         'adequate',
         'reasonable',
         makeAvg(100, 70),

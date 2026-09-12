@@ -3,6 +3,7 @@ import {
   COMPANY_QUALITY_VERSION,
   evaluateCompanyQuality,
   isResearchQuality,
+  normalizeCompanyQuality,
 } from '../shared/companyQuality';
 import { computeStockQuality } from '../client/src/lib/researchCalculations';
 import { computeQuality, hasUsableQualityMetrics } from '../server/services/researchScan';
@@ -28,14 +29,14 @@ describe('canonical company quality', () => {
   it('does not let growth and competitive position hide severe leverage', () => {
     const result = evaluateCompanyQuality({ ...strongCompany, debtToEquity: 8 });
     expect(result.score).toBeGreaterThanOrEqual(12);
-    expect(result.quality).toBe('Speculative');
+    expect(result.quality).toBe('Caution');
     expect(result.reasons.join(' ')).toContain('severe-risk ceiling');
     expect(isResearchQuality(result.quality)).toBe(false);
   });
 
   it('makes weak liquidity and low ROE hard risk overrides', () => {
-    expect(evaluateCompanyQuality({ ...strongCompany, currentRatio: 0.9 }).quality).toBe('Speculative');
-    expect(evaluateCompanyQuality({ ...strongCompany, roe: 9.9 }).quality).toBe('Speculative');
+    expect(evaluateCompanyQuality({ ...strongCompany, currentRatio: 0.9 }).quality).toBe('Caution');
+    expect(evaluateCompanyQuality({ ...strongCompany, roe: 9.9 }).quality).toBe('Caution');
   });
 
   it('returns unavailable instead of silently replacing missing values with zero', () => {
@@ -56,6 +57,12 @@ describe('canonical company quality', () => {
     const before = evaluateCompanyQuality(strongCompany);
     const after = evaluateCompanyQuality({ ...strongCompany, debtToEquity: 8 });
     expect(before.quality).toBe('Exceptional');
-    expect(after.quality).toBe('Speculative');
+    expect(after.quality).toBe('Caution');
+  });
+
+  it('translates the legacy persisted label for presentation', () => {
+    expect(normalizeCompanyQuality('Speculative')).toBe('Caution');
+    expect(normalizeCompanyQuality('Caution')).toBe('Caution');
+    expect(normalizeCompanyQuality('unknown')).toBeNull();
   });
 });

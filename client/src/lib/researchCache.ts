@@ -1,3 +1,5 @@
+import { normalizeCompanyQuality } from '@shared/companyQuality';
+
 // Import type from directly from ResearchPage to avoid circular imports
 export interface ResearchStock {
   symbol: string;
@@ -5,7 +7,7 @@ export interface ResearchStock {
   price: number;
   intrinsicValue: number;
   discount: number;
-  quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative';
+  quality: 'Exceptional' | 'Good' | 'Average' | 'Caution';
   qualityVersion?: number;
   qualityReasons?: string[];
   /** VMS score (0–100). Absent on legacy localStorage entries — treat as 0. */
@@ -41,9 +43,18 @@ export function getCachedResearchData(): { data: ResearchStock[] | null, needsRe
       return { data: null, needsRefresh: true };
     }
     
-    // Return cached data
+    const parsed = JSON.parse(cachedDataString) as Array<ResearchStock & { quality?: string }>;
+    const normalized = parsed.map((stock) => ({
+      ...stock,
+      quality: normalizeCompanyQuality(stock.quality),
+    }));
+    if (normalized.some((stock) => stock.quality === null)) {
+      return { data: null, needsRefresh: true };
+    }
+
+    // Return cached data, translating the legacy quality label if necessary.
     return { 
-      data: JSON.parse(cachedDataString) as ResearchStock[],
+      data: normalized as ResearchStock[],
       needsRefresh: false 
     };
   } catch (error) {

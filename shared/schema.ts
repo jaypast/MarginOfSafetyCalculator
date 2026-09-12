@@ -1,6 +1,7 @@
 import { pgTable, text, serial, integer, boolean, decimal, varchar, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import type { StoredCompanyQuality } from "./companyQuality";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -355,7 +356,7 @@ export interface Sp500EvaluationSnapshot {
   intrinsicValue: number | null;
   discountPct: number | null;
   marginOfSafetyPct: number | null;
-  quality: "Exceptional" | "Good" | "Average" | "Speculative" | null;
+  quality: StoredCompanyQuality | null;
   qualityVersion?: number;
   qualityReasons?: string[];
   meetsBuyCriteria: boolean;

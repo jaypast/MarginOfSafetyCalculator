@@ -63,7 +63,7 @@ interface Risk {
 
 const describeMoat = (
   competitivePosition: string,
-  quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative' | undefined,
+  quality: 'Exceptional' | 'Good' | 'Average' | 'Caution' | undefined,
 ): string => {
   if (quality === 'Exceptional' && competitivePosition === 'Strong') {
     return 'Wide moat: market leader with durable competitive advantages.';
@@ -84,7 +84,7 @@ export const buildInversionRisks = (
   stockData: StockData,
   averageResult: ValuationResult | undefined,
   reverseDCF: ReverseDCFResult | null,
-  quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative' | undefined,
+  quality: 'Exceptional' | 'Good' | 'Average' | 'Caution' | undefined,
   heavyAdjustments: boolean,
 ): Risk[] => {
   const risks: Risk[] = [];
@@ -207,7 +207,7 @@ export const buildInversionRisks = (
 
   // Fallbacks so we always have a meaningful inversion section
   if (risks.length < 3) {
-    if (quality === 'Speculative' || quality === 'Average') {
+    if (quality === 'Caution' || quality === 'Average') {
       risks.push({
         label: 'Quality risk',
         detail: `${quality}-tier business — small operational mistakes can permanently impair value.`,
@@ -332,7 +332,7 @@ export const evaluateReverseDcf = (
 // business, or noisy underlying data. In those cases the disciplined
 // answer is "outside circle — pass" rather than a fake Buy/Watch/Pass.
 export const isOutsideCircleSignal = (
-  quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative' | undefined,
+  quality: 'Exceptional' | 'Good' | 'Average' | 'Caution' | undefined,
   valuationResults: ValuationResult[],
   heavyAdjustments: boolean,
   hasSourceDivergence: boolean,
@@ -353,13 +353,13 @@ export const isOutsideCircleSignal = (
     }
   }
 
-  if (wildSpread && (heavyAdjustments || quality === 'Speculative')) {
+  if (wildSpread && (heavyAdjustments || quality === 'Caution')) {
     return true;
   }
 
-  // Heavily-adjusted speculative business with diverging providers — the
+  // Heavily-adjusted caution-tier business with diverging providers — the
   // raw data isn't trustworthy and the model is patching over it.
-  if (heavyAdjustments && quality === 'Speculative' && hasSourceDivergence) {
+  if (heavyAdjustments && quality === 'Caution' && hasSourceDivergence) {
     return true;
   }
 
@@ -515,7 +515,7 @@ export const getMultibaggerSignalNotes = (stockData: StockData): string[] => {
 };
 
 export const decideVerdict = (
-  quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative' | undefined,
+  quality: 'Exceptional' | 'Good' | 'Average' | 'Caution' | undefined,
   mosStatus: MoSStatus,
   realityCheck: ReverseDcfRealityCheck,
   averageResult: ValuationResult | undefined,
@@ -550,7 +550,7 @@ export const decideVerdict = (
   // downgrades a base BUY to WATCH; never escalates a WATCH/PASS to
   // anything worse. Strong FCF (>5% yield) promotes a borderline
   // WATCH to BUY only when MoS is adequate, the market isn't heroic,
-  // quality isn't Speculative, and no modifier chips are flagged —
+  // quality isn't Caution, and no modifier chips are flagged —
   // the cardinal Graham principle (require an adequate cushion)
   // still wins over the empirical promotion rule.
   if (cashQuality === 'negative' && base.action === 'BUY') {
@@ -564,7 +564,7 @@ export const decideVerdict = (
     base.action === 'WATCH' &&
     mosStatus === 'adequate' &&
     realityCheck !== 'heroic' &&
-    quality !== 'Speculative' &&
+    quality !== 'Caution' &&
     modifierChipCount === 0
   ) {
     return {
@@ -578,14 +578,14 @@ export const decideVerdict = (
   // FCF, low leverage) — giving extra confidence in cash-flow
   // reliability even when FCF yield is positive but below 5%.
   // Requires: VMS score ≥ 75, WATCH base, adequate MoS, non-heroic
-  // expectations, non-Speculative quality, no modifier chips, and
+  // expectations, non-Caution quality, no modifier chips, and
   // non-negative FCF (minimum: the business is generating cash).
   if (
     vmsScore >= 75 &&
     base.action === 'WATCH' &&
     mosStatus === 'adequate' &&
     realityCheck !== 'heroic' &&
-    quality !== 'Speculative' &&
+    quality !== 'Caution' &&
     modifierChipCount === 0 &&
     cashQuality !== 'negative' &&
     fcfPerShare > 0
@@ -599,14 +599,14 @@ export const decideVerdict = (
   // Insider cluster-buy upgrade (Task #74). Multiple C-suite insiders
   // making open-market purchases in 90 days is a well-studied conviction
   // signal (Lakonishok & Lee 2001; Cohen et al. 2012). Same guard
-  // conditions as VMS upgrade: never promotes into heroic/Speculative/
+  // conditions as VMS upgrade: never promotes into heroic/Caution/
   // negative-FCF/negative-cash territory.
   if (
     clusterBuy &&
     base.action === 'WATCH' &&
     mosStatus === 'adequate' &&
     realityCheck !== 'heroic' &&
-    quality !== 'Speculative' &&
+    quality !== 'Caution' &&
     modifierChipCount === 0 &&
     cashQuality !== 'negative' &&
     fcfPerShare > 0
@@ -631,7 +631,7 @@ export const decideVerdict = (
 };
 
 const computeBaseVerdict = (
-  quality: 'Exceptional' | 'Good' | 'Average' | 'Speculative' | undefined,
+  quality: 'Exceptional' | 'Good' | 'Average' | 'Caution' | undefined,
   mosStatus: MoSStatus,
   realityCheck: ReverseDcfRealityCheck,
   averageResult: ValuationResult | undefined,
@@ -721,10 +721,10 @@ const computeBaseVerdict = (
     };
   }
 
-  if (quality === 'Speculative') {
+  if (quality === 'Caution') {
     return {
       action: 'WATCH',
-      rationale: 'Margin of safety is met, but a speculative-tier business deserves an even wider cushion — keep watching, don\'t rush.',
+      rationale: 'Margin of safety is met, but a caution-tier business deserves an even wider cushion — keep watching, don\'t rush.',
     };
   }
 
@@ -780,7 +780,7 @@ const qualityBadgeColor = (quality?: string): string => {
       return 'bg-teal-100 text-teal-800 border-teal-200';
     case 'Average':
       return 'bg-amber-100 text-amber-800 border-amber-200';
-    case 'Speculative':
+    case 'Caution':
       return 'bg-rose-100 text-rose-800 border-rose-200';
     default:
       return 'bg-neutral-100 text-neutral-800 border-neutral-200';

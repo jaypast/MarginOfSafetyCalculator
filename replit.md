@@ -41,7 +41,7 @@ response (yfinance populates them from `ticker.info` + balance-sheet
   primary cash-quality gate (Option A). `≤ 0` downgrades a base BUY
   to WATCH ("the business is consuming cash, not generating it");
   `> 5%` promotes a borderline WATCH to BUY *only* when MoS is
-  adequate, reverse-DCF isn't heroic, quality isn't Speculative, and
+  adequate, reverse-DCF isn't heroic, quality isn't Caution, and
   no modifier chips fire — the Graham cushion principle still wins.
   Falls back to `fcfPerShare / price` for adapters without a server
   computation.

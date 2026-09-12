@@ -201,7 +201,7 @@ export function computeSectorWarning(
  *  - Base verdict is Watch
  *  - MoS is adequate
  *  - Reverse-DCF is not heroic
- *  - Quality is not Speculative
+ *  - Quality is not Caution
  *  - No modifier chips are firing
  *  - FCF is non-negative (business generates at least some cash)
  *
@@ -225,7 +225,7 @@ export function evaluateVmsUpgrade(params: {
     baseAction === 'WATCH' &&
     mosStatus === 'adequate' &&
     realityCheck !== 'heroic' &&
-    quality !== 'Speculative' &&
+    quality !== 'Caution' &&
     modifierChipCount === 0 &&
     fcfPerShare > 0
   );

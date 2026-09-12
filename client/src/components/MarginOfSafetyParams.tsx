@@ -93,7 +93,7 @@ const MarginOfSafetyParams: React.FC<MarginOfSafetyParamsProps> = ({
                 <td className="text-right py-1">35-40%</td>
               </tr>
               <tr className="text-neutral-600">
-                <td className="pt-1">Speculative:</td>
+                <td className="pt-1">Caution:</td>
                 <td className="text-right pt-1">40-50%+</td>
               </tr>
             </tbody>

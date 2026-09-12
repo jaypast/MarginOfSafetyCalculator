@@ -2,3 +2,4 @@
 - [drizzle-zod $type columns](drizzle-zod-enum-columns.md) — createInsertSchema widens `$type<Union>()` varchars to z.string(); override with z.enum in the refinement arg or tsc breaks.
 - [Common-stock universe filtering](security-name-filtering.md) — `\bdue 20\b` never matches "due 2066"; test exclusion regexes against real security names, share them between generator and integrity test.
 - [S&P constituent history source](sp500-constituent-source.md) — FMP’s historical constituent endpoint is premium-gated; keep the public S&P-release mirror fallback explicit and validated.
+- [Development S&P refresh lease table](dev-sp500-lease-table.md) — the daily refresh route requires its lease table before local preview requests can complete.
