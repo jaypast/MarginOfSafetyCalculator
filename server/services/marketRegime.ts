@@ -147,7 +147,7 @@ export function buildMonthlyFeatures(prices: PriceObservation[]): MarketFeature[
     monthEnds.set(point.date.slice(0, 7), point);
   }
 
-  const monthly = [...monthEnds.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const monthly = Array.from(monthEnds.values()).sort((a, b) => a.date.localeCompare(b.date));
   const returns: Array<{ date: string; value: number }> = [];
   for (let index = 1; index < monthly.length; index += 1) {
     returns.push({
@@ -225,7 +225,7 @@ function initializeModel(
   const vectors = observations.map((observation) => observation.values);
   const dimensions = vectors[0]?.length ?? 2;
   const scores = vectors.map((vector) => vector[0] - vector[1] * 0.25);
-  const order = [...scores.keys()].sort((a, b) => scores[a] - scores[b]);
+  const order = Array.from(scores.keys()).sort((a, b) => scores[a] - scores[b]);
   const globalVariance = Array.from({ length: dimensions }, (_, dimension) =>
     variance(vectors.map((vector) => vector[dimension])),
   );
@@ -241,9 +241,7 @@ function initializeModel(
   const variances = means.map(() => [...globalVariance]);
   const selfTransition = config.stateCount === 2 ? 0.88 : 0.84;
   const transitions = Array.from({ length: config.stateCount }, () =>
-    Array.from({ length: config.stateCount }, (_, next) =>
-      next === 0 ? 0 : (1 - selfTransition) / (config.stateCount - 1),
-    ),
+    Array(config.stateCount).fill((1 - selfTransition) / (config.stateCount - 1)),
   );
   for (let state = 0; state < config.stateCount; state += 1) {
     transitions[state][state] = selfTransition;
@@ -406,7 +404,7 @@ export function fitGaussianHMM(
     previousLikelihood = logLikelihood;
   }
 
-  const stateOrder = [...Array(config.stateCount).keys()].sort((a, b) => {
+  const stateOrder = Array.from(Array(config.stateCount).keys()).sort((a, b) => {
     const volatilityDifference = means[a][1] - means[b][1];
     return Math.abs(volatilityDifference) > 0.05
       ? volatilityDifference

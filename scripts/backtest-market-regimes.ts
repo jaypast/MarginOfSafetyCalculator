@@ -61,7 +61,7 @@ function parsePrices(csv: string): PriceObservation[] {
 function parseFedRates(csv: string): FedRatePoint[] {
   return parseSimpleCsv(csv)
     .map((row) => ({
-      date: row.date,
+      date: row.date ?? row.observation_date,
       value: Number(row.value ?? row.dfedtaru ?? row.fedfunds),
     }))
     .filter((point) => point.date && Number.isFinite(point.value));
@@ -345,6 +345,25 @@ function sensitivityTable(features: MarketFeature[], fedRates: FedRatePoint[]): 
   ].join("\n");
 }
 
+function startDateSensitivity(features: MarketFeature[], fedRates: FedRatePoint[]): string {
+  const rows: string[] = [];
+  for (const offset of [0, 6, 12]) {
+    const sample = features.slice(offset);
+    if (sample.length < 40) continue;
+    for (const stateCount of [2, 3] as const) {
+      const result = evaluateHmm(sample, stateCount, fedRates);
+      rows.push(
+        `| ${sample[0].date} | HMM-${stateCount} | ${result.forecasts} | ${percent(result.directionalAccuracy)} | ${percent(result.stateStability)} | ${percent(result.transitionFrequency)} |`,
+      );
+    }
+  }
+  return [
+    "| Analysis starts | Model | Forecasts | Directional accuracy | State stability | Transition frequency |",
+    "|---|---|---:|---:|---:|---:|",
+    ...rows,
+  ].join("\n");
+}
+
 async function fetchYahooPrices(symbol: string): Promise<PriceObservation[]> {
   const response = await fetch(YAHOO_URL(symbol), {
     headers: { Accept: "application/json", "User-Agent": "margin-of-safety-research/1.0" },
@@ -375,15 +394,17 @@ async function loadOrFetch(
   fetcher: () => Promise<unknown>,
   serialize: (value: unknown) => string,
 ): Promise<string> {
-  try {
-    return await readFile(resolve(path), "utf8");
-  } catch {
-    if (!hasArgument("--fetch")) throw new Error(`Missing ${path}; pass --fetch or provide the file`);
+  if (hasArgument("--fetch")) {
     const value = await fetcher();
     const text = serialize(value);
     await mkdir(dirname(resolve(path)), { recursive: true });
     await writeFile(resolve(path), text);
     return text;
+  }
+  try {
+    return await readFile(resolve(path), "utf8");
+  } catch {
+    throw new Error(`Missing ${path}; pass --fetch or provide the file`);
   }
 }
 
@@ -424,6 +445,10 @@ function report(
   const recommendation = gate
     ? "CONDITIONAL GO: the experiment clears the preliminary stability and incremental-information checks. A separate product review is still required before exposing a read-only context badge."
     : "NO-GO: this experiment does not establish enough stable, incremental, explainable evidence to add a production market-regime badge.";
+  const hmmComparison =
+    bestHmm && trend && bestHmm.directionalAccuracy !== null && trend.directionalAccuracy !== null
+      ? `${bestHmm.name} directional accuracy was ${percent(bestHmm.directionalAccuracy)}, compared with ${percent(trend.directionalAccuracy)} for the trend baseline.`
+      : "There was not enough non-neutral output to compare the HMM with the trend baseline.";
 
   return `# Hidden Market Regime Backtest
 
@@ -454,6 +479,8 @@ At each month-end, training uses only prices available through that date. The fi
 
 The diagnostic directional score maps the fitted state's in-sample mean return to a positive/negative next-month call. Neutral baseline calls are excluded from accuracy. This score is a stress test for incremental information, not a trading recommendation.
 
+**Filtered versus retrospective states:** every HMM number in the results table uses month-end **filtered** probabilities. Viterbi is available in the research primitives and covered by tests, but is intentionally excluded from the live-style score because it can use future observations to relabel earlier months.
+
 ## Walk-forward results
 
 ${resultsTable(results)}
@@ -464,7 +491,13 @@ All models have a one-month decision lag because a monthly observation is only c
 
 ${sensitivityTable(features, fedRates)}
 
+### Start-date sensitivity
+
+${startDateSensitivity(features, fedRates)}
+
 The report compares the HMM with simple moving-average trend, expanding-window volatility buckets, and the existing Fed-rate environment thresholds. The Fed-rate baseline is a macro context comparator, not a causal claim.
+
+${hmmComparison}
 
 ## Product gate
 
