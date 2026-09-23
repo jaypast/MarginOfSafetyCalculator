@@ -26,9 +26,11 @@ describe.skipIf(!process.env.DATABASE_URL || !runDatabaseIntegration)(
           storageB.acquireSp500RefreshLease(refreshDate, ownerB, expiresAt, now),
         ]);
         expect(acquisitions.filter(Boolean)).toHaveLength(1);
+        expect(acquisitions.filter((acquired) => !acquired)).toHaveLength(1);
 
         const current = await storageA.getSp500RefreshLease(refreshDate);
-        expect(current?.ownerToken).toBe(acquisitions[0] ? ownerA : ownerB);
+        const winningOwner = acquisitions[0] ? ownerA : ownerB;
+        expect(current?.ownerToken).toBe(winningOwner);
 
         const later = new Date('2999-01-02T12:31:00.000Z');
         expect(
@@ -41,7 +43,7 @@ describe.skipIf(!process.env.DATABASE_URL || !runDatabaseIntegration)(
         ).toBe(true);
         expect((await storageB.getSp500RefreshLease(refreshDate))?.ownerToken).toBe(replacementOwner);
 
-        const staleOwner = acquisitions[0] ? ownerB : ownerA;
+        const staleOwner = winningOwner === ownerA ? ownerB : ownerA;
         expect(
           await storageA.renewSp500RefreshLease(
             refreshDate,
