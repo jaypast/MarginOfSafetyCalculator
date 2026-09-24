@@ -31,9 +31,21 @@ The recommended architecture is therefore:
 
 This was a controlled environment probe, not a production load test. No
 Tastytrade account credentials were configured in the workspace, so the probe
-did not attempt to access private quotes or invent field-level results. That
-limitation is itself material: a real comparison requires a Tastytrade
-read-only OAuth setup and exchange/data entitlements.
+did not attempt to access private quotes or invent field-level results. A
+secure request for the required OAuth material was declined, so the
+credentialed pilot remains unexecuted. That limitation is itself material: a
+real comparison requires a Tastytrade read-only OAuth setup and exchange/data
+entitlements.
+
+### Credentialed-pilot status
+
+The workspace has no Tastytrade connector, and the requested
+`TASTYTRADE_CLIENT_ID`, `TASTYTRADE_CLIENT_SECRET`, and
+`TASTYTRADE_REFRESH_TOKEN` were not supplied. Consequently, this task did not
+obtain an access token and did not run authenticated quote, historical-price,
+refresh-token, sandbox/production, corporate-action, or 52-week-range checks.
+No p50/p95 Tastytrade latency or field-completeness number is reported; doing so
+would be fabricated evidence.
 
 ### Requests from the development environment
 
@@ -189,8 +201,9 @@ the following:
    fail-closed behavior because those fields remain with their existing
    providers.
 
-Until those checks pass, the decision is **no-go for migration** and
-**conditional go for a read-only pilot**.
+Until those checks pass, the decision is **no-go for migration**. A
+credentialed read-only pilot remains a prerequisite, not a result of this
+task.
 
 ## Sources
 
