@@ -25,18 +25,24 @@ describe("S&P 500 cross-server lease coordination", () => {
   });
 
   it("returns an explicit refresh error instead of crashing when lease storage is unavailable", async () => {
-    storage.getSp500SyncState.mockRejectedValueOnce(
-      new Error('relation "sp500_refresh_leases" does not exist'),
-    );
+    storage.getSp500SyncState.mockResolvedValueOnce(undefined);
+    const missingLeaseTable = new Error('relation "sp500_refresh_leases" does not exist');
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    storage.acquireSp500RefreshLease.mockRejectedValueOnce(missingLeaseTable);
 
     const result = await syncSp500Changes(false, new Date("2026-09-07T12:00:00Z"));
 
     expect(result).toEqual({
       newCount: 0,
       checked: false,
-      error: 'relation "sp500_refresh_leases" does not exist',
+      error: 'S&P 500 refresh is unavailable because the "sp500_refresh_leases" table is missing. Run the pending database migrations before retrying.',
     });
-    expect(storage.acquireSp500RefreshLease).not.toHaveBeenCalled();
+    expect(storage.acquireSp500RefreshLease).toHaveBeenCalledOnce();
+    expect(error).toHaveBeenCalledWith(
+      '[S&P 500 changes] Refresh coordination unavailable: the "sp500_refresh_leases" table is missing. Run the pending database migrations.',
+      missingLeaseTable,
+    );
+    error.mockRestore();
   });
 
   it("shares one database waiter among concurrent callers on the non-owning server", async () => {

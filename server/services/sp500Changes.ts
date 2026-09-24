@@ -144,6 +144,28 @@ const REVISION_BATCH_SIZE = 6;
 const REFRESH_LEASE_MS = 45 * 60 * 1000;
 const REFRESH_LEASE_HEARTBEAT_MS = 10 * 60 * 1000;
 const LEASE_POLL_MS = 250;
+const SP500_REFRESH_LEASE_TABLE = "sp500_refresh_leases";
+const MISSING_SP500_REFRESH_LEASE_TABLE_MESSAGE =
+  `S&P 500 refresh is unavailable because the "${SP500_REFRESH_LEASE_TABLE}" table is missing. ` +
+  "Run the pending database migrations before retrying.";
+
+function isMissingSp500RefreshLeaseTableError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  if (typeof candidate.message !== "string") return false;
+  const namesLeaseTable = new RegExp(
+    `relation\\s+["']?${SP500_REFRESH_LEASE_TABLE}["']?\\s+does not exist`,
+    "i",
+  ).test(candidate.message);
+  return namesLeaseTable && (candidate.code === undefined || candidate.code === "42P01");
+}
+
+function describeSp500RefreshError(error: unknown): string {
+  if (isMissingSp500RefreshLeaseTableError(error)) {
+    return MISSING_SP500_REFRESH_LEASE_TABLE_MESSAGE;
+  }
+  return error instanceof Error ? error.message : "S&P 500 refresh failed";
+}
 
 export function latestCompleteRevision(
   revisions: Sp500EvaluationRevisionRow[],
@@ -274,8 +296,12 @@ export async function syncSp500Changes(force = false, now = new Date()): Promise
   try {
     return await operation;
   } catch (err) {
-    const message = err instanceof Error ? err.message : "S&P 500 refresh failed";
-    console.error("[S&P 500 changes] Refresh coordination failed:", err);
+    const message = describeSp500RefreshError(err);
+    if (isMissingSp500RefreshLeaseTableError(err)) {
+      console.error(`[S&P 500 changes] Refresh coordination unavailable: the "${SP500_REFRESH_LEASE_TABLE}" table is missing. Run the pending database migrations.`, err);
+    } else {
+      console.error("[S&P 500 changes] Refresh coordination failed:", err);
+    }
     return { newCount: 0, checked: false, error: message };
   } finally {
     if (inFlight === operation) inFlight = null;
