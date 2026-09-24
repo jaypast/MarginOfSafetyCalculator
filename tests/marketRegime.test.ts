@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { assertCycleCoverage, CYCLE_PERIODS } from "../scripts/market-regime-periods";
 import {
   buildMonthlyFeatures,
   classifyHistoricalFedEnvironment,
@@ -25,6 +27,35 @@ function fixturePrices(): Array<{ date: string; close: number }> {
 }
 
 describe("market regime research primitives", () => {
+  it("scores every cycle from the first dot-com month through the last SPY month", () => {
+    const csv = readFileSync("docs/research/market-regime/spy-2000-2025.csv", "utf8");
+    const prices = parseSimpleCsv(csv).map((row) => ({ date: row.date, close: Number(row.close) }));
+    const features = buildMonthlyFeatures(prices);
+    // The script trains through feature index 36, then scores index 37 onward.
+    const scored = features.slice(37).map((feature) => feature.date);
+    expect(scored[0]).toMatch(/^2000-01-/);
+    expect(scored.at(-1)).toBe("2025-08-29");
+    expect(CYCLE_PERIODS[0].label).toBe("Dot-com bust");
+    expect(() => assertCycleCoverage(scored)).not.toThrow();
+    expect(() => assertCycleCoverage(scored.slice(1))).toThrow(/without gaps/);
+    expect(() => assertCycleCoverage(scored.filter((date) => !date.startsWith("2008-10")))).toThrow(/without gaps/);
+  });
+
+  it("keeps raw trailing volatility separate from the HMM covariance floor", () => {
+    const prices = [100, 101, 100, 104, 101].map((close, index) => ({
+      date: `2020-0${index + 1}-28`,
+      close,
+    }));
+    const features = buildMonthlyFeatures(prices);
+    expect(features[0].volatilityPct).toBe(0);
+    const first = Math.log(101 / 100);
+    const second = Math.log(100 / 101);
+    const center = (first + second) / 2;
+    const expected = Math.sqrt(((first - center) ** 2 + (second - center) ** 2) / 2) * 100 * Math.sqrt(12);
+    expect(features[1].volatilityPct).toBeCloseTo(expected, 8);
+    expect(features[2].volatilityPct).not.toBeCloseTo(features[1].volatilityPct);
+  });
+
   it("keeps one month-end per month and derives trailing features", () => {
     const features = buildMonthlyFeatures([
       { date: "2024-01-02", close: 100 },

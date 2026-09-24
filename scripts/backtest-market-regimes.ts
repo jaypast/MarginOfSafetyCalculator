@@ -1,5 +1,6 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { assertCycleCoverage, CYCLE_PERIODS } from "./market-regime-periods";
 import {
   attachFeatureScale,
   buildMonthlyFeatures,
@@ -33,9 +34,38 @@ interface EvaluationResult {
   notes: string;
 }
 
+interface Forecast {
+  date: string; // realized next-month date, not the training month
+  signal: Signal;
+  actualReturnPct: number;
+  stable?: boolean;
+}
+type Forecasts = Map<string, Forecast[]>;
+
+function record(
+  sink: Forecasts | undefined,
+  model: string,
+  features: MarketFeature[],
+  index: number,
+  signal: Signal,
+  stable?: boolean,
+): void {
+  if (!sink) return;
+  const rows = sink.get(model) ?? [];
+  rows.push({
+    date: features[index + 1].date,
+    signal,
+    actualReturnPct: features[index + 1].returnPct,
+    stable,
+  });
+  sink.set(model, rows);
+}
+
 const DEFAULT_REPORT = "docs/market-regime-backtest.md";
 const DEFAULT_PRICES = "docs/research/market-regime/spy-5y.csv";
 const DEFAULT_FED = "docs/research/market-regime/fedfunds-5y.csv";
+const LONG_PRICES = "docs/research/market-regime/spy-2000-2025.csv";
+const LONG_REPORT = "docs/market-regime-long-cycle-backtest.md";
 const YAHOO_URL = (symbol: string) =>
   `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5y&interval=1d&events=div%2Csplits`;
 const FRED_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DFEDTARU";
@@ -120,6 +150,8 @@ function evaluateHmm(
   stateCount: 2 | 3,
   fedRates: FedRatePoint[],
   minTrain = 36,
+  sink?: Forecasts,
+  maxIterations = 60,
 ): EvaluationResult {
   const stateSequence: number[] = [];
   const stableMatches: boolean[] = [];
@@ -135,7 +167,7 @@ function evaluateHmm(
       fitGaussianHMM(standardized.observations, {
         stateCount,
         seed: 17,
-        maxIterations: 60,
+        maxIterations,
       }),
       standardized.means,
       standardized.scales,
@@ -147,7 +179,7 @@ function evaluateHmm(
       fitGaussianHMM(standardized.observations, {
         stateCount,
         seed: 1017,
-        maxIterations: 60,
+        maxIterations,
       }),
       standardized.means,
       standardized.scales,
@@ -162,7 +194,9 @@ function evaluateHmm(
     stateSequence.push(normalizedState);
     stableMatches.push(normalizedState === nearbyNormalized);
     confidence.push(current.confidence);
-    signals.push(signalDirection(expectedReturn));
+    const signal = signalDirection(expectedReturn);
+    signals.push(signal);
+    record(sink, `HMM-${stateCount}`, features, index, signal, normalizedState === nearbyNormalized);
     nextReturns.push(features[index + 1].returnPct);
     nextVolatility.push(features[index + 1].volatilityPct);
 
@@ -190,13 +224,15 @@ function evaluateHmm(
   };
 }
 
-function evaluateTrend(features: MarketFeature[], minTrain = 36): EvaluationResult {
+function evaluateTrend(features: MarketFeature[], minTrain = 36, sink?: Forecasts): EvaluationResult {
   const signals: Signal[] = [];
   const nextReturns: number[] = [];
   const nextVolatility: number[] = [];
   for (let index = minTrain; index < features.length - 1; index += 1) {
     const trend = movingAverageTrend(features, index);
-    signals.push(trend === "rising" ? 1 : trend === "falling" ? -1 : 0);
+    const signal = trend === "rising" ? 1 : trend === "falling" ? -1 : 0;
+    signals.push(signal);
+    record(sink, "Trend baseline", features, index, signal);
     nextReturns.push(features[index + 1].returnPct);
     nextVolatility.push(features[index + 1].volatilityPct);
   }
@@ -220,21 +256,26 @@ function evaluateTrend(features: MarketFeature[], minTrain = 36): EvaluationResu
   };
 }
 
-function evaluateVolatility(features: MarketFeature[], bucketCount: 2 | 3, minTrain = 36): EvaluationResult {
+function evaluateVolatility(features: MarketFeature[], bucketCount: 2 | 3, minTrain = 36, sink?: Forecasts): EvaluationResult {
   const signals: Signal[] = [];
   const nextReturns: number[] = [];
   const nextVolatility: number[] = [];
   const buckets: number[] = [];
   for (let index = minTrain; index < features.length - 1; index += 1) {
     const bucket = volatilityBucket(features, index, bucketCount);
-    const historical = features.slice(minTrain, index + 1);
-    const bucketReturns = historical
-      .filter((feature, offset) => volatilityBucket(features, minTrain + offset, bucketCount) === bucket)
-      .map((_, offset) => features[minTrain + offset + 1]?.returnPct)
-      .filter((value): value is number => Number.isFinite(value));
+    // A realized next-month return is only known for earlier forecast dates.
+    // Never use the outcome of the current forecast while estimating its signal.
+    const bucketReturns: number[] = [];
+    for (let previous = minTrain; previous < index; previous += 1) {
+      if (volatilityBucket(features, previous, bucketCount) === bucket) {
+        bucketReturns.push(features[previous + 1].returnPct);
+      }
+    }
     const expected = average(bucketReturns) ?? 0;
     buckets.push(bucket);
-    signals.push(signalDirection(expected));
+    const signal = signalDirection(expected);
+    signals.push(signal);
+    record(sink, `Volatility-${bucketCount} bucket baseline`, features, index, signal);
     nextReturns.push(features[index + 1].returnPct);
     nextVolatility.push(features[index + 1].volatilityPct);
   }
@@ -260,13 +301,16 @@ function evaluateFedBaseline(
   features: MarketFeature[],
   fedRates: FedRatePoint[],
   minTrain = 36,
+  sink?: Forecasts,
 ): EvaluationResult {
   const signals: Signal[] = [];
   const nextReturns: number[] = [];
   const nextVolatility: number[] = [];
   for (let index = minTrain; index < features.length - 1; index += 1) {
     const environment = classifyHistoricalFedEnvironment(fedRates, features[index].date);
-    signals.push(environment === "rising" ? -1 : environment === "falling" ? 1 : 0);
+    const signal = environment === "rising" ? -1 : environment === "falling" ? 1 : 0;
+    signals.push(signal);
+    record(sink, "Fed-rate environment baseline", features, index, signal);
     nextReturns.push(features[index + 1].returnPct);
     nextVolatility.push(features[index + 1].volatilityPct);
   }
@@ -319,7 +363,45 @@ function resultsTable(results: EvaluationResult[]): string {
   ].join("\n");
 }
 
-function sensitivityTable(features: MarketFeature[], fedRates: FedRatePoint[]): string {
+function periodRows(sink: Forecasts, start: string, end: string): string {
+  return Array.from(sink, ([name, forecasts]) => {
+    const sample = forecasts.filter((row) => row.date.slice(0, 7) >= start && row.date.slice(0, 7) <= end);
+    const score = scoreSignals(sample.map((row) => row.signal), sample.map((row) => row.actualReturnPct));
+    const stability = sample.filter((row) => row.stable !== undefined);
+    return `| ${name} | ${sample.length} | ${percent(score.coverage)} | ${percent(score.accuracy)} | ${percent(average(stability.map((row) => row.stable ? 1 : 0)))} |`;
+  }).join("\n");
+}
+
+function cycleTable(sink: Forecasts): string {
+  return CYCLE_PERIODS.map(({ label, start, end }) =>
+    `### ${label} (${start} to ${end})\n\n` +
+    "| Model | Forecast months | Directional coverage | Accuracy on non-neutral calls | Seed agreement |\n" +
+    "|---|---:|---:|---:|---:|\n" +
+    periodRows(sink, start, end),
+  ).join("\n\n");
+}
+
+function cycleGate(sink: Forecasts): boolean {
+  // Do not cherry-pick the best state count after seeing the full-sample score.
+  // Require one fixed HMM to clear the same >5-point trend advantage in every
+  // period, with enough non-neutral calls and reproducible states.
+  return (["HMM-2", "HMM-3"] as const).some((name) =>
+    CYCLE_PERIODS.every(({ start, end }) => {
+      const select = (key: string) =>
+        (sink.get(key) ?? []).filter((row) => row.date.slice(0, 7) >= start && row.date.slice(0, 7) <= end);
+      const hmm = select(name);
+      const trend = select("Trend baseline");
+      const h = scoreSignals(hmm.map((row) => row.signal), hmm.map((row) => row.actualReturnPct));
+      const t = scoreSignals(trend.map((row) => row.signal), trend.map((row) => row.actualReturnPct));
+      return hmm.length >= 12 && h.coverage >= 0.5 &&
+        h.accuracy !== null && t.accuracy !== null &&
+        h.accuracy > t.accuracy + 0.05 &&
+        (average(hmm.map((row) => row.stable ? 1 : 0)) ?? 0) >= 0.7;
+    }),
+  );
+}
+
+function sensitivityTable(features: MarketFeature[], fedRates: FedRatePoint[], maxIterations = 60): string {
   const rows: string[] = [];
   for (const stateCount of [2, 3] as const) {
     for (const seed of [17, 1017]) {
@@ -327,7 +409,7 @@ function sensitivityTable(features: MarketFeature[], fedRates: FedRatePoint[]): 
       const training = features.slice(0, index + 1);
       const standardized = standardizeFeatures(training);
       const model = attachFeatureScale(
-        fitGaussianHMM(standardized.observations, { stateCount, seed, maxIterations: 60 }),
+        fitGaussianHMM(standardized.observations, { stateCount, seed, maxIterations }),
         standardized.means,
         standardized.scales,
       );
@@ -345,13 +427,13 @@ function sensitivityTable(features: MarketFeature[], fedRates: FedRatePoint[]): 
   ].join("\n");
 }
 
-function startDateSensitivity(features: MarketFeature[], fedRates: FedRatePoint[]): string {
+function startDateSensitivity(features: MarketFeature[], fedRates: FedRatePoint[], maxIterations = 60): string {
   const rows: string[] = [];
   for (const offset of [0, 6, 12]) {
     const sample = features.slice(offset);
     if (sample.length < 40) continue;
     for (const stateCount of [2, 3] as const) {
-      const result = evaluateHmm(sample, stateCount, fedRates);
+      const result = evaluateHmm(sample, stateCount, fedRates, 36, undefined, maxIterations);
       rows.push(
         `| ${sample[0].date} | HMM-${stateCount} | ${result.forecasts} | ${percent(result.directionalAccuracy)} | ${percent(result.stateStability)} | ${percent(result.transitionFrequency)} |`,
       );
@@ -430,6 +512,8 @@ function report(
   features: MarketFeature[],
   fedRates: FedRatePoint[],
   results: EvaluationResult[],
+  sink?: Forecasts,
+  maxIterations = 60,
 ): string {
   const generatedAt = new Date().toISOString();
   const hmmResults = results.filter((result) => result.name.startsWith("HMM"));
@@ -437,11 +521,12 @@ function report(
     .filter((result) => result.directionalAccuracy !== null)
     .sort((a, b) => (b.directionalAccuracy ?? 0) - (a.directionalAccuracy ?? 0))[0];
   const trend = results.find((result) => result.name === "Trend baseline");
-  const gate =
+  const preliminaryGate =
     bestHmm &&
     trend &&
     (bestHmm.stateStability ?? 0) >= 0.7 &&
     (bestHmm.directionalAccuracy ?? 0) > (trend.directionalAccuracy ?? 0) + 0.05;
+  const gate = sink ? preliminaryGate && cycleGate(sink) : preliminaryGate;
   const recommendation = gate
     ? "CONDITIONAL GO: the experiment clears the preliminary stability and incremental-information checks. A separate product review is still required before exposing a read-only context badge."
     : "NO-GO: this experiment does not establish enough stable, incremental, explainable evidence to add a production market-regime badge.";
@@ -459,6 +544,7 @@ Generated: ${generatedAt}
 **${recommendation}**
 
 This is a research result only. It does not change intrinsic value, margin of safety, company quality, watchlist alerts, or recommendation labels.
+${sink ? "" : "For the full-cycle extension covering 2000–2025, see [the long-cycle backtest](market-regime-long-cycle-backtest.md)."}
 
 ## Dataset
 
@@ -469,11 +555,13 @@ This is a research result only. It does not change intrinsic value, margin of sa
 - Historical rate observations: ${fedRates.length}
 - Missing calendar months detected: ${missingMonthCount(features)}
 
-The local snapshot is stored beside this report. Re-run with \`npx tsx scripts/backtest-market-regimes.ts --prices ${DEFAULT_PRICES} --fed ${DEFAULT_FED}\` to reproduce the analysis without a network call. Add \`--fetch\` to refresh missing snapshots from the same Yahoo and FRED paths used by the app.
+${sink
+  ? `Re-run with \`npx tsx scripts/backtest-market-regimes.ts --long-cycles\`. The committed snapshot combines a scaled **S&P 500 index training-only warm-up** (1996-11 through 1999-12) with SPY closes from 2000 onward; see [dataset provenance](research/market-regime/spy-2000-2025-source.md) for pinned URLs, hashes, and the scaling method. No index warm-up month is scored. The Fed series is the existing local FRED snapshot (begins 2008-12-16); pre-2008 Fed comparison is unavailable. SPY Close adjustment policy is unverified; dividends, constituent changes, and revised data are not modeled. Data ends 2025-08-29 and is not a 2026 market snapshot.`
+  : `The local snapshot is stored beside this report. Re-run with \`npx tsx scripts/backtest-market-regimes.ts --prices ${DEFAULT_PRICES} --fed ${DEFAULT_FED}\` to reproduce the analysis without a network call. Add \`--fetch\` to refresh missing snapshots from the same Yahoo and FRED paths used by the app.`}
 
 ## Method
 
-Monthly log returns and trailing three-month annualized volatility are the only HMM observations. Two-state and three-state diagonal-covariance Gaussian HMMs are fit with Baum-Welch/EM on an expanding window. The random seeds, iteration limit, variance floor, and state-label ordering are fixed in the script.
+Monthly log returns and trailing three-month annualized volatility are the only HMM observations. Two-state and three-state diagonal-covariance Gaussian HMMs are fit with Baum-Welch/EM on an expanding window. The random seeds, iteration limit (${maxIterations} per fit), HMM covariance floor, and state-label ordering are fixed in the script. The raw volatility feature has no covariance floor.${sink ? " The long-cycle iteration limit is lower than the five-year run's 60 to keep repeated expanding-window refits tractable; results are not directly comparable without accounting for convergence." : ""}
 
 At each month-end, training uses only prices available through that date. The filtered probability for that date is the live-style output. Viterbi decoding is intentionally not used for the live-style evaluation; it is retrospective and may use later observations.
 
@@ -485,15 +573,40 @@ The diagnostic directional score maps the fitted state's in-sample mean return t
 
 ${resultsTable(results)}
 
+${sink ? `## Historical-period walk-forward results
+
+Periods are assigned using the **next month's realized date**; the model at each
+month-end uses only the expanding history available at that month-end. Coverage
+counts non-neutral calls. Accuracy with few calls is noisy. Seed agreement
+compares two initializations and does not prove stable economic interpretation.
+The index-derived pre-2000 warm-up provides the 36 months required to make
+the first scored SPY forecast for January 2000.
+
+${cycleTable(sink)}
+
+The period labels are descriptive and chosen in advance; they are not HMM
+states. A production gate requires the **same fixed state count** to beat trend
+by more than five percentage points in every period, with at least 50% coverage
+and 70% seed agreement in each. ${cycleGate(sink) ? "This stringent gate passes." : "This gate fails; the no-go decision remains."}
+
+HMM-3 beats trend in the dot-com and pre-crisis expansion segments, but trails
+trend in the 2008–2009 crisis, 2020 shock, and 2022–2025. Its 2013–2017
+advantage over trend is small relative to the simpler volatility baselines.
+Seed agreement measures repeatability of state IDs, not whether those states
+add actionable information beyond simple volatility.
+` : ""}
+
 All models have a one-month decision lag because a monthly observation is only complete at month-end and can inform the following month. HMM confidence is the maximum filtered state probability. State stability is agreement between the primary seed and a nearby initialization on the same expanding window.
 
 ## Sensitivity
 
-${sensitivityTable(features, fedRates)}
+${sensitivityTable(features, fedRates, maxIterations)}
 
 ### Start-date sensitivity
 
-${startDateSensitivity(features, fedRates)}
+${sink
+  ? "The long-cycle run uses a fixed 1996–1999 training warm-up and first scores January 2000; the period slices above retain the expanding full-history training window. Re-fitting each period from scratch would use different training information and would not be a walk-forward period comparison."
+  : startDateSensitivity(features, fedRates, maxIterations)}
 
 The report compares the HMM with simple moving-average trend, expanding-window volatility buckets, and the existing Fed-rate environment thresholds. The Fed-rate baseline is a macro context comparator, not a causal claim.
 
@@ -501,7 +614,7 @@ ${hmmComparison}
 
 ## Product gate
 
-- Stable states across nearby initializations: ${gate ? "pass" : "not established"}
+- Stable states across nearby initializations: ${(bestHmm?.stateStability ?? 0) >= 0.7 ? "pass for the two tested seeds; economic interpretation not established" : "not established"}
 - Information beyond the trend baseline: ${gate ? "preliminary pass" : "not established"}
 - Explainable live output without hindsight labels: ${gate ? "possible in principle" : "not established"}
 - Safe missing-data behavior: **pass in the research tool**; no production endpoint was added
@@ -513,26 +626,31 @@ No production UI, API schema, cache, valuation calculation, or recommendation lo
 }
 
 async function main(): Promise<void> {
+  const longCycles = hasArgument("--long-cycles");
   const symbol = argument("--symbol", "SPY").toUpperCase();
-  const pricesPath = argument("--prices", DEFAULT_PRICES);
+  const pricesPath = argument("--prices", longCycles ? LONG_PRICES : DEFAULT_PRICES);
   const fedPath = argument("--fed", DEFAULT_FED);
-  const reportPath = argument("--report", DEFAULT_REPORT);
+  const reportPath = argument("--report", longCycles ? LONG_REPORT : DEFAULT_REPORT);
+  if (longCycles && hasArgument("--fetch")) throw new Error("Long-cycle snapshot is pinned; run node scripts/prepare-spy-long-cycle.mjs instead of --fetch");
   const pricesCsv = await loadOrFetch(pricesPath, () => fetchYahooPrices(symbol), serializePrices);
   const fedCsv = await loadOrFetch(fedPath, fetchFedRates, serializeFedRates);
   const prices = parsePrices(pricesCsv);
   const fedRates = parseFedRates(fedCsv);
   const features = buildMonthlyFeatures(prices);
   if (features.length < 40) throw new Error("Need at least 40 monthly observations for walk-forward evaluation");
+  if (longCycles) assertCycleCoverage(features.slice(37).map((feature) => feature.date));
 
+  const sink = longCycles ? new Map<string, Forecast[]>() : undefined;
+  const maxIterations = longCycles ? 12 : 60;
   const results = [
-    evaluateHmm(features, 2, fedRates),
-    evaluateHmm(features, 3, fedRates),
-    evaluateTrend(features),
-    evaluateVolatility(features, 2),
-    evaluateVolatility(features, 3),
-    evaluateFedBaseline(features, fedRates),
+    evaluateHmm(features, 2, fedRates, 36, sink, maxIterations),
+    evaluateHmm(features, 3, fedRates, 36, sink, maxIterations),
+    evaluateTrend(features, 36, sink),
+    evaluateVolatility(features, 2, 36, sink),
+    evaluateVolatility(features, 3, 36, sink),
+    evaluateFedBaseline(features, fedRates, 36, sink),
   ];
-  const output = report(symbol, prices, features, fedRates, results);
+  const output = report(symbol, prices, features, fedRates, results, sink, maxIterations);
   await mkdir(dirname(resolve(reportPath)), { recursive: true });
   await writeFile(resolve(reportPath), output);
   console.log(output);

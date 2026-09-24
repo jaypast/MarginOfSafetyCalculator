@@ -1,12 +1,13 @@
 # Hidden Market Regime Backtest
 
-Generated: 2026-09-21T14:59:16.167Z
+Generated: 2026-09-24T00:24:17.561Z
 
 ## Recommendation
 
 **NO-GO: this experiment does not establish enough stable, incremental, explainable evidence to add a production market-regime badge.**
 
 This is a research result only. It does not change intrinsic value, margin of safety, company quality, watchlist alerts, or recommendation labels.
+For the full-cycle extension covering 2000–2025, see [the long-cycle backtest](market-regime-long-cycle-backtest.md).
 
 ## Dataset
 
@@ -21,7 +22,7 @@ The local snapshot is stored beside this report. Re-run with `npx tsx scripts/ba
 
 ## Method
 
-Monthly log returns and trailing three-month annualized volatility are the only HMM observations. Two-state and three-state diagonal-covariance Gaussian HMMs are fit with Baum-Welch/EM on an expanding window. The random seeds, iteration limit, variance floor, and state-label ordering are fixed in the script.
+Monthly log returns and trailing three-month annualized volatility are the only HMM observations. Two-state and three-state diagonal-covariance Gaussian HMMs are fit with Baum-Welch/EM on an expanding window. The random seeds, iteration limit (60 per fit), HMM covariance floor, and state-label ordering are fixed in the script. The raw volatility feature has no covariance floor.
 
 At each month-end, training uses only prices available through that date. The filtered probability for that date is the live-style output. Viterbi decoding is intentionally not used for the live-style evaluation; it is retrospective and may use later observations.
 
@@ -33,14 +34,16 @@ The diagnostic directional score maps the fitted state's in-sample mean return t
 
 | Model | Forecasts | Directional accuracy* | Mean next return | Mean next volatility | State stability | Transition frequency | Confidence | Decision lag |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| HMM-2 | 23 | 60.9% | 1.3% | 69.3% | 100.0% | 36.4% | 85.8% | 1 |
-| HMM-3 | 23 | 65.2% | 1.3% | 69.3% | 100.0% | 0.0% | 100.0% | 1 |
-| Trend baseline | 23 | 66.7% | 1.3% | 69.3% | n/a | 27.3% | n/a | 1 |
-| Volatility-2 bucket baseline | 23 | 73.9% | 1.3% | 69.3% | n/a | 0.0% | n/a | 1 |
-| Volatility-3 bucket baseline | 23 | 73.9% | 1.3% | 69.3% | n/a | 0.0% | n/a | 1 |
-| Fed-rate environment baseline | 23 | 65.2% | 1.3% | 69.3% | n/a | 0.0% | n/a | 1 |
+| HMM-2 | 23 | 65.2% | 1.3% | 9.0% | 100.0% | 9.1% | 99.0% | 1 |
+| HMM-3 | 23 | 65.2% | 1.3% | 9.0% | 100.0% | 18.2% | 97.0% | 1 |
+| Trend baseline | 23 | 66.7% | 1.3% | 9.0% | n/a | 27.3% | n/a | 1 |
+| Volatility-2 bucket baseline | 23 | 61.9% | 1.3% | 9.0% | n/a | 18.2% | n/a | 1 |
+| Volatility-3 bucket baseline | 23 | 55.0% | 1.3% | 9.0% | n/a | 50.0% | n/a | 1 |
+| Fed-rate environment baseline | 23 | 65.2% | 1.3% | 9.0% | n/a | 0.0% | n/a | 1 |
 
 * Directional accuracy excludes neutral signals. This is a diagnostic comparison, not an investment strategy.
+
+
 
 All models have a one-month decision lag because a monthly observation is only complete at month-end and can inform the following month. HMM confidence is the maximum filtered state probability. State stability is agreement between the primary seed and a nearby initialization on the same expanding window.
 
@@ -48,29 +51,29 @@ All models have a one-month decision lag because a monthly observation is only c
 
 | States | Seed | Latest normalized state | Confidence | Fed environment |
 |---:|---:|---:|---:|---|
-| 2 | 17 | 1 | 100.0% | falling |
-| 2 | 1017 | 1 | 100.0% | falling |
-| 3 | 17 | 1 | 100.0% | falling |
-| 3 | 1017 | 1 | 100.0% | falling |
+| 2 | 17 | 0 | 100.0% | falling |
+| 2 | 1017 | 0 | 100.0% | falling |
+| 3 | 17 | 0 | 71.7% | falling |
+| 3 | 1017 | 0 | 71.8% | falling |
 
 ### Start-date sensitivity
 
 | Analysis starts | Model | Forecasts | Directional accuracy | State stability | Transition frequency |
 |---|---|---:|---:|---:|---:|
-| 2021-10-29 | HMM-2 | 23 | 60.9% | 100.0% | 36.4% |
-| 2021-10-29 | HMM-3 | 23 | 65.2% | 100.0% | 0.0% |
-| 2022-04-29 | HMM-2 | 17 | 76.5% | 100.0% | 0.0% |
-| 2022-04-29 | HMM-3 | 17 | 76.5% | 94.1% | 0.0% |
-| 2022-10-31 | HMM-2 | 11 | 72.7% | 100.0% | 10.0% |
-| 2022-10-31 | HMM-3 | 11 | 63.6% | 100.0% | 50.0% |
+| 2021-10-29 | HMM-2 | 23 | 65.2% | 100.0% | 9.1% |
+| 2021-10-29 | HMM-3 | 23 | 65.2% | 100.0% | 18.2% |
+| 2022-04-29 | HMM-2 | 17 | 76.5% | 100.0% | 12.5% |
+| 2022-04-29 | HMM-3 | 17 | 76.5% | 94.1% | 25.0% |
+| 2022-10-31 | HMM-2 | 11 | 63.6% | 100.0% | 10.0% |
+| 2022-10-31 | HMM-3 | 11 | 54.5% | 100.0% | 40.0% |
 
 The report compares the HMM with simple moving-average trend, expanding-window volatility buckets, and the existing Fed-rate environment thresholds. The Fed-rate baseline is a macro context comparator, not a causal claim.
 
-HMM-3 directional accuracy was 65.2%, compared with 66.7% for the trend baseline.
+HMM-2 directional accuracy was 65.2%, compared with 66.7% for the trend baseline.
 
 ## Product gate
 
-- Stable states across nearby initializations: not established
+- Stable states across nearby initializations: pass for the two tested seeds; economic interpretation not established
 - Information beyond the trend baseline: not established
 - Explainable live output without hindsight labels: not established
 - Safe missing-data behavior: **pass in the research tool**; no production endpoint was added

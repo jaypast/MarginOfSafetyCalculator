@@ -3,3 +3,4 @@
 - [Common-stock universe filtering](security-name-filtering.md) — `\bdue 20\b` never matches "due 2066"; test exclusion regexes against real security names, share them between generator and integrity test.
 - [S&P constituent history source](sp500-constituent-source.md) — FMP’s historical constituent endpoint is premium-gated; keep the public S&P-release mirror fallback explicit and validated.
 - [Development S&P refresh lease table](dev-sp500-lease-table.md) — the daily refresh route requires its lease table before local preview requests can complete.
+- [Regime research volatility sanity checks](regime-volatility-checks.md) — verify raw feature dispersion separately from HMM variance floors before interpreting state stability or baseline comparisons.

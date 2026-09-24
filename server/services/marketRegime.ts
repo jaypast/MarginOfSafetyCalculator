@@ -98,7 +98,12 @@ function variance(values: number[], center = mean(values)): number {
 }
 
 function standardDeviation(values: number[]): number {
-  return Math.sqrt(variance(values));
+  // Raw feature dispersion is not an HMM covariance estimate. Applying the
+  // emission variance floor here pins typical monthly log-return volatility
+  // to sqrt(0.04) * 100 * sqrt(12) = 69.3%, erasing the volatility feature.
+  if (values.length < 2) return 0;
+  const center = mean(values);
+  return Math.sqrt(values.reduce((sum, value) => sum + (value - center) ** 2, 0) / values.length);
 }
 
 function logSumExp(values: number[]): number {

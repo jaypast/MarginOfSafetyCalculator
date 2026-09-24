@@ -1,0 +1,11 @@
+# Long-cycle SPY close snapshot
+
+- Source: [OStochastic/Daily-SPY-data-from-2000-2025](https://github.com/OStochastic/Daily-SPY-data-from-2000-2025), `spy_data.csv`.
+- Pinned source commit: `db3396f1d5acb614a5af31c499d003d5f10d8c58` (2025-09-01).
+- Original file SHA-256: `8624abd005c19c1ee57a68af9e1389d93cfc1df33fdd1c1d809ebcbb4c6429e4`.
+- Training-only warm-up: [kannansingaravelu/datasets historical_spy.csv](https://github.com/kannansingaravelu/datasets/blob/a300cd3a7ae19f9fadade552ce29502ca2fce3c4/historical_spy.csv), commit `a300cd3a7ae19f9fadade552ce29502ca2fce3c4`, SHA-256 `501f0e53983f32ab4075ceb70eb5796486232ab8ed4a063c40551b48810c5202`. Despite its filename, the values (S&P 500 around 1455 on 2000-01-03) are **index closes, not SPY ETF prices**. Use only 1996-11 through 1999-12. Scale historical index closes by SPY's 2000-01-03 close divided by the index's 2000-01-03 close to join the series at a shared anchor. The index warm-up trains features, but **none of its months are scored**. Its adjusted-price/dividend conventions differ from SPY and may affect the earliest fitted states.
+- Normalized `spy-2000-2025.csv` SHA-256: `1d4a3ec17dc1b60f1567489c400e7cf4f00a2ef6fe73e472497a37bd48ce22a0`.
+- Preparation: `node scripts/prepare-spy-long-cycle.mjs` verifies both source checksums and headers, scales the warm-up as described above, then extracts date/Close without resampling or filling gaps.
+- Coverage: 798 training-only index days (1996-11-01 through 1999-12-31), then 6,454 SPY trading-day closes (2000-01-03 through 2025-08-29). No data after that date is included.
+- Limitations: the source describes a Close column but does not document its adjustment policy or original vendor. Treat corporate-action/dividend adjustment as **unverified**. This is an archival broad-market proxy, not a live licensed feed or a total-return series. Data revisions and share-class/index constituent effects are not modeled.
+- Rates: `fedfunds-5y.csv` is the pre-existing FRED DFEDTARU snapshot, beginning 2008-12-16; Fed comparison is unavailable before that date.
