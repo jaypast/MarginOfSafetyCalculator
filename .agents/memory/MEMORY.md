@@ -4,3 +4,4 @@
 - [S&P constituent history source](sp500-constituent-source.md) — FMP’s historical constituent endpoint is premium-gated; keep the public S&P-release mirror fallback explicit and validated.
 - [Development S&P refresh lease table](dev-sp500-lease-table.md) — the daily refresh route requires its lease table before local preview requests can complete.
 - [Regime research volatility sanity checks](regime-volatility-checks.md) — verify raw feature dispersion separately from HMM variance floors before interpreting state stability or baseline comparisons.
+- [Accounts and billing goals](accounts-and-billing-goals.md) — free launch, future monthly/yearly unlimited-use plans, personal stock lists, and full owner administration with reporting.
