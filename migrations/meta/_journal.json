@@ -15,6 +15,13 @@
       "when": 1788800823490,
       "tag": "0001_illegal_peter_quill",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791655628005,
+      "tag": "0002_accounts_owner_watchlists",
+      "breakpoints": true
     }
   ]
 }

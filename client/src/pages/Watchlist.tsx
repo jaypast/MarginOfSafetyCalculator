@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useUser } from '@clerk/react';
 import { Link } from 'wouter';
 import { useQuery, useQueries, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
@@ -153,6 +154,7 @@ interface WatchlistRowProps {
   isLoading: boolean;
   onRemove: (id: number) => void;
   isRemoving: boolean;
+  canManage: boolean;
   onOpen: (symbol: string) => void;
 }
 
@@ -164,7 +166,7 @@ const SCORE_TONE: Record<'positive' | 'neutral' | 'negative' | 'muted', string> 
   muted: 'bg-neutral-100 text-neutral-600 border-neutral-300',
 };
 
-const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, insiderSignal, isLoading, onRemove, isRemoving, onOpen }) => {
+const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, insiderSignal, isLoading, onRemove, isRemoving, canManage, onOpen }) => {
   const stockOk = !!stock && !stock.error;
   const buyBelow = stockOk ? computeAverageBuyBelow(stock, entry.marginOfSafety) : null;
   const zone: BuyZone = stockOk && buyBelow !== null
@@ -312,18 +314,24 @@ const WatchlistRow: React.FC<WatchlistRowProps> = ({ entry, stock, insiderSignal
         </TooltipProvider>
       </TableCell>
       <TableCell className="text-right">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          data-testid={`button-remove-${entry.symbol}`}
-          disabled={isRemoving}
-          onClick={(e) => { e.stopPropagation(); onRemove(entry.id); }}
-          className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 px-2"
-          aria-label={`Remove ${entry.symbol} from watchlist`}
-        >
-          <Trash2 className="w-4 h-4" />
-        </Button>
+        {canManage ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            data-testid={`button-remove-${entry.symbol}`}
+            disabled={isRemoving}
+            onClick={(e) => { e.stopPropagation(); onRemove(entry.id); }}
+            className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 px-2"
+            aria-label={`Remove ${entry.symbol} from watchlist`}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        ) : (
+          <Link href="/sign-in" className="text-xs font-medium text-blue-800 underline" onClick={(e) => e.stopPropagation()}>
+            Sign in
+          </Link>
+        )}
       </TableCell>
     </TableRow>
   );
@@ -359,9 +367,10 @@ export function sortEntriesByScore<T extends { symbol: string }>(
 }
 
 const Watchlist: React.FC = () => {
+  const { isLoaded: authLoaded, isSignedIn } = useUser();
   const { toast } = useToast();
   const [, navigate] = useLocation();
-  const handleOpen = (symbol: string) => navigate(`/?symbol=${encodeURIComponent(symbol)}`);
+  const handleOpen = (symbol: string) => navigate(`/calculator?symbol=${encodeURIComponent(symbol)}`);
   const watchlistQuery = useQuery<WatchlistEntry[]>({ queryKey: ['/api/watchlist'] });
   const rawEntries = watchlistQuery.data ?? [];
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -475,6 +484,12 @@ const Watchlist: React.FC = () => {
   return (
     <main className="min-h-screen bg-neutral-50 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-5xl mx-auto">
+        {authLoaded && !isSignedIn && (
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+            <span>Sign in to save this stock list to your account and access it on other devices.</span>
+            <Link href="/sign-up" className="font-semibold underline underline-offset-2">Create a free account</Link>
+          </div>
+        )}
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div>
             <Link href="/" className="text-sm text-neutral-600 hover:text-neutral-900 inline-flex items-center mb-2">
@@ -553,7 +568,7 @@ const Watchlist: React.FC = () => {
             </p>
             <div className="mt-4">
               <Link
-                href="/"
+                href="/calculator"
                 className="inline-block text-sm px-3 py-1.5 rounded bg-[#21324F] text-white hover:bg-[#1A2942]"
               >
                 Go to calculator
@@ -595,6 +610,7 @@ const Watchlist: React.FC = () => {
                         if (entry) removeMutation.mutate({ id, symbol: entry.symbol });
                       }}
                       isRemoving={removeMutation.isPending && removeMutation.variables?.id === entry.id}
+                      canManage={Boolean(authLoaded && isSignedIn)}
                       onOpen={handleOpen}
                     />
                   );

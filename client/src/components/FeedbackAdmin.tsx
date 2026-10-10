@@ -1,28 +1,10 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
-import { Download, Lock, Unlock, LogOut } from 'lucide-react';
-import { StyledInput } from '@/components/ui/styled-input';
-import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import React, { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Download, Trash2 } from "lucide-react";
 
 interface FeedbackStats {
   totalResponses: number;
@@ -31,361 +13,82 @@ interface FeedbackStats {
   notDisappointed: number;
   pmfScore: number;
 }
-
 interface Feedback {
   id: number;
   satisfaction: string;
-  main_benefit?: string | null;
-  mainBenefit?: string | null;
+  mainBenefit: string | null;
   improvements: string | null;
   email: string | null;
-  created_at?: string; // ISO date string
-  createdAt?: string; // ISO date string
+  createdAt: string;
 }
 
-const FeedbackAdmin: React.FC = () => {
-  // Check localStorage for saved admin key and authentication status
-  const savedKey = localStorage.getItem('adminKey') || '';
-  const savedAuth = localStorage.getItem('isAuthenticated') === 'true';
-  
-  const [adminKey, setAdminKey] = useState<string>(savedKey);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(savedAuth);
-  const [authError, setAuthError] = useState<string | null>(null);
-  
-  // Create headers with admin key when authenticated
-  const createHeaders = () => {
-    const headers: Record<string, string> = {};
-    if (isAuthenticated) {
-      headers['x-admin-key'] = adminKey;
-    }
-    return headers;
-  };
-  
-  // Handle admin authentication
-  const handleAuthenticate = async () => {
-    if (!adminKey.trim()) {
-      setAuthError('Please enter an admin key');
-      return;
-    }
-    
+export const FeedbackAdmin: React.FC = () => {
+  const [exportError, setExportError] = useState("");
+  const stats = useQuery<FeedbackStats>({ queryKey: ["/api/feedback/stats"] });
+  const entries = useQuery<Feedback[]>({ queryKey: ["/api/feedback"] });
+  const remove = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/admin/feedback/${id}`, undefined),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["/api/feedback"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/feedback/stats"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/admin/audit"] });
+    },
+  });
+
+  const exportFeedback = async () => {
     try {
-      // Test authentication by making a request to the stats endpoint
-      const response = await fetch('/api/feedback/stats', {
-        headers: { 'x-admin-key': adminKey }
-      });
-      
-      if (response.ok) {
-        // Save authentication state to localStorage
-        localStorage.setItem('adminKey', adminKey);
-        localStorage.setItem('isAuthenticated', 'true');
-        
-        setIsAuthenticated(true);
-        setAuthError(null);
-        
-        // Force refetch of queries now that we have authentication
-        window.location.reload();
-      } else {
-        setAuthError('Invalid admin key');
-        
-        // Clear localStorage in case of failure
-        localStorage.removeItem('adminKey');
-        localStorage.removeItem('isAuthenticated');
-      }
+      setExportError("");
+      const response = await fetch("/api/feedback/export", { credentials: "include" });
+      if (!response.ok) throw new Error("Feedback export could not be downloaded.");
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "feedback.csv";
+      link.click();
+      URL.revokeObjectURL(url);
     } catch (error) {
-      setAuthError('Authentication failed');
-      console.error('Auth error:', error);
-    }
-  };
-  
-  // Fetch feedback statistics
-  const { data: stats, isLoading: statsLoading } = useQuery<FeedbackStats>({
-    queryKey: ['/api/feedback/stats'],
-    queryFn: async () => {
-      const response = await fetch('/api/feedback/stats', {
-        headers: createHeaders()
-      });
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Unauthorized: Admin access required');
-        }
-        throw new Error('Failed to fetch feedback stats');
-      }
-      return response.json();
-    },
-    enabled: isAuthenticated // Only run query if authenticated
-  });
-
-  // Fetch all feedback entries
-  const { data: feedbackEntries, isLoading: entriesLoading } = useQuery<Feedback[]>({
-    queryKey: ['/api/feedback'],
-    queryFn: async () => {
-      const response = await fetch('/api/feedback', {
-        headers: createHeaders()
-      });
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Unauthorized: Admin access required');
-        }
-        throw new Error('Failed to fetch feedback entries');
-      }
-      return response.json();
-    },
-    enabled: isAuthenticated // Only run query if authenticated
-  });
-
-  // Helper function to format the satisfaction level
-  const formatSatisfaction = (satisfaction: string) => {
-    switch (satisfaction) {
-      case 'very_disappointed':
-        return <Badge className="bg-green-500 hover:bg-green-600">Very Disappointed</Badge>;
-      case 'somewhat_disappointed':
-        return <Badge variant="outline" className="text-gray-600">Somewhat Disappointed</Badge>;
-      case 'not_disappointed':
-        return <Badge className="bg-red-500 hover:bg-red-600">Not Disappointed</Badge>;
-      default:
-        return satisfaction;
+      setExportError(error instanceof Error ? error.message : "Feedback export could not be downloaded.");
     }
   };
 
-  // Helper function to format date
-  const formatDate = (dateString: string | undefined) => {
-    if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  // Get the PMF Score color based on value
-  const getPmfScoreColor = (score: number) => {
-    if (score >= 40) return 'text-green-600 font-bold'; // Over 40% is great (Product-Market Fit)
-    if (score >= 25) return 'text-amber-600 font-bold'; // 25-40% is okay
-    return 'text-red-600 font-bold'; // Under 25% needs improvement
-  };
-
-  // Function to export feedback data with admin key
-  const exportFeedbackData = () => {
-    if (!feedbackEntries || feedbackEntries.length === 0 || !isAuthenticated) return;
-    
-    // Create a URL with the admin key as a header
-    // Open the export URL directly with the admin key in the URL
-    const exportUrl = `/api/feedback/export`;
-    const win = window.open(`${exportUrl}?key=${encodeURIComponent(adminKey)}`, '_blank');
-    
-    if (!win) {
-      console.error('Failed to open export window. Pop-up might be blocked.');
-    }
-  };
-
-  // If not authenticated, show login form
-  if (!isAuthenticated) {
-    return (
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Admin Authentication Required</CardTitle>
-            <CardDescription>
-              Please enter your admin key to view feedback data
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {authError && (
-                <Alert variant="destructive">
-                  <AlertTitle>Authentication Failed</AlertTitle>
-                  <AlertDescription>{authError}</AlertDescription>
-                </Alert>
-              )}
-              
-              <div className="grid w-full items-center gap-1.5">
-                <Label htmlFor="adminKey">Admin Key</Label>
-                <div className="flex gap-2">
-                  <StyledInput
-                    id="adminKey"
-                    type="password"
-                    value={adminKey}
-                    onChange={(e) => setAdminKey(e.target.value)}
-                    className="flex-1"
-                    placeholder="Enter your admin key"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleAuthenticate();
-                      }
-                    }}
-                  />
-                  <Button
-                    onClick={handleAuthenticate}
-                    className="whitespace-nowrap"
-                  >
-                    <Lock className="mr-2 h-4 w-4" />
-                    Authenticate
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Authenticated view
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <div>
-            <CardTitle>Product-Market Fit Score</CardTitle>
-            <CardDescription>
-              Based on the Sean Ellis test: "How would you feel if you could no longer use this product?"
-            </CardDescription>
-          </div>
-          <Badge variant="outline" className="flex items-center gap-1">
-            <Unlock className="h-3 w-3" /> Admin Access
-          </Badge>
-        </CardHeader>
-        <CardContent>
-          {statsLoading ? (
-            <div className="h-40 flex items-center justify-center">
-              <p>Loading stats...</p>
-            </div>
-          ) : stats && stats.totalResponses > 0 ? (
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <div className="flex justify-between items-end">
-                  <span className="text-sm font-medium">PMF Score:</span>
-                  <span className={getPmfScoreColor(stats.pmfScore)}>
-                    {stats.pmfScore.toFixed(1)}%
-                  </span>
-                </div>
-                <Progress value={stats.pmfScore} max={100} />
-                <p className="text-xs text-gray-500">
-                  {stats.pmfScore >= 40
-                    ? 'Great! You have achieved Product-Market Fit.'
-                    : stats.pmfScore >= 25
-                    ? 'Getting there. Keep improving.'
-                    : 'Needs work to reach Product-Market Fit.'}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4">
-                <div className="bg-gray-50 p-3 rounded-md border border-gray-200">
-                  <p className="text-xs text-gray-500">Total Responses</p>
-                  <p className="text-xl font-bold">{stats.totalResponses}</p>
-                </div>
-                <div className="bg-green-50 p-3 rounded-md border border-green-100">
-                  <p className="text-xs text-green-600">Very Disappointed</p>
-                  <p className="text-xl font-bold text-green-600">
-                    {stats.veryDisappointed}{' '}
-                    <span className="text-sm font-normal">
-                      ({((stats.veryDisappointed / stats.totalResponses) * 100).toFixed(1)}%)
-                    </span>
-                  </p>
-                </div>
-                <div className="bg-gray-50 p-3 rounded-md border border-gray-200">
-                  <p className="text-xs text-gray-600">Somewhat Disappointed</p>
-                  <p className="text-xl font-bold text-gray-600">
-                    {stats.somewhatDisappointed}{' '}
-                    <span className="text-sm font-normal">
-                      ({((stats.somewhatDisappointed / stats.totalResponses) * 100).toFixed(1)}%)
-                    </span>
-                  </p>
-                </div>
-                <div className="bg-red-50 p-3 rounded-md border border-red-100">
-                  <p className="text-xs text-red-600">Not Disappointed</p>
-                  <p className="text-xl font-bold text-red-600">
-                    {stats.notDisappointed}{' '}
-                    <span className="text-sm font-normal">
-                      ({((stats.notDisappointed / stats.totalResponses) * 100).toFixed(1)}%)
-                    </span>
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="h-40 flex items-center justify-center bg-gray-50 rounded-md">
-              <p className="text-gray-500">No feedback data available yet</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Feedback Responses</CardTitle>
-          <CardDescription>
-            All user feedback submissions
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {entriesLoading ? (
-            <div className="h-40 flex items-center justify-center">
-              <p>Loading feedback...</p>
-            </div>
-          ) : feedbackEntries && feedbackEntries.length > 0 ? (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Satisfaction</TableHead>
-                    <TableHead>Main Benefit</TableHead>
-                    <TableHead>Improvements</TableHead>
-                    <TableHead>Email</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {[...feedbackEntries]
-                    .sort((a, b) => {
-                      // Sort by date, most recent first
-                      const dateA = new Date(a.createdAt || '');
-                      const dateB = new Date(b.createdAt || '');
-                      return dateB.getTime() - dateA.getTime();
-                    })
-                    .map((entry) => (
-                      <TableRow key={entry.id}>
-                        <TableCell className="whitespace-nowrap">
-                          {formatDate(entry.createdAt)}
-                        </TableCell>
-                        <TableCell>{formatSatisfaction(entry.satisfaction)}</TableCell>
-                        <TableCell className="max-w-xs truncate">
-                          {entry.main_benefit || entry.mainBenefit || '-'}
-                        </TableCell>
-                        <TableCell className="max-w-xs truncate">
-                          {entry.improvements || '-'}
-                        </TableCell>
-                        <TableCell>{entry.email || '-'}</TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-            </div>
-          ) : (
-            <div className="h-40 flex items-center justify-center bg-gray-50 rounded-md">
-              <p className="text-gray-500">No feedback submissions yet</p>
-            </div>
-          )}
-        </CardContent>
-        {feedbackEntries && feedbackEntries.length > 0 && (
-          <CardFooter>
-            <Button 
-              className="ml-auto"
-              variant="default"
-              onClick={exportFeedbackData}
-              size="sm"
-            >
-              <Download className="mr-2 h-4 w-4" />
-              View Feedback Data
-            </Button>
-          </CardFooter>
-        )}
-      </Card>
-    </div>
+    <Card>
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+        <div><CardTitle>User feedback</CardTitle><p className="mt-1 text-sm text-slate-600">Owner-only feedback review and export.</p></div>
+        <Button variant="outline" size="sm" onClick={() => void exportFeedback()}><Download className="mr-2 h-4 w-4" />Export CSV</Button>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {exportError && <p className="text-sm text-red-700" role="alert">{exportError}</p>}
+        {stats.data && <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <FeedbackMetric title="Responses" value={stats.data.totalResponses} />
+          <FeedbackMetric title="Very disappointed" value={stats.data.veryDisappointed} />
+          <FeedbackMetric title="Somewhat" value={stats.data.somewhatDisappointed} />
+          <FeedbackMetric title="PMF score" value={`${stats.data.pmfScore.toFixed(1)}%`} />
+        </div>}
+        {stats.error && <p className="text-sm text-red-700">{stats.error.message}</p>}
+        <div className="max-h-[480px] space-y-3 overflow-y-auto">
+          {entries.isLoading ? <p className="text-sm text-slate-500">Loading feedback…</p>
+            : entries.error ? <p className="text-sm text-red-700">{entries.error.message}</p>
+              : entries.data?.length ? [...entries.data].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((entry) => (
+                <article className="rounded-md border bg-white p-3" key={entry.id}>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div><Badge variant="outline">{entry.satisfaction.replaceAll("_", " ")}</Badge><p className="mt-1 text-xs text-slate-500">{new Date(entry.createdAt).toLocaleString()} {entry.email ? `· ${entry.email}` : ""}</p></div>
+                    <Button variant="ghost" size="sm" aria-label="Delete feedback" disabled={remove.isPending} onClick={() => {
+                      if (window.confirm("Delete this feedback entry? This cannot be undone.")) remove.mutate(entry.id);
+                    }}><Trash2 className="h-4 w-4 text-red-700" /></Button>
+                  </div>
+                  {entry.mainBenefit && <p className="mt-2 text-sm"><strong>Main benefit:</strong> {entry.mainBenefit}</p>}
+                  {entry.improvements && <p className="mt-1 text-sm"><strong>Improvements:</strong> {entry.improvements}</p>}
+                </article>
+              )) : <p className="text-sm text-slate-500">No feedback submissions yet.</p>}
+        </div>
+      </CardContent>
+    </Card>
   );
 };
+
+function FeedbackMetric({ title, value }: { title: string; value: string | number }) {
+  return <div className="rounded-md border bg-white p-3"><p className="text-xs text-slate-500">{title}</p><p className="mt-1 text-lg font-semibold text-[#1A2942]">{value}</p></div>;
+}
 
 export default FeedbackAdmin;

@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useUser } from '@clerk/react';
+import { useLocation } from 'wouter';
 import { StyledInput } from '@/components/ui/styled-input';
 import { Button } from '@/components/ui/button';
 import { StockData } from '@/lib/types';
@@ -102,6 +104,8 @@ const StockInformation: React.FC<StockInformationProps> = ({
   const pendingSearchSymbol = useRef<string | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { isLoaded: authLoaded, isSignedIn } = useUser();
+  const [, navigate] = useLocation();
 
   // Watchlist add — isolated from the provenance/divergence badge block on
   // purpose so this commit doesn't tangle with the parallel cross-source and
@@ -401,24 +405,37 @@ const StockInformation: React.FC<StockInformationProps> = ({
                 above to keep merges with the cross-source / historical-P/E
                 tasks mechanical. */}
             <div className="mt-3 flex">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                data-testid="button-add-to-watchlist"
-                disabled={addToWatchlist.isPending || justAddedSymbol === stockData.symbol}
-                onClick={() => addToWatchlist.mutate({
-                  symbol: stockData.symbol,
-                  marginOfSafety: Math.round(marginOfSafety),
-                })}
-                className="text-xs h-7 px-2 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
-              >
-                {justAddedSymbol === stockData.symbol ? (
-                  <span className="flex items-center"><Check className="w-3 h-3 mr-1" /> Added</span>
-                ) : (
-                  <span className="flex items-center"><BookmarkPlus className="w-3 h-3 mr-1" /> Add to Watchlist</span>
-                )}
-              </Button>
+              {authLoaded && !isSignedIn ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  data-testid="button-add-to-watchlist"
+                  onClick={() => navigate('/sign-up')}
+                  className="text-xs h-7 px-2 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+                >
+                  <span className="flex items-center"><BookmarkPlus className="w-3 h-3 mr-1" /> Sign in to save stock</span>
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  data-testid="button-add-to-watchlist"
+                  disabled={!authLoaded || addToWatchlist.isPending || justAddedSymbol === stockData.symbol}
+                  onClick={() => addToWatchlist.mutate({
+                    symbol: stockData.symbol,
+                    marginOfSafety: Math.round(marginOfSafety),
+                  })}
+                  className="text-xs h-7 px-2 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+                >
+                  {justAddedSymbol === stockData.symbol ? (
+                    <span className="flex items-center"><Check className="w-3 h-3 mr-1" /> Added</span>
+                  ) : (
+                    <span className="flex items-center"><BookmarkPlus className="w-3 h-3 mr-1" /> Add to Watchlist</span>
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         )}

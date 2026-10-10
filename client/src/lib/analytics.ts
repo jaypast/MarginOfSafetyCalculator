@@ -71,7 +71,15 @@ export function trackEvent(name: string, data?: AnalyticsData): void {
   if (typeof window === "undefined") return;
 
   try {
-    window.umami?.track(name, sanitizeEventData(name, data));
+    const safeData = sanitizeEventData(name, data);
+    window.umami?.track(name, safeData);
+    void fetch("/api/account-events", {
+      method: "POST",
+      credentials: "same-origin",
+      keepalive: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventName: name, properties: safeData }),
+    }).catch(() => undefined);
   } catch {
     // Analytics must never affect the user experience.
   }

@@ -6,7 +6,13 @@ import { type Server } from "http";
 import viteConfig from "../vite.config";
 import { nanoid } from "nanoid";
 
-const KNOWN_ROUTES = new Set(["/", "/watchlist", "/research", "/feedback", "/admin"]);
+const KNOWN_ROUTES = new Set(["/", "/calculator", "/watchlist", "/research", "/feedback", "/admin", "/sign-in", "/sign-up"]);
+
+function isKnownRoute(pathname: string): boolean {
+  return KNOWN_ROUTES.has(pathname)
+    || pathname.startsWith("/sign-in/")
+    || pathname.startsWith("/sign-up/");
+}
 
 const viteLogger = createLogger();
 
@@ -273,7 +279,7 @@ export async function setupVite(app: Express, server: Server) {
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
     const pathname = url.split("?")[0].replace(/\/$/, "") || "/";
-    const isKnownRoute = KNOWN_ROUTES.has(pathname);
+    const routeIsKnown = isKnownRoute(pathname);
 
     try {
       const clientTemplate = path.resolve(
@@ -291,7 +297,7 @@ export async function setupVite(app: Express, server: Server) {
       );
       template = injectRouteMeta(template, pathname);
       const page = await vite.transformIndexHtml(url, template);
-      res.status(isKnownRoute ? 200 : 404).set({ "Content-Type": "text/html" }).end(page);
+      res.status(routeIsKnown ? 200 : 404).set({ "Content-Type": "text/html" }).end(page);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);
       next(e);
@@ -313,7 +319,7 @@ export function serveStatic(app: Express) {
   // fall through to index.html if the file doesn't exist, with correct status
   app.use("*", (req, res) => {
     const pathname = req.originalUrl.split("?")[0].replace(/\/$/, "") || "/";
-    const status = KNOWN_ROUTES.has(pathname) ? 200 : 404;
+    const status = isKnownRoute(pathname) ? 200 : 404;
 
     try {
       if (!cachedStaticHtml) {

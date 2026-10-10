@@ -1,4 +1,5 @@
-import { pgTable, text, serial, integer, boolean, decimal, varchar, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, decimal, varchar, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import type { StoredCompanyQuality } from "./companyQuality";
@@ -16,6 +17,39 @@ export const insertUserSchema = createInsertSchema(users).pick({
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+// Authentication identities are verified by Clerk; this table stores only the
+// app-level role, account status, and the email needed for owner reporting.
+export const accounts = pgTable("accounts", {
+  id: serial("id").primaryKey(),
+  clerkUserId: varchar("clerk_user_id", { length: 255 }).notNull().unique(),
+  email: text("email"),
+  role: varchar("role", { length: 16 }).$type<"user" | "owner">().notNull().default("user"),
+  status: varchar("status", { length: 16 }).$type<"active" | "suspended">().notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  suspendedAt: timestamp("suspended_at"),
+});
+export type Account = typeof accounts.$inferSelect;
+
+export const accountEvents = pgTable("account_events", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "set null" }),
+  audience: varchar("audience", { length: 16 }).$type<"anonymous" | "registered">().notNull(),
+  eventName: varchar("event_name", { length: 64 }).notNull(),
+  properties: jsonb("properties").$type<Record<string, string | number | boolean>>().notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [index("account_events_created_at_idx").on(table.createdAt), index("account_events_name_created_idx").on(table.eventName, table.createdAt)]);
+export type AccountEvent = typeof accountEvents.$inferSelect;
+
+export const adminAuditLog = pgTable("admin_audit_log", {
+  id: serial("id").primaryKey(),
+  actorAccountId: integer("actor_account_id").references(() => accounts.id, { onDelete: "set null" }),
+  action: varchar("action", { length: 64 }).notNull(),
+  targetAccountId: integer("target_account_id"),
+  details: jsonb("details").$type<Record<string, string | number | boolean | null>>().notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [index("admin_audit_created_at_idx").on(table.createdAt)]);
 
 // Stock data schema
 export const stocks = pgTable("stocks", {
@@ -246,13 +280,16 @@ export type Feedback = typeof feedback.$inferSelect;
 export const watchlist = pgTable("watchlist", {
   id: serial("id").primaryKey(),
   sessionId: varchar("session_id", { length: 64 }).notNull(),
+  userId: integer("user_id").references(() => accounts.id, { onDelete: "cascade" }),
   symbol: varchar("symbol", { length: 10 }).notNull(),
   // Margin-of-safety percent (whole-number percent). The calculator UI only
   // ever produces integers (20 / 30 / 35 / 45 / etc.), so an integer column
   // matches the data without needing any decimal conversion.
   marginOfSafety: integer("margin_of_safety").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("watchlist_user_symbol_uidx").on(table.userId, table.symbol).where(sql`${table.userId} is not null`),
+]);
 
 // Insert schema — sessionId and createdAt are filled in server-side, so the
 // client only sends the user-controlled fields.

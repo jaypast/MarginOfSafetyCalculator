@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 48" role="img" aria-label="Margin of Safety">
+  <rect width="48" height="48" rx="12" fill="#1A2942"/>
+  <path d="M12 32 21 23l7 6 10-13" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/>
+  <path d="M31 16h7v7" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="3"/>
+  <text x="58" y="21" fill="#1A2942" font-family="Inter,Arial,sans-serif" font-size="12" font-weight="700">MARGIN OF</text>
+  <text x="58" y="37" fill="#1A2942" font-family="Inter,Arial,sans-serif" font-size="12" font-weight="700">SAFETY</text>
+</svg>

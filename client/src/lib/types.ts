@@ -1,5 +1,14 @@
 import type { CompanyQuality } from '@shared/companyQuality';
 
+export interface AccountSummary {
+  id: number;
+  email: string | null;
+  role: 'user' | 'owner';
+  status: 'active' | 'suspended';
+  createdAt: string;
+  suspendedAt?: string | null;
+}
+
 export type DataSource =
   | 'yfinance'
   | 'rapidapi'

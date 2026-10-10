@@ -1,4 +1,4 @@
-import type { Express, Request, Response, NextFunction } from "express";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage } from "./storage";
@@ -19,36 +19,17 @@ import { getRapidApiHistoricalData } from "./services/rapidApiFinance";
 import { scrapeHistoricalData } from "./services/webScraper";
 import { getFallbackHistoricalData } from "./services/fallbackData";
 import { ZodError } from "zod";
-
-// Simple admin authentication middleware
-// In a production environment, you would use a more robust auth system
-// This implementation uses a secret ADMIN_KEY environment variable for authentication
-const adminAuth = (req: Request, res: Response, next: NextFunction) => {
-  const adminKey = process.env.ADMIN_KEY || "margin-of-safety-admin";
-  
-  // Check for key in headers (API requests) or query parameters (export URL)
-  const headerKey = req.headers['x-admin-key'] as string;
-  const queryKey = req.query.key as string;
-  const providedKey = headerKey || queryKey;
-  
-  if (!providedKey || providedKey !== adminKey) {
-    // For HTML responses (export page), redirect to admin page
-    if (req.path === '/api/feedback/export' && req.accepts('html')) {
-      return res.redirect('/admin');
-    }
-    
-    // For API requests, return unauthorized status
-    return res.status(401).json({ message: "Unauthorized: Admin access required" });
-  }
-  
-  next();
-};
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { getAuth } from "@clerk/express";
+import { accounts, feedback, watchlist } from "@shared/schema";
+import { db } from "./db";
+import { AccountRequest, getApplicationAccount, requireAccount, requireOwner, requireSameOrigin } from "./auth";
+import { registerAccountRoutes } from "./accountRoutes";
+import { quoteCsvCell } from "./accountSecurity";
 
 // Watchlist session cookie (Task #14) ----------------------------------------
-// We don't have auth yet, so the watchlist is scoped by an opaque, server-set
-// UUID stored in a long-lived HttpOnly cookie. This is intentionally minimal:
-// no signing, no expiry rotation — when we add real accounts, the entries
-// already keyed by sessionId can be migrated to userId in one query.
+// Guest watchlists continue to use this opaque cookie so existing browser-only
+// entries can be claimed by the same visitor after they create an account.
 const WATCHLIST_COOKIE = "wl_session";
 const WATCHLIST_COOKIE_MAX_AGE = 365 * 24 * 60 * 60; // 1 year
 
@@ -64,9 +45,9 @@ function getOrSetSessionId(req: Request, res: Response): string {
     }
   }
   const fresh = randomUUID();
-  res.setHeader(
+  res.append(
     "Set-Cookie",
-    `${WATCHLIST_COOKIE}=${fresh}; Path=/; Max-Age=${WATCHLIST_COOKIE_MAX_AGE}; SameSite=Lax; HttpOnly`,
+    `${WATCHLIST_COOKIE}=${fresh}; Path=/; Max-Age=${WATCHLIST_COOKIE_MAX_AGE}; SameSite=Lax; HttpOnly${process.env.NODE_ENV === "production" ? "; Secure" : ""}`,
   );
   return fresh;
 }
@@ -97,6 +78,7 @@ let sentimentCache: {
 const CACHE_DURATION = 5 * 60 * 1000;
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  registerAccountRoutes(app);
   // Simple in-memory cache for historical data
   const historicalDataCache: { 
     [key: string]: { 
@@ -337,13 +319,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Feedback API routes
-  app.post("/api/feedback", async (req, res) => {
+  app.post("/api/feedback", requireSameOrigin, async (req, res) => {
     try {
       const feedbackData = insertFeedbackSchema.parse(req.body);
       const savedFeedback = await storage.createFeedback(feedbackData);
       return res.status(201).json(savedFeedback);
     } catch (error) {
-      console.error("Error saving feedback:", error);
+      console.error("Feedback write failed:", error instanceof Error ? error.name : "unknown error");
       
       if (error instanceof ZodError) {
         return res.status(400).json({ 
@@ -352,26 +334,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      return res.status(500).json({ 
-        message: error instanceof Error ? error.message : 'An unknown error occurred while saving feedback'
-      });
+      return res.status(503).json({ message: "Feedback storage is temporarily unavailable. Please try again." });
     }
   });
   
   // Admin-only endpoints
-  app.get("/api/feedback/stats", adminAuth, async (req, res) => {
+  app.get("/api/feedback/stats", requireAccount, requireOwner, async (req, res) => {
     try {
       const stats = await storage.getFeedbackStats();
       return res.json(stats);
     } catch (error) {
-      console.error("Error getting feedback stats:", error);
-      return res.status(500).json({
-        message: error instanceof Error ? error.message : 'An unknown error occurred while fetching feedback stats'
-      });
+      console.error("Error getting feedback stats:", error instanceof Error ? error.message : "unknown error");
+      return res.status(503).json({ message: "Feedback statistics are temporarily unavailable." });
     }
   });
   
-  app.get("/api/feedback", adminAuth, async (req, res) => {
+  app.get("/api/feedback", requireAccount, requireOwner, async (req, res) => {
     try {
       const allFeedback = await storage.getAllFeedback();
       
@@ -384,112 +362,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       return res.json(sortedFeedback);
     } catch (error) {
-      console.error("Error getting feedback:", error);
-      return res.status(500).json({
-        message: error instanceof Error ? error.message : 'An unknown error occurred while fetching feedback'
-      });
+      console.error("Error getting feedback:", error instanceof Error ? error.message : "unknown error");
+      return res.status(503).json({ message: "Feedback is temporarily unavailable." });
     }
   });
   
-  app.get("/api/feedback/export", adminAuth, async (req, res) => {
+  app.get("/api/feedback/export", requireAccount, requireOwner, async (_req, res) => {
     try {
-      const allFeedback = await storage.getAllFeedback();
-      
-      if (allFeedback.length === 0) {
-        return res.status(404).send('No feedback data available for export');
-      }
-      
-      // Sort by date (most recent first)
-      allFeedback.sort((a, b) => {
-        const dateA = new Date(a.createdAt instanceof Date ? a.createdAt.toISOString() : a.createdAt || '');
-        const dateB = new Date(b.createdAt instanceof Date ? b.createdAt.toISOString() : b.createdAt || '');
-        return dateB.getTime() - dateA.getTime();
-      });
-      
-      // Format satisfaction for display
-      const formatSatisfaction = (sat: string) => {
-        switch (sat) {
-          case 'very_disappointed': return 'Very Disappointed';
-          case 'somewhat_disappointed': return 'Somewhat Disappointed';
-          case 'not_disappointed': return 'Not Disappointed';
-          default: return sat;
-        }
-      };
-      
-      // Format date
-      const formatDate = (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-      };
-      
-      // Generate a simple HTML page with the data in a table format for easier viewing on mobile
-      let htmlContent = `
-        <html>
-        <head>
-          <title>Feedback Data - ${new Date().toISOString().split('T')[0]}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            table { border-collapse: collapse; width: 100%; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f2f2f2; }
-            tr:nth-child(even) { background-color: #f9f9f9; }
-            .export-info { margin-bottom: 20px; }
-            h1 { color: #333; }
-          </style>
-        </head>
-        <body>
-          <h1>Feedback Data Export</h1>
-          <div class="export-info">
-            <p>Generated on: ${new Date().toLocaleString()}</p>
-            <p>Total responses: ${allFeedback.length}</p>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Satisfaction</th>
-                <th>Main Benefit</th>
-                <th>Improvements</th>
-                <th>Email</th>
-              </tr>
-            </thead>
-            <tbody>
-      `;
-      
-      // Add all feedback entries to the table
-      allFeedback.forEach(entry => {
-        htmlContent += `
-          <tr>
-            <td>${formatDate(entry.createdAt?.toString() || '')}</td>
-            <td>${formatSatisfaction(entry.satisfaction)}</td>
-            <td>${entry.mainBenefit || ''}</td>
-            <td>${entry.improvements || ''}</td>
-            <td>${entry.email || ''}</td>
-          </tr>
-        `;
-      });
-      
-      // Close the HTML
-      htmlContent += `
-            </tbody>
-          </table>
-        </body>
-        </html>
-      `;
-      
-      res.setHeader('Content-Type', 'text/html');
-      return res.send(htmlContent);
+      const rows = await storage.getAllFeedback();
+      const csv = [
+        ["Date", "Satisfaction", "Main benefit", "Improvements", "Email"].map(quoteCsvCell).join(","),
+        ...rows.map((row) => [
+          row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
+          row.satisfaction,
+          row.mainBenefit,
+          row.improvements,
+          row.email,
+        ].map(quoteCsvCell).join(",")),
+      ].join("\r\n");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", 'attachment; filename="feedback.csv"');
+      res.setHeader("Cache-Control", "no-store");
+      return res.send(`\uFEFF${csv}`);
     } catch (error) {
-      console.error("Error exporting feedback:", error);
-      return res.status(500).json({
-        message: error instanceof Error ? error.message : 'An unknown error occurred while exporting feedback'
-      });
+      console.error("Error exporting feedback:", error instanceof Error ? error.message : "unknown error");
+      return res.status(503).json({ message: "Feedback export is temporarily unavailable." });
     }
   });
 
@@ -497,57 +394,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/watchlist", async (req, res) => {
     try {
       const sessionId = getOrSetSessionId(req, res);
-      const entries = await storage.listWatchlistEntries(sessionId);
+      if (!db) return res.status(503).json({ message: "Saved stocks are temporarily unavailable." });
+      const clerkUserId = getAuth(req).userId;
+      let entries;
+      if (clerkUserId) {
+        const account = await getApplicationAccount(clerkUserId);
+        if (account.status === "suspended") return res.status(403).json({ message: "This account is suspended." });
+        await db.transaction(async (tx) => {
+          const guestEntries = await tx.select().from(watchlist)
+            .where(and(eq(watchlist.sessionId, sessionId), isNull(watchlist.userId)))
+            .orderBy(sql`${watchlist.createdAt} desc`);
+          for (const entry of guestEntries) {
+            await tx.insert(watchlist).values({
+              sessionId,
+              userId: account.id,
+              symbol: entry.symbol,
+              marginOfSafety: entry.marginOfSafety,
+              createdAt: entry.createdAt,
+            }).onConflictDoNothing({
+              target: [watchlist.userId, watchlist.symbol],
+              where: sql`${watchlist.userId} is not null`,
+            });
+            await tx.delete(watchlist).where(and(eq(watchlist.id, entry.id), isNull(watchlist.userId)));
+          }
+        });
+        entries = await db.select().from(watchlist).where(eq(watchlist.userId, account.id)).orderBy(watchlist.createdAt);
+      } else {
+        entries = await db.select().from(watchlist)
+          .where(and(eq(watchlist.sessionId, sessionId), isNull(watchlist.userId)))
+          .orderBy(watchlist.createdAt);
+      }
       return res.json(entries.map(toWatchlistResponse));
     } catch (error) {
-      console.error("Error listing watchlist entries:", error);
-      return res.status(500).json({
-        message: error instanceof Error ? error.message : "Failed to list watchlist entries",
-      });
+      console.error("Error listing watchlist entries:", error instanceof Error ? error.message : "unknown error");
+      return res.status(503).json({ message: "Saved stocks are temporarily unavailable. Please try again." });
     }
   });
 
-  app.post("/api/watchlist", async (req, res) => {
+  app.post("/api/watchlist", requireSameOrigin, requireAccount, async (req, res) => {
     try {
       const sessionId = getOrSetSessionId(req, res);
       const parsed = insertWatchlistEntrySchema.parse(req.body);
-      const entry = await storage.addWatchlistEntry(
+      const account = (req as AccountRequest).appAccount!;
+      if (!db) return res.status(503).json({ message: "Saved stocks are temporarily unavailable." });
+      const [entry] = await db.insert(watchlist).values({
         sessionId,
-        parsed.symbol,
-        parsed.marginOfSafety,
-      );
+        userId: account.id,
+        symbol: parsed.symbol.toUpperCase(),
+        marginOfSafety: parsed.marginOfSafety,
+      }).onConflictDoUpdate({
+        target: [watchlist.userId, watchlist.symbol],
+        where: sql`${watchlist.userId} is not null`,
+        set: { marginOfSafety: parsed.marginOfSafety },
+      }).returning();
       return res.status(201).json(toWatchlistResponse(entry));
     } catch (error) {
-      console.error("Error adding watchlist entry:", error);
       if (error instanceof ZodError) {
         return res.status(400).json({
           message: "Invalid watchlist entry",
           details: error.errors,
         });
       }
-      return res.status(500).json({
-        message: error instanceof Error ? error.message : "Failed to add watchlist entry",
-      });
+      console.error("Error adding watchlist entry:", error instanceof Error ? error.message : "unknown error");
+      return res.status(503).json({ message: "Saved stocks are temporarily unavailable. Please try again." });
     }
   });
 
-  app.delete("/api/watchlist/:id", async (req, res) => {
+  app.delete("/api/watchlist/:id", requireSameOrigin, requireAccount, async (req, res) => {
     try {
-      const sessionId = getOrSetSessionId(req, res);
+      const account = (req as AccountRequest).appAccount!;
       const id = Number.parseInt(req.params.id, 10);
       if (!Number.isFinite(id) || id <= 0) {
         return res.status(400).json({ message: "Invalid watchlist entry id" });
       }
-      const removed = await storage.removeWatchlistEntry(id, sessionId);
-      if (!removed) {
+      if (!db) return res.status(503).json({ message: "Saved stocks are temporarily unavailable." });
+      const removed = await db.delete(watchlist)
+        .where(and(eq(watchlist.id, id), eq(watchlist.userId, account.id)))
+        .returning({ id: watchlist.id });
+      if (!removed.length) {
         return res.status(404).json({ message: "Watchlist entry not found" });
       }
       return res.status(204).end();
     } catch (error) {
-      console.error("Error removing watchlist entry:", error);
-      return res.status(500).json({
-        message: error instanceof Error ? error.message : "Failed to remove watchlist entry",
-      });
+      console.error("Error removing watchlist entry:", error instanceof Error ? error.message : "unknown error");
+      return res.status(503).json({ message: "Saved stocks are temporarily unavailable. Please try again." });
     }
   });
 

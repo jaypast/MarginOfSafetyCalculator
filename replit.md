@@ -8,6 +8,12 @@ A value-investing web app that estimates intrinsic stock value via DCF, P/E, and
 - **DB**: Drizzle ORM + Postgres (Neon serverless) with an in-memory fallback
 - **Tests**: Vitest (`npm test`, `npm run verify`)
 
+## Accounts and owner administration
+- Clerk manages sign-up, sign-in, and recovery. App accounts and personal watchlists are stored in Neon; signed-in watchlist writes never fall back to process memory.
+- The public calculator and research remain free. Subscription billing is intentionally deferred; do not add checkout or payment-data storage without a separate owner-approved task.
+- Owner permissions require a verified primary Clerk email matching the `OWNER_EMAIL` Replit Secret. Never promote the first registrant or reintroduce a shared admin key/localStorage admin state.
+- Usage reporting begins when account events are enabled and must remain truthful: no invented history, client-supplied account identity, ticker-level search logging, or raw request-body logging.
+
 ## Project layout
 - `client/src/lib/calculators.ts` — DCF / P/E / Graham math. Each method exports both a `*Detailed` (returns `{ value, appliedAdjustments[] }`) and a thin number-returning wrapper.
 - `client/src/lib/companyAdjustments.ts` — Per-industry caps and special-case overrides used by the calculators.

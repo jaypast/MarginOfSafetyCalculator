@@ -184,6 +184,7 @@ export class MemStorage implements IStorage {
     const entry: WatchlistEntry = {
       id: this.nextWatchlistId++,
       sessionId,
+      userId: null,
       symbol: upper,
       marginOfSafety,
       createdAt: new Date(),
@@ -652,24 +653,22 @@ class SafeStorageWrapper implements IStorage {
   
   async createFeedback(feedbackData: InsertFeedback): Promise<Feedback> {
     try {
-      if (this.dbStorage) {
-        return await this.dbStorage.createFeedback(feedbackData);
-      }
+      if (!this.dbStorage) throw new Error("DATABASE_UNAVAILABLE");
+      return await this.dbStorage.createFeedback(feedbackData);
     } catch (err) {
-      console.error("Database error in createFeedback, falling back to memory storage:", err);
+      console.error("Database error in createFeedback:", err instanceof Error ? err.message : "unknown error");
+      throw err;
     }
-    return this.memStorage.createFeedback(feedbackData);
   }
   
   async getAllFeedback(): Promise<Feedback[]> {
     try {
-      if (this.dbStorage) {
-        return await this.dbStorage.getAllFeedback();
-      }
+      if (!this.dbStorage) throw new Error("DATABASE_UNAVAILABLE");
+      return await this.dbStorage.getAllFeedback();
     } catch (err) {
-      console.error("Database error in getAllFeedback, falling back to memory storage:", err);
+      console.error("Database error in getAllFeedback:", err instanceof Error ? err.message : "unknown error");
+      throw err;
     }
-    return this.memStorage.getAllFeedback();
   }
   
   async getFeedbackStats(): Promise<{
@@ -680,13 +679,12 @@ class SafeStorageWrapper implements IStorage {
     pmfScore: number;
   }> {
     try {
-      if (this.dbStorage) {
-        return await this.dbStorage.getFeedbackStats();
-      }
+      if (!this.dbStorage) throw new Error("DATABASE_UNAVAILABLE");
+      return await this.dbStorage.getFeedbackStats();
     } catch (err) {
-      console.error("Database error in getFeedbackStats, falling back to memory storage:", err);
+      console.error("Database error in getFeedbackStats:", err instanceof Error ? err.message : "unknown error");
+      throw err;
     }
-    return this.memStorage.getFeedbackStats();
   }
 
   // Watchlist methods --------------------------------------------------------
