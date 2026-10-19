@@ -769,7 +769,7 @@ async function _fetchStockData(symbol: string, forceRefresh = false): Promise<St
     earningsStability: 'Low',
     competitivePosition: 'Average',
     error: true,
-    errorMessage: `Could not load data for "${symbol}". Please verify the ticker symbol is correct (e.g. AAPL, MSFT, BP.L) and try again.`,
+    errorMessage: `Market data for "${symbol}" is temporarily unavailable because our data providers did not return complete valuation inputs. Please try again shortly.`,
   } as StockResponse, 'unknown');
 }
 

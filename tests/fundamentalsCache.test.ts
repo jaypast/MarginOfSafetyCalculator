@@ -445,6 +445,11 @@ describe('getStockData — stale cache serve on total live failure', () => {
     const res = await getStockData('NADA');
     expect(res.error).toBe(true);
     expect(res.dataSource).toBe('unknown');
+    expect(res.errorMessage).toContain('temporarily unavailable');
+    expect(res.errorMessage).not.toContain('verify the ticker symbol');
+    expect(res.price).toBe(0);
+    expect(res.eps).toBe(0);
+    expect(res.fcfPerShare).toBe(0);
   });
 });
 
