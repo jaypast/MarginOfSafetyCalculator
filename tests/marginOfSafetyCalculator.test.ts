@@ -5,6 +5,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StockData, ValuationParams } from '../client/src/lib/types';
+import { COMPANY_QUALITY_VERSION } from '../shared/companyQuality';
 
 const mocks = vi.hoisted(() => ({
   currentStockData: undefined as StockData | undefined,
@@ -211,12 +212,13 @@ describe('MarginOfSafetyCalculator quality refreshes', () => {
     vi.unstubAllGlobals();
   });
 
-  it('updates refreshed quality without overwriting custom valuation assumptions or a chosen buffer, then defaults a new symbol', async () => {
+  it('compares successive quality refreshes to the immediately previous quality, preserves user settings, then defaults a new symbol', async () => {
     localStorage.clear();
     mocks.currentStockData = makeStock('ACME');
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+    const qualityStorageKey = `company_quality_v${COMPANY_QUALITY_VERSION}:ACME`;
 
     await renderCalculator();
 
@@ -226,6 +228,8 @@ describe('MarginOfSafetyCalculator quality refreshes', () => {
     expect(container.querySelector('[data-testid="mock-margin-value"]')?.textContent).toBe(
       '20%',
     );
+    expect(localStorage.getItem(qualityStorageKey)).toBe('Exceptional');
+    expect(mocks.toast).not.toHaveBeenCalled();
     const readValuationParams = (): ValuationParams =>
       JSON.parse(
         container.querySelector('[data-testid="mock-valuation-params"]')!.textContent!,
@@ -264,12 +268,42 @@ describe('MarginOfSafetyCalculator quality refreshes', () => {
       '50%',
     );
     expect(readValuationParams()).toEqual(customValuationParams);
-    expect(mocks.toast).toHaveBeenCalledWith(
+    expect(localStorage.getItem(qualityStorageKey)).toBe('Caution');
+    expect(mocks.toast).toHaveBeenCalledTimes(1);
+    expect(mocks.toast).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
         title: 'Quality reassessed: Caution',
-        description: expect.stringContaining(
-          'Exceptional → Caution. The recommended margin of safety is now 40-50%',
-        ),
+        description: 'Exceptional → Caution. The recommended margin of safety is now 40-50%+; your selected valuation settings were preserved.',
+      }),
+    );
+
+    // Refresh the same mounted calculator again: the comparison must advance
+    // from Caution, not reuse the original Exceptional classification.
+    mocks.currentStockData = makeStock('ACME', {
+      roe: 20,
+      debtToEquity: 0.4,
+      currentRatio: 1.5,
+      revenueGrowth: 10,
+      earningsStability: 'Medium',
+      competitivePosition: 'Good',
+    });
+    await renderCalculator();
+
+    expect(container.querySelector('[data-testid="mock-quality"]')?.textContent).toBe(
+      'Good|25-35%',
+    );
+    expect(container.querySelector('[data-testid="mock-margin-value"]')?.textContent).toBe(
+      '50%',
+    );
+    expect(readValuationParams()).toEqual(customValuationParams);
+    expect(localStorage.getItem(qualityStorageKey)).toBe('Good');
+    expect(mocks.toast).toHaveBeenCalledTimes(2);
+    expect(mocks.toast).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        title: 'Quality reassessed: Good',
+        description: 'Caution → Good. The recommended margin of safety is now 25-35%; your selected valuation settings were preserved.',
       }),
     );
 
@@ -289,5 +323,6 @@ describe('MarginOfSafetyCalculator quality refreshes', () => {
     expect(container.querySelector('[data-testid="mock-margin-value"]')?.textContent).toBe(
       '30%',
     );
+    expect(mocks.toast).toHaveBeenCalledTimes(2);
   });
 });
