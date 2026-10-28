@@ -4,7 +4,7 @@ import React from 'react';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { StockData } from '../client/src/lib/types';
+import type { StockData, ValuationParams } from '../client/src/lib/types';
 
 const mocks = vi.hoisted(() => ({
   currentStockData: undefined as StockData | undefined,
@@ -53,7 +53,33 @@ vi.mock('../client/src/components/KeyMetrics', () => ({
 }));
 
 vi.mock('../client/src/components/ValuationMethod', () => ({
-  default: () => null,
+  default: (props: {
+    valuationParams: ValuationParams;
+    setValuationParams: React.Dispatch<React.SetStateAction<ValuationParams>>;
+  }) =>
+    React.createElement('div', { 'data-testid': 'mock-valuation-method' }, [
+      React.createElement(
+        'span',
+        { key: 'value', 'data-testid': 'mock-valuation-params' },
+        JSON.stringify(props.valuationParams),
+      ),
+      React.createElement(
+        'button',
+        {
+          key: 'change',
+          type: 'button',
+          onClick: () =>
+            props.setValuationParams((previous) => ({
+              ...previous,
+              dcfDiscountRate: 17,
+              peType: 'custom',
+              peCustomValue: 22,
+              grahamGrowthRate: 6,
+            })),
+        },
+        'Choose custom valuation assumptions',
+      ),
+    ]),
 }));
 
 vi.mock('../client/src/components/ValuationResults', () => ({
@@ -185,7 +211,7 @@ describe('MarginOfSafetyCalculator quality refreshes', () => {
     vi.unstubAllGlobals();
   });
 
-  it('updates refreshed quality without overwriting a chosen buffer, then defaults a new symbol', async () => {
+  it('updates refreshed quality without overwriting custom valuation assumptions or a chosen buffer, then defaults a new symbol', async () => {
     localStorage.clear();
     mocks.currentStockData = makeStock('ACME');
     container = document.createElement('div');
@@ -200,16 +226,33 @@ describe('MarginOfSafetyCalculator quality refreshes', () => {
     expect(container.querySelector('[data-testid="mock-margin-value"]')?.textContent).toBe(
       '20%',
     );
+    const readValuationParams = (): ValuationParams =>
+      JSON.parse(
+        container.querySelector('[data-testid="mock-valuation-params"]')!.textContent!,
+      );
+    const initialValuationParams = readValuationParams();
 
     await act(async () => {
       container
         .querySelector('[data-testid="mock-margin-of-safety"] button')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      container
+        .querySelector('[data-testid="mock-valuation-method"] button')
         ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
     });
     expect(container.querySelector('[data-testid="mock-margin-value"]')?.textContent).toBe(
       '50%',
     );
+    const customValuationParams = {
+      ...initialValuationParams,
+      dcfDiscountRate: 17,
+      peType: 'custom',
+      peCustomValue: 22,
+      grahamGrowthRate: 6,
+    };
+    expect(readValuationParams()).toEqual(customValuationParams);
+    expect(readValuationParams()).not.toEqual(initialValuationParams);
 
     mocks.currentStockData = makeStock('ACME', { debtToEquity: 3 });
     await renderCalculator();
@@ -220,6 +263,7 @@ describe('MarginOfSafetyCalculator quality refreshes', () => {
     expect(container.querySelector('[data-testid="mock-margin-value"]')?.textContent).toBe(
       '50%',
     );
+    expect(readValuationParams()).toEqual(customValuationParams);
     expect(mocks.toast).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Quality reassessed: Caution',
